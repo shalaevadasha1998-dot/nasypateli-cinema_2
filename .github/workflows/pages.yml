@@ -17,7 +17,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-        env:
+
+    env:
       VITE_DEMO_MODE: "false"
       VITE_SUPABASE_URL: "https://vwteokawtqnoiyzmsldj.supabase.co"
       VITE_API_FUNCTION: "app"
@@ -28,13 +29,13 @@ jobs:
 
       - name: Unpack project
         run: |
-          mkdir app
+          mkdir -p app
           unzip -o nasypateli-cinema-mvp-v0.4.zip -d app
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Install and build
         working-directory: app/web
@@ -44,7 +45,8 @@ jobs:
           else
             npm install
           fi
-npm run build -- --base=/nasypateli-cinema_2/
+          npm run build -- --base=/nasypateli-cinema_2/
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
@@ -65,4 +67,3 @@ npm run build -- --base=/nasypateli-cinema_2/
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
-
