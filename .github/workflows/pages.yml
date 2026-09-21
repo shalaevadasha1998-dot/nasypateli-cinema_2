@@ -23,7 +23,7 @@ jobs:
       VITE_SUPABASE_URL: "https://vwteokawtqnoiyzmsldj.supabase.co"
       VITE_API_FUNCTION: "app"
 
-    steps:
+        steps:
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -31,7 +31,8 @@ jobs:
         run: |
           mkdir -p app
           unzip -o nasypateli-cinema-mvp-v0.4.zip -d app
-                - name: Fix GitHub Pages routing
+
+      - name: Fix GitHub Pages routing
         run: |
           sed -i 's#<BrowserRouter><Routes>#<BrowserRouter basename={import.meta.env.BASE_URL}><Routes>#' app/web/src/App.tsx
 
