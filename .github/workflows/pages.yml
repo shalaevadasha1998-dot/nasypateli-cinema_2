@@ -17,6 +17,10 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+        env:
+      VITE_DEMO_MODE: "false"
+      VITE_SUPABASE_URL: "https://vwteokawtqnoiyzmsldj.supabase.co"
+      VITE_API_FUNCTION: "app"
 
     steps:
       - name: Checkout
@@ -40,8 +44,7 @@ jobs:
           else
             npm install
           fi
-          npm run build
-
+npm run build -- --base=/nasypateli-cinema_2/
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
