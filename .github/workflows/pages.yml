@@ -23,7 +23,7 @@ jobs:
       VITE_SUPABASE_URL: "https://vwteokawtqnoiyzmsldj.supabase.co"
       VITE_API_FUNCTION: "app"
 
-        steps:
+      steps:
       - name: Checkout
         uses: actions/checkout@v4
 
