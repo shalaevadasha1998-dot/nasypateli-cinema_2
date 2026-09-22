@@ -48,21 +48,24 @@ jobs:
           }
 
           let health
-          for(let i=0;i<24;i++){
+          for(let i=0;i<6;i++){
             health=await post({action:'health'})
-            if(health.status===200&&health.data?.ok===true&&health.data?.version==='0.9.0'&&health.data?.ready===true)break
-            console.log('Waiting for production readiness',JSON.stringify(health))
-            await new Promise(resolve=>setTimeout(resolve,5000))
+            if(health.status===200&&health.data?.ok===true&&health.data?.version==='0.9.0')break
+            console.log('Waiting for production API',JSON.stringify(health))
+            await new Promise(resolve=>setTimeout(resolve,3000))
           }
-          if(health?.status!==200||health?.data?.ok!==true||health?.data?.version!=='0.9.0'||health?.data?.ready!==true){
-            throw new Error('Production API readiness failed: '+JSON.stringify(health))
+          if(health?.status!==200||health?.data?.ok!==true||health?.data?.version!=='0.9.0'){
+            throw new Error('Production API health failed: '+JSON.stringify(health))
           }
 
           const admin=await post({action:'admin-bootstrap',slug:'2026-10-03'})
           if(admin.status!==401)throw new Error('Admin endpoint is not protected: '+JSON.stringify(admin))
           const screen=await post({action:'screen-bootstrap',slug:'2026-10-03'})
           if(screen.status!==401)throw new Error('Screen endpoint is not protected: '+JSON.stringify(screen))
-          console.log('Production API health and auth gates are OK')
+
+          const blockers=Object.entries(health.data?.checks||{}).filter(([,ok])=>ok!==true).map(([name])=>name)
+          if(blockers.length)throw new Error('Production readiness blockers: '+blockers.join(', '))
+          console.log('Production API health, auth gates and readiness are OK')
           NODE
 
       - name: Publish CI status

@@ -68,19 +68,25 @@ jobs:
           node <<'NODE'
           const endpoint='https://vwteokawtqnoiyzmsldj.supabase.co/functions/v1/app'
           let last={}
-          for(let i=0;i<24;i++){
+          for(let i=0;i<12;i++){
             const r=await fetch(endpoint,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'health'})})
             const data=await r.json().catch(()=>({}))
             last={status:r.status,data}
-            if(r.ok&&data?.version==='0.9.0'&&data?.ready===true){
-              console.log('Supabase v0.9.0 is live and ready')
-              console.log(JSON.stringify(data.checks||{}))
-              process.exit(0)
+            if(r.ok&&data?.version==='0.9.0'){
+              const blockers=Object.entries(data?.checks||{}).filter(([,ok])=>ok!==true).map(([name])=>name)
+              if(blockers.length===0){
+                console.log('Supabase v0.9.0 is live and ready')
+                console.log(JSON.stringify(data.checks||{}))
+                process.exit(0)
+              }
+              if(blockers.length===1&&blockers[0]==='payments'){
+                throw new Error('Production blocker: TELEGRAM_PROVIDER_TOKEN is not configured')
+              }
             }
-            console.log('Waiting for Supabase production readiness',JSON.stringify(last))
-            await new Promise(resolve=>setTimeout(resolve,5000))
+            console.log('Waiting for Supabase runtime checks',JSON.stringify(last))
+            await new Promise(resolve=>setTimeout(resolve,3000))
           }
-          throw new Error('Supabase production did not become ready: '+JSON.stringify(last))
+          throw new Error('Supabase production runtime checks failed: '+JSON.stringify(last))
           NODE
 
       - name: Publish Supabase deploy status
