@@ -54,6 +54,7 @@ export async function handleInvoice(req:Request){
     })
     return json({invoiceUrl:invoice,reservedUntil:slot.reservation_expires_at})
   }catch(e){
-    return err(e instanceof Error?e.message:'Unknown error',500)
+    console.error(e)
+    return err('Не удалось подготовить оплату. Попробуйте ещё раз.',500)
   }
 }

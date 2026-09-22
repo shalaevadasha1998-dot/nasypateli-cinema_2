@@ -609,5 +609,5 @@ export async function handleApi(req:Request){
       const u=await db.from('users').select('display_name,telegram_username').eq('id',chosen).single();if(u.error)throw u.error;await db.from('events').update({winner_user_id:chosen}).eq('id',event.id);const score=await db.from('event_outputs').select('payload').eq('event_id',event.id).eq('output_key','score_summary').single();if(score.error)throw score.error;const winner={userId:chosen,name:u.data.display_name||u.data.telegram_username||'участник'};await db.from('event_outputs').upsert({event_id:event.id,output_key:'score_summary',payload:{...(score.data.payload as any),tie:false,tieResolved:true,winner},approved:true,updated_at:new Date().toISOString()});await refreshLeaderboard(db,allowed);return json({ok:true,winner})
     }
     return err(`Unknown action: ${action}`,404)
-  }catch(e){console.error(e);return err(e instanceof Error?e.message:'Unknown error',500)}
+  }catch(e){console.error(e);return err('Что-то пошло не так. Попробуйте ещё раз.',500)}
 }
