@@ -47,6 +47,7 @@ export type EventInfo = {
   startsAt: string
   capacity: number
   sold: number
+  held?: number
   ticketPriceRub: number
   maxMovieRuntimeMin: number
   status: EventStatus

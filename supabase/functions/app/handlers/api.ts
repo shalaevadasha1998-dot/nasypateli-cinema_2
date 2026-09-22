@@ -81,6 +81,7 @@ async function getOrCreateUser(db:any,tg:any){
 }
 async function mustAdmin(db:any,user:any,tg:any){if(isConfiguredAdmin(tg))return;const r=await db.from('admins').select('role').eq('user_id',user.id).maybeSingle();if(r.error)throw r.error;if(!r.data)throw new Error('Admin access required')}
 async function hasPaidAccess(db:any,eventId:string,userId:string){const r=await db.from('registrations').select('status').eq('event_id',eventId).eq('user_id',userId).maybeSingle();if(r.error)throw r.error;return ['paid','attended'].includes(r.data?.status||'')}
+function effectiveRegistrationStatus(reg:any){const status=String(reg?.status||'none');if(status==='reserved'){const expires=reg?.reservation_expires_at?new Date(reg.reservation_expires_at).getTime():0;if(!expires||expires<=Date.now())return 'none'}return status}
 
 function tokenMatches(req:Request,header:string,envName:string){
   const expected=Deno.env.get(envName)||'';const got=req.headers.get(header)||''
@@ -184,14 +185,14 @@ async function chatContext(db:any,event:any,user:any,profile:any){
   const [memories,clubMem,registration,movie,answers,reaction,review]=await Promise.all([
     db.from('jipitina_memory').select('memory_key,memory_text').eq('scope','user').eq('scope_id',user.id).limit(30),
     db.from('jipitina_memory').select('memory_key,memory_text').eq('scope','club').limit(30),
-    db.from('registrations').select('status').eq('event_id',event.id).eq('user_id',user.id).maybeSingle(),
+    db.from('registrations').select('status,reservation_expires_at').eq('event_id',event.id).eq('user_id',user.id).maybeSingle(),
     db.from('event_movie').select('movie_candidates(title,year,runtime_min,reason)').eq('event_id',event.id).maybeSingle(),
     db.from('prediction_answers').select('question_id,answer,prediction_questions(text,actual)').eq('event_id',event.id).eq('user_id',user.id),
     db.from('post_film_reactions').select('*').eq('event_id',event.id).eq('user_id',user.id).maybeSingle(),
     db.from('final_reviews').select('rating,final_sentence').eq('event_id',event.id).eq('user_id',user.id).maybeSingle()
   ])
   for(const r of [memories,clubMem,registration,movie,answers,reaction,review])if(r.error)throw r.error
-  const creature=await creatureState(db,user.id);return {profile,creature:{name:creature.name,stage:creature.stage,traits:creature.traits,storyCount:creature.storyCount,recentStories:creature.timeline.slice(0,8)},userMemory:memories.data||[],clubMemory:clubMem.data||[],event:{id:event.id,title:event.title,status:event.status,mechanicEnabled:nonexistentFilmEnabled(event),registration:registration.data?.status||'none'},selectedMovie:(movie.data as any)?.movie_candidates||null,predictions:answers.data||[],reaction:reaction.data||null,finalReview:review.data||null}
+  const creature=await creatureState(db,user.id);return {profile,creature:{name:creature.name,stage:creature.stage,traits:creature.traits,storyCount:creature.storyCount,recentStories:creature.timeline.slice(0,8)},userMemory:memories.data||[],clubMemory:clubMem.data||[],event:{id:event.id,title:event.title,status:event.status,mechanicEnabled:nonexistentFilmEnabled(event),registration:effectiveRegistrationStatus(registration.data)},selectedMovie:(movie.data as any)?.movie_candidates||null,predictions:answers.data||[],reaction:reaction.data||null,finalReview:review.data||null}
 }
 
 async function processChatAftermath(db:any,userId:string,message:string,reply:string,eventId?:string){
@@ -276,7 +277,7 @@ export async function handleApi(req:Request){
       for(const r of [profileRow,reg,idea,answers,thought,reaction,review,feedback,notif])if(r.error)throw r.error
       if(!notif.data)await db.from('notification_preferences').insert({user_id:user.id})
       const profile=normalizeProfile(user,profileRow.data,reg.data,tg);const answerMap=new Map((answers.data||[]).map((x:any)=>[x.question_id,x.answer]))
-      return json({...common,user,profile,onboardingComplete:profile.completed,registration:reg.data?.status||'none',idea:idea.data||undefined,predictions:(common.predictions||[]).map((p:any)=>({...p,answer:answerMap.get(p.id)})),predictionSubmitted:(answers.data||[]).length>0,thought:thought.data?.text,reaction:reaction.data?{rating:reaction.data.rating,stateWord:reaction.data.state_word,thought:reaction.data.thought,recommendation:reaction.data.recommendation}:undefined,review:review.data?{rating:review.data.rating,sentence:review.data.final_sentence}:undefined,feedback:feedback.data?{returnIntent:feedback.data.return_intent,strongest:feedback.data.strongest_part||'',improve:feedback.data.improve_text||'',willingness:feedback.data.willingness_to_pay||0,durationFeel:feedback.data.duration_feel||'нормально',inviteFriend:feedback.data.invite_friend===null||feedback.data.invite_friend===undefined?8:Number(feedback.data.invite_friend)}:undefined,...extras,creature,...datingBundle,notificationPrefs:{writeAccess:!!notif.data?.write_access,events:notif.data?.events!==false,creature:notif.data?.creature!==false,stories:notif.data?.stories!==false,matches:notif.data?.matches!==false,tickets:notif.data?.tickets!==false,reminders:notif.data?.reminders!==false,quietHours:notif.data?.quiet_hours!==false}})
+      return json({...common,user,profile,onboardingComplete:profile.completed,registration:effectiveRegistrationStatus(reg.data),idea:idea.data||undefined,predictions:(common.predictions||[]).map((p:any)=>({...p,answer:answerMap.get(p.id)})),predictionSubmitted:(answers.data||[]).length>0,thought:thought.data?.text,reaction:reaction.data?{rating:reaction.data.rating,stateWord:reaction.data.state_word,thought:reaction.data.thought,recommendation:reaction.data.recommendation}:undefined,review:review.data?{rating:review.data.rating,sentence:review.data.final_sentence}:undefined,feedback:feedback.data?{returnIntent:feedback.data.return_intent,strongest:feedback.data.strongest_part||'',improve:feedback.data.improve_text||'',willingness:feedback.data.willingness_to_pay||0,durationFeel:feedback.data.duration_feel||'нормально',inviteFriend:feedback.data.invite_friend===null||feedback.data.invite_friend===undefined?8:Number(feedback.data.invite_friend)}:undefined,...extras,creature,...datingBundle,notificationPrefs:{writeAccess:!!notif.data?.write_access,events:notif.data?.events!==false,creature:notif.data?.creature!==false,stories:notif.data?.stories!==false,matches:notif.data?.matches!==false,tickets:notif.data?.tickets!==false,reminders:notif.data?.reminders!==false,quietHours:notif.data?.quiet_hours!==false}})
     }
 
     if(action==='save-profile-progress'||action==='save-profile'){
