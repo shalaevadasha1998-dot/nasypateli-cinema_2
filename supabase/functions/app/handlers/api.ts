@@ -217,14 +217,14 @@ async function processChatAftermath(db:any,userId:string,message:string,reply:st
 export async function handleApi(req:Request){
   if(req.method==='OPTIONS')return new Response('ok',{headers:cors})
   if(req.method==='GET')return json({ok:true,version:'0.9.0',service:'nasypateli-cinema'})
-  if(req.method!=='POST')return err('POST only',405)
+  if(req.method!=='POST')return err('Нужен POST-запрос',405)
   try{
     const body=await req.json();const action=String(body.action||'');const db=adminDb()
     const adminTokenOk=tokenMatches(req,'x-admin-token','ADMIN_ACCESS_TOKEN');const screenTokenOk=tokenMatches(req,'x-screen-token','SCREEN_ACCESS_TOKEN');const cronTokenOk=tokenMatches(req,'x-cron-token','CRON_ACCESS_TOKEN')
     if(action==='health')return json(await runtimeHealth(db))
 
     if(action==='screen-bootstrap'){
-      if(!screenTokenOk)return err('Screen access denied',401)
+      if(!screenTokenOk)return err('Доступ к экрану запрещён',401)
       const event=await eventBySlug(db,String(body.slug||'2026-10-03'));return json(await buildEventState(db,event,{includeActuals:false}))
     }
     if(action==='admin-bootstrap'){
@@ -233,13 +233,13 @@ export async function handleApi(req:Request){
           const adminTg=await telegramUserFromRequest(req)
           const adminUser=await getOrCreateUser(db,adminTg)
           await mustAdmin(db,adminUser,adminTg)
-        }catch{return err('Admin access denied',401)}
+        }catch{return err('Доступ к пульту запрещён',401)}
       }
       const event=await eventBySlug(db,String(body.slug||'2026-10-03'));return json(await buildEventState(db,event,{includeActuals:true,includePrivateOutputs:true}))
     }
 
     if(action==='cron-notifications'){
-      if(!cronTokenOk)return err('Cron access denied',401)
+      if(!cronTokenOk)return err('Доступ к служебному запуску запрещён',401)
       const due=await db.from('notification_queue').select('id,user_id,kind,text,users(telegram_id)').eq('status','pending').lte('send_after',new Date().toISOString()).order('send_after').limit(50);if(due.error)throw due.error;let sent=0
       for(const n of due.data||[]){try{const prefR=await db.from('notification_preferences').select('*').eq('user_id',n.user_id).maybeSingle();if(prefR.error)throw prefR.error;const pref=prefR.data;const allowed=pref?.write_access===true&&pref?.[n.kind]!==false;if(!allowed){await db.from('notification_queue').update({status:'cancelled',error:'preference disabled'}).eq('id',n.id);continue}if(notificationsQuietNow(pref))continue;const chatId=(n as any).users?.telegram_id;if(!chatId){await db.from('notification_queue').update({status:'failed',error:'telegram id missing'}).eq('id',n.id);continue}await telegramBot('sendMessage',{chat_id:chatId,text:n.text});await db.from('notification_queue').update({status:'sent',sent_at:new Date().toISOString(),error:null}).eq('id',n.id);sent++}catch(e){await db.from('notification_queue').update({status:'failed',error:String(e).slice(0,500)}).eq('id',n.id)}}
       return json({ok:true,sent,checked:(due.data||[]).length})
@@ -381,9 +381,9 @@ export async function handleApi(req:Request){
       const profileRow=await db.from('cinema_profiles').select('*').eq('user_id',user.id).maybeSingle();if(profileRow.error)throw profileRow.error
       const reg=await db.from('registrations').select('*').eq('event_id',event.id).eq('user_id',user.id).maybeSingle();if(reg.error)throw reg.error
       const profile=normalizeProfile(user,profileRow.data,reg.data,tg);if(!profile.completed)return err('Сначала завершите кинопрофиль',409)
-      const mode=allowedChatModes.has(String(body.mode))?String(body.mode):'general';const message=String(body.message||'').trim().slice(0,3000);if(!message)return err('Message required')
-      if(mode==='idea_coach'){mechanicsRequired(event);if(!await hasPaidAccess(db,event.id,user.id))return err('Paid ticket required',403);if(event.status!=='IDEAS_OPEN')return err('Идеи сейчас не принимаются',409)}
-      if(mode==='post_film'){if(!await hasPaidAccess(db,event.id,user.id))return err('Paid ticket required',403);if(!['DISCUSSION','FINAL_REVIEW','FEEDBACK','CLOSED'].includes(event.status))return err('Разговор после фильма ещё не открыт',409)}
+      const mode=allowedChatModes.has(String(body.mode))?String(body.mode):'general';const message=String(body.message||'').trim().slice(0,3000);if(!message)return err('Напишите сообщение')
+      if(mode==='idea_coach'){mechanicsRequired(event);if(!await hasPaidAccess(db,event.id,user.id))return err('Нужен оплаченный билет',403);if(event.status!=='IDEAS_OPEN')return err('Идеи сейчас не принимаются',409)}
+      if(mode==='post_film'){if(!await hasPaidAccess(db,event.id,user.id))return err('Нужен оплаченный билет',403);if(!['DISCUSSION','FINAL_REVIEW','FEEDBACK','CLOSED'].includes(event.status))return err('Разговор после фильма ещё не открыт',409)}
       const context=await chatContext(db,event,user,profile);const recent=await db.from('jipitina_messages').select('role,text,mode').eq('user_id',user.id).order('created_at',{ascending:false}).limit(8);if(recent.error)throw recent.error
       const draft=mode==='idea_coach'?{title:String(body.draftTitle||''),plot:String(body.draftPlot||'')}:undefined
       let matchmaker:any=undefined
@@ -400,20 +400,20 @@ export async function handleApi(req:Request){
     }
 
     if(action==='submit-idea'){
-      mechanicsRequired(event);if(!await hasPaidAccess(db,event.id,user.id))return err('Paid ticket required',403);if(event.status!=='IDEAS_OPEN')return err('Ideas are closed',409)
-      const title=String(body.title||'').trim(),plot=String(body.plot||'').trim();if(!title||!plot)return err('Title and plot required')
+      mechanicsRequired(event);if(!await hasPaidAccess(db,event.id,user.id))return err('Нужен оплаченный билет',403);if(event.status!=='IDEAS_OPEN')return err('Приём идей сейчас закрыт',409)
+      const title=String(body.title||'').trim(),plot=String(body.plot||'').trim();if(!title||!plot)return err('Заполните название и сюжет')
       const r=await db.from('film_ideas').upsert({event_id:event.id,user_id:user.id,title:title.slice(0,100),plot:plot.slice(0,500)},{onConflict:'event_id,user_id'});if(r.error)throw r.error;return json({ok:true})
     }
     if(action==='submit-predictions'){
-      mechanicsRequired(event);if(!await hasPaidAccess(db,event.id,user.id))return err('Paid ticket required',403);if(event.status!=='PREDICTIONS_OPEN')return err('Predictions are closed',409)
-      const list=Array.isArray(body.predictions)?body.predictions:[];if(list.length!==10||list.some((x:any)=>typeof x.answer!=='boolean'||!String(x.id||'')))return err('Exactly 10 boolean predictions required')
-      const ids=list.map((x:any)=>String(x.id));if(new Set(ids).size!==10)return err('Prediction question ids must be unique',422)
+      mechanicsRequired(event);if(!await hasPaidAccess(db,event.id,user.id))return err('Нужен оплаченный билет',403);if(event.status!=='PREDICTIONS_OPEN')return err('Прогнозы сейчас закрыты',409)
+      const list=Array.isArray(body.predictions)?body.predictions:[];if(list.length!==10||list.some((x:any)=>typeof x.answer!=='boolean'||!String(x.id||'')))return err('Нужно ответить на все 10 прогнозов')
+      const ids=list.map((x:any)=>String(x.id));if(new Set(ids).size!==10)return err('Прогнозы не должны повторяться',422)
       const expected=await db.from('prediction_questions').select('id').eq('event_id',event.id);if(expected.error)throw expected.error
-      const valid=new Set((expected.data||[]).map((x:any)=>String(x.id)));if(valid.size!==10||ids.some((id:string)=>!valid.has(id)))return err('Predictions do not match this event',422)
+      const valid=new Set((expected.data||[]).map((x:any)=>String(x.id)));if(valid.size!==10||ids.some((id:string)=>!valid.has(id)))return err('Эти прогнозы относятся к другому событию',422)
       const rows=list.map((x:any)=>({event_id:event.id,question_id:String(x.id),user_id:user.id,answer:x.answer}));const r=await db.from('prediction_answers').upsert(rows);if(r.error)throw r.error;return json({ok:true})
     }
     if(action==='submit-reaction'){
-      if(!await hasPaidAccess(db,event.id,user.id))return err('Paid ticket required',403);if(event.status!=='DISCUSSION')return err('Реакции сейчас закрыты',409)
+      if(!await hasPaidAccess(db,event.id,user.id))return err('Нужен оплаченный билет',403);if(event.status!=='DISCUSSION')return err('Реакции сейчас закрыты',409)
       const x=body.reaction||{};const rating=Number(x.rating);const stateWord=String(x.stateWord||'').trim();const thought=String(x.thought||'').trim();const recommendation=String(x.recommendation||'')
       if(!Number.isInteger(rating)||rating<1||rating>10||!stateWord||!thought||!['yes','no','depends'].includes(recommendation))return err('Заполните всю реакцию',422)
       const r=await db.from('post_film_reactions').upsert({event_id:event.id,user_id:user.id,rating,state_word:stateWord.slice(0,80),thought:thought.slice(0,500),recommendation,updated_at:new Date().toISOString()},{onConflict:'event_id,user_id'});if(r.error)throw r.error
@@ -422,15 +422,15 @@ export async function handleApi(req:Request){
       return json({ok:true})
     }
     if(action==='submit-thought'){
-      if(!await hasPaidAccess(db,event.id,user.id))return err('Paid ticket required',403);if(event.status!=='DISCUSSION')return err('Discussion input is closed',409)
+      if(!await hasPaidAccess(db,event.id,user.id))return err('Нужен оплаченный билет',403);if(event.status!=='DISCUSSION')return err('Обсуждение сейчас закрыто',409)
       const r=await db.from('discussion_thoughts').upsert({event_id:event.id,user_id:user.id,text:String(body.text||'').slice(0,240)});if(r.error)throw r.error;return json({ok:true})
     }
     if(action==='submit-review'){
-      if(!await hasPaidAccess(db,event.id,user.id))return err('Paid ticket required',403);if(event.status!=='FINAL_REVIEW')return err('Review input is closed',409)
-      const rating=Number(body.rating);if(!Number.isInteger(rating)||rating<1||rating>10)return err('Rating must be an integer from 1 to 10');const sentence=String(body.sentence||'').trim();if(!sentence)return err('Final sentence required');const r=await db.from('final_reviews').upsert({event_id:event.id,user_id:user.id,rating,final_sentence:sentence.slice(0,180)});if(r.error)throw r.error;return json({ok:true})
+      if(!await hasPaidAccess(db,event.id,user.id))return err('Нужен оплаченный билет',403);if(event.status!=='FINAL_REVIEW')return err('Финальная рецензия сейчас закрыта',409)
+      const rating=Number(body.rating);if(!Number.isInteger(rating)||rating<1||rating>10)return err('Поставьте оценку от 1 до 10');const sentence=String(body.sentence||'').trim();if(!sentence)return err('Напишите финальную фразу');const r=await db.from('final_reviews').upsert({event_id:event.id,user_id:user.id,rating,final_sentence:sentence.slice(0,180)});if(r.error)throw r.error;return json({ok:true})
     }
     if(action==='submit-feedback'){
-      if(!await hasPaidAccess(db,event.id,user.id))return err('Paid ticket required',403);if(!['FEEDBACK','CLOSED'].includes(event.status))return err('Feedback is not open',409)
+      if(!await hasPaidAccess(db,event.id,user.id))return err('Нужен оплаченный билет',403);if(!['FEEDBACK','CLOSED'].includes(event.status))return err('Обратная связь сейчас закрыта',409)
       const f=body.feedback||{};const invite=Math.max(0,Math.min(10,Number(f.inviteFriend)));const r=await db.from('event_feedback').upsert({event_id:event.id,user_id:user.id,return_intent:String(f.returnIntent||''),strongest_part:String(f.strongest||'').slice(0,1000),improve_text:String(f.improve||'').slice(0,1000),willingness_to_pay:Number(f.willingness)||null,duration_feel:String(f.durationFeel||''),invite_friend:Number.isFinite(invite)?String(invite):null});if(r.error)throw r.error;return json({ok:true})
     }
 
@@ -451,7 +451,7 @@ export async function handleApi(req:Request){
     }
     if(action==='admin-stage'){
       const to=String(body.status||'');if(to==='IDEAS_OPEN'&&!nonexistentFilmEnabled(event))return err('Сначала включите режим «несуществующий фильм»',409)
-      if(manualTransitions[event.status]!==to && body.force!==true)return err(`This transition is produced by a dedicated action: ${event.status} -> ${to}`,409)
+      if(manualTransitions[event.status]!==to && body.force!==true)return err(`Этот переход выполняется отдельным действием: ${event.status} → ${to}`,409)
       const r=await db.from('events').update({status:to}).eq('id',event.id);if(r.error)throw r.error
       await db.from('event_transitions').insert({event_id:event.id,from_status:event.status,to_status:to,actor_user_id:user?.id||null,metadata:{forced:body.force===true}});return json({ok:true,status:to})
     }
@@ -469,8 +469,8 @@ export async function handleApi(req:Request){
       const capacity=Math.max(1,Math.min(500,Number(body.capacity)||30));const occupied=await activeSeatCount(db,event.id);if(capacity<occupied)return err(`Вместимость не может быть меньше уже занятых мест: ${occupied}`,409);const r=await db.from('events').update({capacity}).eq('id',event.id);if(r.error)throw r.error;return json({ok:true,capacity})
     }
     if(action==='admin-grant-test-ticket'){
-      const raw=String(body.username||'').trim().replace(/^@/,'');if(!raw)return err('Telegram username required')
-      const target=await db.from('users').select('id,telegram_username,display_name').ilike('telegram_username',raw).maybeSingle();if(target.error)throw target.error;if(!target.data)return err('User has not opened the Mini App yet',404)
+      const raw=String(body.username||'').trim().replace(/^@/,'');if(!raw)return err('Укажите имя пользователя в Telegram')
+      const target=await db.from('users').select('id,telegram_username,display_name').ilike('telegram_username',raw).maybeSingle();if(target.error)throw target.error;if(!target.data)return err('Пользователь ещё не открывал мини-приложение',404)
       const r=await db.from('registrations').upsert({event_id:event.id,user_id:target.data.id,status:'paid',amount_rub:0,payment_provider:'test',paid_at:new Date().toISOString(),reservation_expires_at:null},{onConflict:'event_id,user_id'});if(r.error)throw r.error
       return json({ok:true,user:{username:target.data.telegram_username,name:target.data.display_name}})
     }
@@ -482,7 +482,7 @@ export async function handleApi(req:Request){
       const r=await db.from('event_outputs').update({approved:true,updated_at:new Date().toISOString()}).eq('event_id',event.id).eq('output_key',outputKey).select('output_key').maybeSingle();if(r.error)throw r.error;if(!r.data)return err('Сначала сгенерируйте результат',404);return json({ok:true,outputKey})
     }
     if(action==='admin-reveal-idea-author'){
-      if(!['IDEA_RANDOMIZED','MOVIE_SEARCH','MOVIE_FINALISTS','MOVIE_SELECTED','PREDICTIONS_OPEN','PREDICTIONS_LOCKED','WATCHING','PREDICTIONS_SCORED','DISCUSSION','FINAL_REVIEW','FEEDBACK','CLOSED'].includes(event.status))return err('Reveal is not available yet',409)
+      if(!['IDEA_RANDOMIZED','MOVIE_SEARCH','MOVIE_FINALISTS','MOVIE_SELECTED','PREDICTIONS_OPEN','PREDICTIONS_LOCKED','WATCHING','PREDICTIONS_SCORED','DISCUSSION','FINAL_REVIEW','FEEDBACK','CLOSED'].includes(event.status))return err('Раскрывать автора пока рано',409)
       const selected=await db.from('selected_idea').select('film_idea_id').eq('event_id',event.id).single();if(selected.error)throw selected.error
       const idea=await db.from('film_ideas').select('user_id').eq('id',selected.data.film_idea_id).single();if(idea.error)throw idea.error
       const r=await db.from('selected_idea').update({revealed_author_user_id:idea.data.user_id}).eq('event_id',event.id);if(r.error)throw r.error
@@ -512,8 +512,8 @@ export async function handleApi(req:Request){
     }
 
     if(action==='ai-select-ideas'){
-      mechanicsRequired(event);if(event.status!=='IDEAS_LOCKED')return err('AI idea selection is only available after ideas are locked',409)
-      const ideas=await db.from('film_ideas').select('id,title,plot').eq('event_id',event.id);if(ideas.error)throw ideas.error;if((ideas.data||[]).length<3)return err('Need at least 3 ideas',409)
+      mechanicsRequired(event);if(event.status!=='IDEAS_LOCKED')return err('Выбор идей доступен только после закрытия приёма',409)
+      const ideas=await db.from('film_ideas').select('id,title,plot').eq('event_id',event.id);if(ideas.error)throw ideas.error;if((ideas.data||[]).length<3)return err('Нужно минимум 3 идеи',409)
       const schema={type:'object',additionalProperties:false,properties:{selected:{type:'array',minItems:3,maxItems:3,items:{type:'object',additionalProperties:false,properties:{id:{type:'string'},reason:{type:'string'}},required:['id','reason']}}},required:['selected']}
       const out=await structuredResponse<any>({name:'select_ideas',schema,instructions:JIPITINA,input:`Выбери ровно 3 самые интересные, странные или потенциально плодотворные идеи. Не пытайся угадывать авторов. Вот заявки JSON:\n${JSON.stringify(ideas.data)}`})
       const valid=new Set((ideas.data||[]).map((x:any)=>x.id));if(out.selected.some((x:any)=>!valid.has(x.id)))throw new Error('AI selected unknown idea')
@@ -521,15 +521,15 @@ export async function handleApi(req:Request){
       await db.from('events').update({status:'TOP3_READY'}).eq('id',event.id);return json({ok:true,selected:out.selected})
     }
     if(action==='draw-idea'){
-      mechanicsRequired(event);if(event.status!=='TOP3_READY')return err('Idea draw is not available at this stage',409)
-      const fs=await db.from('idea_finalists').select('film_idea_id').eq('event_id',event.id).order('rank');if(fs.error)throw fs.error;const list=(fs.data||[]).map((x:any)=>x.film_idea_id);if(list.length!==3)return err('Need 3 finalists',409)
+      mechanicsRequired(event);if(event.status!=='TOP3_READY')return err('Жеребьёвка идеи сейчас недоступна',409)
+      const fs=await db.from('idea_finalists').select('film_idea_id').eq('event_id',event.id).order('rank');if(fs.error)throw fs.error;const list=(fs.data||[]).map((x:any)=>x.film_idea_id);if(list.length!==3)return err('Нужны 3 финалиста',409)
       const {index,randomBytesHex}=secureIndex(list.length);const chosen=list[index]
       await db.from('random_draws').insert({event_id:event.id,draw_type:'idea',candidate_ids:list,chosen_id:chosen,random_bytes_hex:randomBytesHex})
       await db.from('selected_idea').upsert({event_id:event.id,film_idea_id:chosen,revealed_author_user_id:null})
       await db.from('events').update({status:'IDEA_RANDOMIZED'}).eq('id',event.id);return json({ok:true,chosen,randomBytesHex})
     }
     if(action==='ai-find-movies'){
-      mechanicsRequired(event);if(!['IDEA_RANDOMIZED','MOVIE_SEARCH'].includes(event.status))return err('Movie search is not available at this stage',409)
+      mechanicsRequired(event);if(!['IDEA_RANDOMIZED','MOVIE_SEARCH'].includes(event.status))return err('Поиск фильма сейчас недоступен',409)
       await db.from('events').update({status:'MOVIE_SEARCH'}).eq('id',event.id)
       const sel=await db.from('selected_idea').select('film_ideas(title,plot)').eq('event_id',event.id).single();if(sel.error)throw sel.error
       const regs=await db.from('registrations').select('user_id').eq('event_id',event.id).in('status',['paid','attended']);const userIds=(regs.data||[]).map((x:any)=>x.user_id);const profiles=userIds.length?await db.from('cinema_profiles').select('user_id,favorite_films,favorite_genres,avoid,profile_json').in('user_id',userIds):{data:[]} as any
@@ -537,17 +537,17 @@ export async function handleApi(req:Request){
       const out=await structuredResponse<any>({name:'movie_candidates',schema,instructions:JIPITINA,input:`Предложи реальные полнометражные фильмы или анимацию со всего мира для последующей внешней проверки. Главный вес: сходство с идеей 70%, агрегированный вкус группы 30%. Не предлагай то, в существовании чего сомневаешься. Идея: ${JSON.stringify((sel.data as any).film_ideas)}. Профили группы: ${JSON.stringify(profiles.data||[])}`,maxOutputTokens:3000,model:Deno.env.get('OPENAI_FILM_MODEL')||'gpt-5.6-terra'})
       const validated:any[]=[]
       for(const c of out.candidates){if(validated.length>=8)break;const v=await validateMovieTitle(c.originalTitle||c.title,c.year||undefined);if(!v?.runtimeMin)continue;if(v.runtimeMin>event.max_movie_runtime_min)continue;validated.push({...c,...v,runtimeMin:v.runtimeMin})}
-      if(validated.length<3)return err('Could not validate 3 movie candidates; admin fallback required',422)
+      if(validated.length<3)return err('Не удалось подтвердить 3 фильма. Нужна ручная проверка',422)
       await db.from('movie_candidates').delete().eq('event_id',event.id)
       const rows=validated.map(c=>({event_id:event.id,provider:'wikidata',provider_id:c.wikidataId,title:c.title,original_title:c.originalTitle||c.title,year:c.year||null,runtime_min:c.runtimeMin||null,validated:true,similarity_score:c.similarityScore,audience_fit_score:c.audienceFitScore,reason:c.reason,metadata:{wikidata_url:c.url,description:c.description}}))
       const ins=await db.from('movie_candidates').insert(rows).select('*');if(ins.error)throw ins.error
-      const top=(ins.data||[]).filter((x:any)=>x.runtime_min&&x.runtime_min<=event.max_movie_runtime_min).sort((a:any,b:any)=>Number(b.weighted_score)-Number(a.weighted_score)).slice(0,3);if(top.length<3)return err('Need 3 valid finalists',422)
+      const top=(ins.data||[]).filter((x:any)=>x.runtime_min&&x.runtime_min<=event.max_movie_runtime_min).sort((a:any,b:any)=>Number(b.weighted_score)-Number(a.weighted_score)).slice(0,3);if(top.length<3)return err('Нужны 3 подтверждённых финалиста',422)
       await db.from('movie_finalists').delete().eq('event_id',event.id);await db.from('movie_finalists').insert(top.map((x:any,i:number)=>({event_id:event.id,movie_candidate_id:x.id,rank:i+1})))
       await db.from('events').update({status:'MOVIE_FINALISTS'}).eq('id',event.id);return json({ok:true,candidates:ins.data,finalists:top})
     }
     if(action==='draw-movie'){
-      mechanicsRequired(event);if(event.status!=='MOVIE_FINALISTS')return err('Movie draw is not available at this stage',409)
-      const fs=await db.from('movie_finalists').select('movie_candidate_id').eq('event_id',event.id).order('rank');if(fs.error)throw fs.error;const list=(fs.data||[]).map((x:any)=>x.movie_candidate_id);if(list.length!==3)return err('Need 3 movie finalists',409)
+      mechanicsRequired(event);if(event.status!=='MOVIE_FINALISTS')return err('Жеребьёвка фильма сейчас недоступна',409)
+      const fs=await db.from('movie_finalists').select('movie_candidate_id').eq('event_id',event.id).order('rank');if(fs.error)throw fs.error;const list=(fs.data||[]).map((x:any)=>x.movie_candidate_id);if(list.length!==3)return err('Нужны 3 фильма-финалиста',409)
       const {index,randomBytesHex}=secureIndex(3);const chosen=list[index];await db.from('random_draws').insert({event_id:event.id,draw_type:'movie',candidate_ids:list,chosen_id:chosen,random_bytes_hex:randomBytesHex});const picked=await db.from('event_movie').upsert({event_id:event.id,movie_candidate_id:chosen,availability_status:'unchecked'});if(picked.error)throw picked.error;await db.from('events').update({status:'MOVIE_SELECTED'}).eq('id',event.id);return json({ok:true,chosen,randomBytesHex})
     }
     if(action==='admin-confirm-movie-availability'){
@@ -557,32 +557,32 @@ export async function handleApi(req:Request){
       mechanicsRequired(event);if(event.status!=='MOVIE_SELECTED')return err('Другой фильм можно выбрать только после первичного рандома',409);const current=await db.from('event_movie').select('movie_candidate_id').eq('event_id',event.id).single();if(current.error)throw current.error;const fs=await db.from('movie_finalists').select('movie_candidate_id').eq('event_id',event.id).order('rank');if(fs.error)throw fs.error;const list=(fs.data||[]).map((x:any)=>x.movie_candidate_id).filter((id:string)=>id!==current.data.movie_candidate_id);if(!list.length)return err('Других финалистов не осталось',409);const {index,randomBytesHex}=secureIndex(list.length);const chosen=list[index];const log=await db.from('random_draws').insert({event_id:event.id,draw_type:'movie_redraw',candidate_ids:list,chosen_id:chosen,random_bytes_hex:randomBytesHex});if(log.error)throw log.error;const r=await db.from('event_movie').update({movie_candidate_id:chosen,availability_status:'unchecked',selected_at:new Date().toISOString()}).eq('event_id',event.id);if(r.error)throw r.error;return json({ok:true,chosen,randomBytesHex})
     }
     if(action==='ai-generate-predictions'){
-      mechanicsRequired(event);if(event.status!=='MOVIE_SELECTED')return err('Prediction generation is not available at this stage',409)
+      mechanicsRequired(event);if(event.status!=='MOVIE_SELECTED')return err('Генерация прогнозов сейчас недоступна',409)
       const mv=await db.from('event_movie').select('availability_status,movie_candidates(title,original_title,year,metadata)').eq('event_id',event.id).single();if(mv.error)throw mv.error;if(mv.data.availability_status!=='confirmed')return err('Сначала вручную подтвердите, что выбранный фильм доступен для показа',409)
       const schema={type:'object',additionalProperties:false,properties:{questions:{type:'array',minItems:10,maxItems:10,items:{type:'string'}}},required:['questions']}
       const out=await structuredResponse<any>({name:'predictions',schema,instructions:JIPITINA,input:`Для реально существующего фильма создай 10 проверяемых утверждений «будет / не будет». Нельзя использовать имена персонажей, прямые спойлеры, название финального твиста или формулировки, которые раскрывают исход. Утверждения должны быть однозначно проверяемы после просмотра. Фильм: ${JSON.stringify((mv.data as any).movie_candidates)}`})
       await db.from('prediction_questions').delete().eq('event_id',event.id);const ins=await db.from('prediction_questions').insert(out.questions.map((text:string,i:number)=>({event_id:event.id,position:i+1,text}))).select('*');if(ins.error)throw ins.error;await db.from('events').update({status:'PREDICTIONS_OPEN'}).eq('id',event.id);return json({ok:true,questions:ins.data})
     }
     if(action==='ai-post-film-synthesis'){
-      if(event.status!=='DISCUSSION')return err('Group synthesis is only available during discussion',409)
+      if(event.status!=='DISCUSSION')return err('Разбор группы доступен только во время обсуждения',409)
       const reactions=await db.from('post_film_reactions').select('rating,state_word,thought,recommendation').eq('event_id',event.id);if(reactions.error)throw reactions.error
       const thoughts=(reactions.data||[]).length?reactions.data:((await db.from('discussion_thoughts').select('text').eq('event_id',event.id)).data||[])
-      if(!thoughts.length)return err('No discussion thoughts yet',409)
+      if(!thoughts.length)return err('Пока нет ответов для разбора',409)
       const memories=await db.from('jipitina_memory').select('memory_key,memory_text').eq('scope','club').limit(30)
       const schema={type:'object',additionalProperties:false,properties:{consensus:{type:'string'},disagreements:{type:'string'},jipitinaTake:{type:'string'},questionsForRoom:{type:'array',minItems:1,maxItems:3,items:{type:'string'}}},required:['consensus','disagreements','jipitinaTake','questionsForRoom']}
       const out=await structuredResponse<any>({name:'post_film_synthesis',schema,instructions:JIPITINA+`\nПамять клуба: ${JSON.stringify(memories.data||[])}`,input:`Вот анонимные реакции участников после фильма. Не делай вид, что существует консенсус, если его нет. Найди реальное совпадение, реальное расхождение и сформулируй собственную позицию, с которой можно спорить. Реакции: ${JSON.stringify(thoughts)}`})
       await db.from('event_outputs').upsert({event_id:event.id,output_key:'post_film_synthesis',payload:out,approved:false,updated_at:new Date().toISOString()});return json({ok:true,output:out})
     }
     if(action==='ai-collective-review'){
-      if(event.status!=='FINAL_REVIEW')return err('Collective review is only available at the final review stage',409)
-      const reviews=await db.from('final_reviews').select('rating,final_sentence').eq('event_id',event.id);if(!(reviews.data||[]).length)return err('No final reviews yet',409)
+      if(event.status!=='FINAL_REVIEW')return err('Общая рецензия доступна только на финальном этапе',409)
+      const reviews=await db.from('final_reviews').select('rating,final_sentence').eq('event_id',event.id);if(!(reviews.data||[]).length)return err('Пока нет финальных рецензий',409)
       const movie=await db.from('event_movie').select('movie_candidates(title,year)').eq('event_id',event.id).single();const avg=(reviews.data||[]).reduce((a:number,x:any)=>a+Number(x.rating),0)/(reviews.data||[]).length
       const schema={type:'object',additionalProperties:false,properties:{intro:{type:'string'},caption:{type:'string'}},required:['intro','caption']}
       const ai=await structuredResponse<any>({name:'collective_review',schema,instructions:JIPITINA,input:`Напиши очень короткое вступление и подпись к коллективной рецензии клуба. Не переписывай фразы людей — они будут добавлены системой дословно. Фильм: ${JSON.stringify(movie.data)}. Средняя оценка: ${avg.toFixed(1)}. Анонимные финальные фразы: ${JSON.stringify((reviews.data||[]).map((x:any)=>x.final_sentence))}`})
       const out={...ai,averageRating:Number(avg.toFixed(1)),sentences:(reviews.data||[]).map((x:any)=>x.final_sentence)};await db.from('event_outputs').upsert({event_id:event.id,output_key:'collective_review',payload:out,approved:false,updated_at:new Date().toISOString()});return json({ok:true,output:out})
     }
     if(action==='ai-finalize-memory'){
-      if(event.status!=='CLOSED')return err('Club memory can only be finalized after the event is closed',409)
+      if(event.status!=='CLOSED')return err('Память клуба можно сохранить после закрытия события',409)
       const [feedback,reviews,outputs]=await Promise.all([db.from('event_feedback').select('return_intent,strongest_part,improve_text,willingness_to_pay').eq('event_id',event.id),db.from('final_reviews').select('rating,final_sentence').eq('event_id',event.id),db.from('event_outputs').select('output_key,payload').eq('event_id',event.id)])
       const schema={type:'object',additionalProperties:false,properties:{memories:{type:'array',minItems:1,maxItems:8,items:{type:'object',additionalProperties:false,properties:{key:{type:'string'},text:{type:'string'}},required:['key','text']}}},required:['memories']}
       const out=await structuredResponse<any>({name:'club_memory',schema,instructions:JIPITINA,input:`Сохрани только устойчивые факты, полезные на будущих вечерах: вкусы группы, традиции/шутки, уроки формата. Не сохраняй чувствительные персональные данные. Feedback: ${JSON.stringify(feedback.data||[])} Reviews: ${JSON.stringify(reviews.data||[])} Event outputs: ${JSON.stringify(outputs.data||[])}`})
@@ -590,14 +590,14 @@ export async function handleApi(req:Request){
       await db.from('event_outputs').upsert({event_id:event.id,output_key:'memory_saved',payload:{count:out.memories.length,memories:out.memories},approved:true,updated_at:new Date().toISOString()});return json({ok:true,memories:out.memories})
     }
     if(action==='admin-research-summary'){
-      if(!['FEEDBACK','CLOSED'].includes(event.status))return err('Research summary is only available during or after feedback',409)
+      if(!['FEEDBACK','CLOSED'].includes(event.status))return err('Сводка доступна во время или после сбора обратной связи',409)
       const r=await db.from('event_feedback').select('return_intent,strongest_part,improve_text,willingness_to_pay,duration_feel,invite_friend').eq('event_id',event.id);if(r.error)throw r.error
-      const rows=r.data||[];if(!rows.length)return err('No feedback responses yet',409)
+      const rows=r.data||[];if(!rows.length)return err('Пока нет ответов обратной связи',409)
       const returnPositive=rows.filter((x:any)=>['да','скорее да'].includes(String(x.return_intent).toLowerCase())).length;const wtps=rows.map((x:any)=>Number(x.willingness_to_pay)).filter((x:number)=>Number.isFinite(x)&&x>0);const invite=rows.map((x:any)=>Number(x.invite_friend)).filter((x:number)=>Number.isFinite(x)&&x>=0&&x<=10);const promoters=invite.filter((x:number)=>x>=9).length,detractors=invite.filter((x:number)=>x<=6).length;const duration=Object.fromEntries(['коротко','нормально','долго'].map(k=>[k,rows.filter((x:any)=>String(x.duration_feel)===k).length]))
       const payload={responses:rows.length,returnIntentPositivePct:Number((returnPositive/rows.length*100).toFixed(1)),averageWillingnessRub:wtps.length?Math.round(wtps.reduce((a:number,b:number)=>a+b,0)/wtps.length):null,nps:invite.length?Math.round((promoters-detractors)/invite.length*100):null,duration,strongest:rows.map((x:any)=>x.strongest_part).filter(Boolean),improvements:rows.map((x:any)=>x.improve_text).filter(Boolean)};await db.from('event_outputs').upsert({event_id:event.id,output_key:'research_summary',payload,approved:true,updated_at:new Date().toISOString()});return json({ok:true,output:payload})
     }
     if(action==='admin-score-predictions'){
-      if(!['PREDICTIONS_LOCKED','WATCHING'].includes(event.status))return err('Prediction scoring is not available at this stage',409)
+      if(!['PREDICTIONS_LOCKED','WATCHING'].includes(event.status))return err('Подсчёт прогнозов сейчас недоступен',409)
       const actuals=body.actuals||{};const qs=await db.from('prediction_questions').select('id').eq('event_id',event.id);if(qs.error)throw qs.error
       if((qs.data||[]).length!==10||(qs.data||[]).some((q:any)=>actuals[q.id]!=='void'&&typeof actuals[q.id]!=='boolean'))return err('Нужно отметить все 10 прогнозов: было / не было / не считаем',422)
       for(const q of qs.data||[]){const v=actuals[q.id];if(v==='void')await db.from('prediction_questions').update({actual:null,void:true}).eq('id',q.id);else await db.from('prediction_questions').update({actual:v,void:false}).eq('id',q.id)}
@@ -609,15 +609,15 @@ export async function handleApi(req:Request){
       await db.from('events').update({status:'PREDICTIONS_SCORED',winner_user_id:soleWinner?.userId||null}).eq('id',event.id);await db.from('event_outputs').upsert({event_id:event.id,output_key:'score_summary',payload:{scores:publicScores,tie:winners.length>1,winners,winner:soleWinner},approved:true,updated_at:new Date().toISOString()});await refreshLeaderboard(db,rows.map(x=>x.user_id));for(const row of rows){await emitStoryTrigger(db,row.user_id,'prediction_scored',{correct:row.correct,total:row.total},event.id)}return json({ok:true,scores:publicScores,tie:winners.length>1,winners,winner:soleWinner})
     }
     if(action==='ai-tiebreaker'){
-      if(event.status!=='PREDICTIONS_SCORED')return err('Tie-breaker is only available after scoring',409)
-      const score=await db.from('event_outputs').select('payload').eq('event_id',event.id).eq('output_key','score_summary').maybeSingle();const winners=(score.data?.payload as any)?.winners||[];if(winners.length<2)return err('There is no tie for first place',409)
+      if(event.status!=='PREDICTIONS_SCORED')return err('Тай-брейк доступен только после подсчёта',409)
+      const score=await db.from('event_outputs').select('payload').eq('event_id',event.id).eq('output_key','score_summary').maybeSingle();const winners=(score.data?.payload as any)?.winners||[];if(winners.length<2)return err('Ничьи за первое место нет',409)
       const schema={type:'object',additionalProperties:false,properties:{clue:{type:'string'}},required:['clue']};const out=await structuredResponse<any>({name:'tiebreaker',schema,instructions:JIPITINA,input:'Выбери широко известный фильм и максимально убого перескажи его в 2–4 коротких предложениях. Нельзя писать название, имена персонажей, актёров, режиссёра, франшизу или уникальные собственные имена. Пересказ должен быть смешным, узнаваемым, но не мгновенно очевидным.'});await db.from('event_outputs').upsert({event_id:event.id,output_key:'tiebreaker',payload:{...out,generatedAt:new Date().toISOString()},approved:true,updated_at:new Date().toISOString()});return json({ok:true,output:out})
     }
     if(action==='admin-set-winner'){
-      if(event.status!=='PREDICTIONS_SCORED')return err('Winner can only be resolved after scoring',409)
-      const chosen=String(body.userId||'');const top=await db.from('event_scores').select('user_id').eq('event_id',event.id).eq('rank',1);if(top.error)throw top.error;const allowed=(top.data||[]).map((x:any)=>x.user_id);if(!allowed.includes(chosen))return err('Chosen user is not tied for first place',409)
+      if(event.status!=='PREDICTIONS_SCORED')return err('Победителя можно выбрать только после подсчёта',409)
+      const chosen=String(body.userId||'');const top=await db.from('event_scores').select('user_id').eq('event_id',event.id).eq('rank',1);if(top.error)throw top.error;const allowed=(top.data||[]).map((x:any)=>x.user_id);if(!allowed.includes(chosen))return err('Этот участник не делит первое место',409)
       const u=await db.from('users').select('display_name,telegram_username').eq('id',chosen).single();if(u.error)throw u.error;await db.from('events').update({winner_user_id:chosen}).eq('id',event.id);const score=await db.from('event_outputs').select('payload').eq('event_id',event.id).eq('output_key','score_summary').single();if(score.error)throw score.error;const winner={userId:chosen,name:u.data.display_name||u.data.telegram_username||'участник'};await db.from('event_outputs').upsert({event_id:event.id,output_key:'score_summary',payload:{...(score.data.payload as any),tie:false,tieResolved:true,winner},approved:true,updated_at:new Date().toISOString()});await refreshLeaderboard(db,allowed);return json({ok:true,winner})
     }
-    return err(`Unknown action: ${action}`,404)
+    return err(`Неизвестное действие: ${action}`,404)
   }catch(e){console.error(e);return err('Что-то пошло не так. Попробуйте ещё раз.',500)}
 }

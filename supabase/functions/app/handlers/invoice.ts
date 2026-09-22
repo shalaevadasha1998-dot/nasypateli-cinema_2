@@ -13,7 +13,7 @@ async function tg(method:string,body:Record<string,unknown>){
 
 export async function handleInvoice(req:Request){
   if(req.method==='OPTIONS')return new Response('ok',{headers:cors})
-  if(req.method!=='POST')return err('POST only',405)
+  if(req.method!=='POST')return err('Нужен POST-запрос',405)
   try{
     const tgUser=await telegramUserFromRequest(req)
     const body=await req.json()
@@ -25,7 +25,7 @@ export async function handleInvoice(req:Request){
     const evR=await db.from('events').select('*').eq('slug',slug).single()
     if(evR.error)throw evR.error
     const ev=evR.data
-    if(ev.status!=='SALES_OPEN') return err('Ticket sales are closed',409)
+    if(ev.status!=='SALES_OPEN') return err('Продажа билетов сейчас закрыта',409)
     const provider=Deno.env.get('TELEGRAM_PROVIDER_TOKEN')
     if(!provider)return err('Продажи ещё не подключены. Билет пока можно получить только как тестовый через организатора.',503)
 
@@ -40,7 +40,7 @@ export async function handleInvoice(req:Request){
     })
     if(reserve.error)throw reserve.error
     const slot=reserve.data?.[0]
-    if(!slot)throw new Error('Reservation failed')
+    if(!slot)throw new Error('Не удалось зарезервировать место')
     if(['paid','attended'].includes(slot.reservation_status))return json({alreadyPaid:true})
     if(slot.reservation_status==='waitlist')return json({waitlist:true,queuePosition:slot.queue_position},409)
 
