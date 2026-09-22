@@ -27,14 +27,38 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Unpack project
+      - name: Unpack v0.6.4
         run: |
+          rm -rf app app-web
           mkdir -p app
-          unzip -o nasypateli-cinema-mvp-v0.4.zip -d app
+          unzip -q -o nasypateli-cinema-mvp-v0.6.4.zip -d app
+
+          PACKAGE_JSON="$(find app -type f -path '*/web/package.json' -print -quit)"
+          if [ -z "$PACKAGE_JSON" ]; then
+            echo "Could not find web/package.json"
+            exit 1
+          fi
+
+          WEB_DIR="$(dirname "$PACKAGE_JSON")"
+          mkdir -p app-web
+          cp -a "$WEB_DIR"/. app-web/
 
       - name: Fix GitHub Pages routing
         run: |
-          sed -i 's#<BrowserRouter><Routes>#<BrowserRouter basename={import.meta.env.BASE_URL}><Routes>#' app/web/src/App.tsx
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("app-web/src/App.tsx")
+          if not path.exists():
+              raise SystemExit(0)
+
+          text = path.read_text()
+          old = "<BrowserRouter><Routes>"
+          new = "<BrowserRouter basename={import.meta.env.BASE_URL}><Routes>"
+
+          if old in text:
+              path.write_text(text.replace(old, new, 1))
+          PY
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -42,8 +66,8 @@ jobs:
           node-version: 24
 
       - name: Install and build
-        working-directory: app/web
         run: |
+          cd app-web
           if [ -f package-lock.json ]; then
             npm ci
           else
@@ -57,7 +81,7 @@ jobs:
       - name: Upload site
         uses: actions/upload-pages-artifact@v3
         with:
-          path: app/web/dist
+          path: app-web/dist
 
   deploy:
     environment:
