@@ -92,6 +92,19 @@ async function activeSeatCount(db:any,eventId:string){
   if(reserved.error)throw reserved.error
   return Number(paid.count||0)+Number(reserved.count||0)
 }
+async function chatRateLimit(db:any,userId:string){
+  const minuteAgo=new Date(Date.now()-60_000).toISOString()
+  const dayAgo=new Date(Date.now()-86_400_000).toISOString()
+  const [minute,day]=await Promise.all([
+    db.from('jipitina_messages').select('*',{count:'exact',head:true}).eq('user_id',userId).eq('role','user').gte('created_at',minuteAgo),
+    db.from('jipitina_messages').select('*',{count:'exact',head:true}).eq('user_id',userId).eq('role','user').gte('created_at',dayAgo)
+  ])
+  if(minute.error)throw minute.error
+  if(day.error)throw day.error
+  if(Number(minute.count||0)>=12)return 'Слишком много сообщений подряд. Попробуйте через минуту.'
+  if(Number(day.count||0)>=150)return 'На сегодня сообщений уже очень много. Попробуйте завтра.'
+  return ''
+}
 
 function tokenMatches(req:Request,header:string,envName:string){
   const expected=Deno.env.get(envName)||'';const got=req.headers.get(header)||''
@@ -381,6 +394,7 @@ export async function handleApi(req:Request){
       const profileRow=await db.from('cinema_profiles').select('*').eq('user_id',user.id).maybeSingle();if(profileRow.error)throw profileRow.error
       const reg=await db.from('registrations').select('*').eq('event_id',event.id).eq('user_id',user.id).maybeSingle();if(reg.error)throw reg.error
       const profile=normalizeProfile(user,profileRow.data,reg.data,tg);if(!profile.completed)return err('Сначала завершите кинопрофиль',409)
+      const limitMessage=await chatRateLimit(db,user.id);if(limitMessage)return err(limitMessage,429)
       const mode=allowedChatModes.has(String(body.mode))?String(body.mode):'general';const message=String(body.message||'').trim().slice(0,3000);if(!message)return err('Напишите сообщение')
       if(mode==='idea_coach'){mechanicsRequired(event);if(!await hasPaidAccess(db,event.id,user.id))return err('Нужен оплаченный билет',403);if(event.status!=='IDEAS_OPEN')return err('Идеи сейчас не принимаются',409)}
       if(mode==='post_film'){if(!await hasPaidAccess(db,event.id,user.id))return err('Нужен оплаченный билет',403);if(!['DISCUSSION','FINAL_REVIEW','FEEDBACK','CLOSED'].includes(event.status))return err('Разговор после фильма ещё не открыт',409)}
