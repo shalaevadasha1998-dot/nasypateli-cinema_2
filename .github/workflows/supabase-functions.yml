@@ -9,6 +9,10 @@ on:
       - ".github/workflows/supabase-functions.yml"
   workflow_dispatch:
 
+permissions:
+  contents: read
+  statuses: write
+
 concurrency:
   group: supabase-production
   cancel-in-progress: false
@@ -40,15 +44,44 @@ jobs:
       - name: Deploy app Edge Function
         run: supabase functions deploy app --project-ref "$PROJECT_ID" --use-api
 
-      - name: Verify live function version
+      - name: Verify production readiness
         run: |
           node <<'NODE'
           const endpoint='https://vwteokawtqnoiyzmsldj.supabase.co/functions/v1/app'
-          for(let i=0;i<12;i++){
+          let last={}
+          for(let i=0;i<24;i++){
             const r=await fetch(endpoint,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'health'})})
             const data=await r.json().catch(()=>({}))
-            if(r.ok&&data?.version==='0.9.0'){console.log('Supabase v0.9.0 is live');process.exit(0)}
+            last={status:r.status,data}
+            if(r.ok&&data?.version==='0.9.0'&&data?.ready===true){
+              console.log('Supabase v0.9.0 is live and ready')
+              console.log(JSON.stringify(data.checks||{}))
+              process.exit(0)
+            }
+            console.log('Waiting for Supabase production readiness',JSON.stringify(last))
             await new Promise(resolve=>setTimeout(resolve,5000))
           }
-          throw new Error('Supabase v0.9.0 did not become live')
+          throw new Error('Supabase production did not become ready: '+JSON.stringify(last))
+          NODE
+
+      - name: Publish Supabase deploy status
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          node <<'NODE'
+          const state=process.env.JOB_STATUS==='success'?'success':'failure'
+          const body={
+            state,
+            context:'nasypateli/supabase-production',
+            description:state==='success'?'Supabase v0.9.0 is live and ready':'Supabase deploy or readiness failed',
+            target_url:`${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
+          }
+          const r=await fetch(`https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/statuses/${process.env.GITHUB_SHA}`,{
+            method:'POST',
+            headers:{authorization:`Bearer ${process.env.GH_TOKEN}`,'user-agent':'github-actions','content-type':'application/json'},
+            body:JSON.stringify(body)
+          })
+          if(!r.ok)throw new Error('Could not publish Supabase status: '+r.status+' '+await r.text())
           NODE
