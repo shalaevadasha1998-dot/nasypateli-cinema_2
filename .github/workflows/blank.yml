@@ -43,8 +43,8 @@ jobs:
             return {status:r.status,data}
           }
           const health=await post({action:'health'})
-          if(health.status!==200||health.data?.ok!==true||health.data?.version!=='0.9.0'){
-            throw new Error('Production API health failed: '+JSON.stringify(health))
+          if(health.status!==200||health.data?.ok!==true||health.data?.version!=='0.9.0'||health.data?.ready!==true){
+            throw new Error('Production API readiness failed: '+JSON.stringify(health))
           }
           const admin=await post({action:'admin-bootstrap',slug:'2026-10-03'})
           if(admin.status!==401)throw new Error('Admin endpoint is not protected: '+JSON.stringify(admin))
