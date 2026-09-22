@@ -31,3 +31,24 @@ jobs:
       - name: Build
         working-directory: web
         run: npm run build
+
+      - name: Production API smoke test
+        run: |
+          node <<'NODE'
+          const endpoint='https://vwteokawtqnoiyzmsldj.supabase.co/functions/v1/app'
+          async function post(body){
+            const r=await fetch(endpoint,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)})
+            let data={}
+            try{data=await r.json()}catch{}
+            return {status:r.status,data}
+          }
+          const health=await post({action:'health'})
+          if(health.status!==200||health.data?.ok!==true||health.data?.version!=='0.9.0'){
+            throw new Error('Production API health failed: '+JSON.stringify(health))
+          }
+          const admin=await post({action:'admin-bootstrap',slug:'2026-10-03'})
+          if(admin.status!==401)throw new Error('Admin endpoint is not protected: '+JSON.stringify(admin))
+          const screen=await post({action:'screen-bootstrap',slug:'2026-10-03'})
+          if(screen.status!==401)throw new Error('Screen endpoint is not protected: '+JSON.stringify(screen))
+          console.log('Production API health and auth gates are OK')
+          NODE
