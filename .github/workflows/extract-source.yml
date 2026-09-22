@@ -1,0 +1,48 @@
+name: Extract source
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/extract-source.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract current web source
+        run: |
+          rm -rf .extract web
+          mkdir -p .extract
+          unzip -q -o nasypateli-cinema-mvp-v0.9.0.zip -d .extract
+
+          PACKAGE_JSON="$(find .extract -type f -path '*/web/package.json' -print -quit)"
+          if [ -z "$PACKAGE_JSON" ]; then
+            echo "Could not find web/package.json"
+            exit 1
+          fi
+
+          WEB_DIR="$(dirname "$PACKAGE_JSON")"
+          mkdir -p web
+          cp -a "$WEB_DIR"/. web/
+          rm -rf .extract
+
+      - name: Commit extracted source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add web
+          if git diff --cached --quiet; then
+            echo "No source changes"
+            exit 0
+          fi
+          git commit -m "Expose current Mini App source for QA"
+          git push
