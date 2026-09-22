@@ -141,7 +141,7 @@ export type DemoState = {
   event: EventInfo
   profile: CinemaProfile
   onboardingComplete:boolean
-  registration: 'none'|'reserved'|'paid'|'waitlist'|'refunded'
+  registration: 'none'|'reserved'|'paid'|'attended'|'waitlist'|'refunded'
   idea?: FilmIdea
   ideaFinalists: FilmIdea[]
   selectedIdea?: FilmIdea
