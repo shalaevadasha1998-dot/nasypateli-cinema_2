@@ -94,6 +94,23 @@ function notificationsQuietNow(pref:any){
   try{const hour=Number(new Intl.DateTimeFormat('en-GB',{timeZone:zone,hour:'2-digit',hour12:false}).format(new Date()))%24;return hour>=22||hour<9}catch{return false}
 }
 
+async function runtimeHealth(db:any){
+  const requiredTables=['creatures','story_definitions','dating_profiles','notification_preferences','encounter_tokens']
+  const tableChecks=await Promise.all(requiredTables.map(async table=>{const r=await db.from(table).select('*',{head:true}).limit(1);return !r.error}))
+  const env=(name:string)=>!!String(Deno.env.get(name)||'').trim()
+  const checks={
+    database:tableChecks.every(Boolean),
+    telegram:env('TELEGRAM_BOT_TOKEN')&&env('TELEGRAM_WEBAPP_URL')&&env('TELEGRAM_WEBHOOK_SECRET'),
+    payments:env('TELEGRAM_PROVIDER_TOKEN'),
+    openai:env('OPENAI_API_KEY'),
+    admin:env('ADMIN_ACCESS_TOKEN')||env('ADMIN_TELEGRAM_IDS')||env('ADMIN_TELEGRAM_USERNAMES'),
+    screen:env('SCREEN_ACCESS_TOKEN'),
+    cron:env('CRON_ACCESS_TOKEN'),
+    demoOff:Deno.env.get('ALLOW_DEMO_AUTH')!=='true'
+  }
+  return {ok:true,version:'0.9.0',service:'nasypateli-cinema',ready:Object.values(checks).every(Boolean),checks}
+}
+
 async function telegramBot(method:string,body:Record<string,unknown>){
   const token=Deno.env.get('TELEGRAM_BOT_TOKEN');if(!token)throw new Error('TELEGRAM_BOT_TOKEN missing')
   const r=await fetch(`https://api.telegram.org/bot${token}/${method}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)})
@@ -169,7 +186,7 @@ export async function handleApi(req:Request){
   try{
     const body=await req.json();const action=String(body.action||'');const db=adminDb()
     const adminTokenOk=tokenMatches(req,'x-admin-token','ADMIN_ACCESS_TOKEN');const screenTokenOk=tokenMatches(req,'x-screen-token','SCREEN_ACCESS_TOKEN');const cronTokenOk=tokenMatches(req,'x-cron-token','CRON_ACCESS_TOKEN')
-    if(action==='health')return json({ok:true,version:'0.9.0',service:'nasypateli-cinema'})
+    if(action==='health')return json(await runtimeHealth(db))
 
     if(action==='screen-bootstrap'){
       if(!screenTokenOk)return err('Screen access denied',401)
