@@ -90,7 +90,9 @@ export async function handleTelegram(req:Request){
           console.error('successful_payment validation failed',{eventId:parsed.eventId,userId:parsed.userId,amountOk,currencyOk,payerOk,status:reg.data?.status})
         }
       }
-      await tg('sendMessage',{chat_id:msg.chat.id,text:paymentAccepted?'оплата прошла. билет уже внутри мини-приложения':'платёж получен Telegram, но билет не удалось автоматически подтвердить. напишите организаторам — мы проверим оплату вручную.'})
+      try{
+        await tg('sendMessage',{chat_id:msg.chat.id,text:paymentAccepted?'оплата прошла. билет уже внутри мини-приложения':'платёж получен Telegram, но билет не удалось автоматически подтвердить. напишите организаторам — мы проверим оплату вручную.'})
+      }catch(e){console.error('payment confirmation message failed',e)}
       return json({ok:true})
     }
 
@@ -110,6 +112,6 @@ export async function handleTelegram(req:Request){
     return json({ok:true})
   }catch(e){
     console.error(e)
-    return json({ok:false},200)
+    return json({ok:false},500)
   }
 }
