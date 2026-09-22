@@ -6,6 +6,10 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+  statuses: write
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -42,13 +46,43 @@ jobs:
             try{data=await r.json()}catch{}
             return {status:r.status,data}
           }
-          const health=await post({action:'health'})
-          if(health.status!==200||health.data?.ok!==true||health.data?.version!=='0.9.0'||health.data?.ready!==true){
+
+          let health
+          for(let i=0;i<24;i++){
+            health=await post({action:'health'})
+            if(health.status===200&&health.data?.ok===true&&health.data?.version==='0.9.0'&&health.data?.ready===true)break
+            console.log('Waiting for production readiness',JSON.stringify(health))
+            await new Promise(resolve=>setTimeout(resolve,5000))
+          }
+          if(health?.status!==200||health?.data?.ok!==true||health?.data?.version!=='0.9.0'||health?.data?.ready!==true){
             throw new Error('Production API readiness failed: '+JSON.stringify(health))
           }
+
           const admin=await post({action:'admin-bootstrap',slug:'2026-10-03'})
           if(admin.status!==401)throw new Error('Admin endpoint is not protected: '+JSON.stringify(admin))
           const screen=await post({action:'screen-bootstrap',slug:'2026-10-03'})
           if(screen.status!==401)throw new Error('Screen endpoint is not protected: '+JSON.stringify(screen))
           console.log('Production API health and auth gates are OK')
+          NODE
+
+      - name: Publish CI status
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          node <<'NODE'
+          const state=process.env.JOB_STATUS==='success'?'success':'failure'
+          const body={
+            state,
+            context:'nasypateli/ci-production-ready',
+            description:state==='success'?'Build + production readiness are green':'Build or production readiness failed',
+            target_url:`${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
+          }
+          const r=await fetch(`https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/statuses/${process.env.GITHUB_SHA}`,{
+            method:'POST',
+            headers:{authorization:`Bearer ${process.env.GH_TOKEN}`,'user-agent':'github-actions','content-type':'application/json'},
+            body:JSON.stringify(body)
+          })
+          if(!r.ok)throw new Error('Could not publish CI status: '+r.status+' '+await r.text())
           NODE
