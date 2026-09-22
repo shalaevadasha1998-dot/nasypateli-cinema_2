@@ -60,8 +60,8 @@ async function requestApi<T=unknown>(action:string,payload:Record<string,unknown
       body:JSON.stringify({action,...payload}),
       signal:controller.signal
     })
-    const data=await res.json().catch(()=>({error:'invalid response'}))
-    if(!res.ok) throw new Error(data.error || `API ${res.status}`)
+    const data=await res.json().catch(()=>({error:'сервер вернул непонятный ответ'}))
+    if(!res.ok) throw new Error(data.error || `ошибка сервера: ${res.status}`)
     return data as T
   }catch(e:any){
     if(e?.name==='AbortError') throw new Error('сервер отвечает слишком долго. попробуйте ещё раз')
@@ -196,7 +196,7 @@ export async function buyTicket(slug:string){
     })
     const data=await res.json().catch(()=>({error:'сервер оплаты вернул пустой ответ'}))
     if(res.status===409 && data.waitlist) return data
-    if(!res.ok) throw new Error(data.error||`Payment API ${res.status}`)
+    if(!res.ok) throw new Error(data.error||`ошибка оплаты: ${res.status}`)
     if(data.invoiceUrl){
       const app=telegramWebApp()
       if(app?.openInvoice){
@@ -212,5 +212,5 @@ export async function buyTicket(slug:string){
   }catch(e:any){
     if(e?.name==='AbortError')throw new Error('оплата отвечает слишком долго. попробуйте ещё раз')
     throw e
-  }finally{window.clearTimeout(timeout)}
+  }finally{bootstrapCache=null;window.clearTimeout(timeout)}
 }
