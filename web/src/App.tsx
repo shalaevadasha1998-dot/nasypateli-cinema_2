@@ -27,11 +27,11 @@ function useStateData(enabled=true){
 }
 
 function usePrivilegedState(kind:'admin'|'screen',slug:string|undefined){
-  const [search]=useSearchParams();const [data,setData]=useState<DemoState|null>(null);const [error,setError]=useState('')
+  const [search,setSearch]=useSearchParams();const [data,setData]=useState<DemoState|null>(null);const [error,setError]=useState('')
   const storageKey=`nasypateli-${kind}-token`;const queryToken=search.get('token')||''
   const token=queryToken||(typeof sessionStorage!=='undefined'?sessionStorage.getItem(storageKey)||'':'')
-  useEffect(()=>{if(queryToken)sessionStorage.setItem(storageKey,queryToken)},[queryToken,storageKey])
-  const reload=()=>{if(!slug){setError('не указано событие');return Promise.resolve()}if(!token&&!demoMode){setError(`нужен ${kind==='admin'?'ADMIN_ACCESS_TOKEN':'SCREEN_ACCESS_TOKEN'} в ссылке ?token=…`);return Promise.resolve()}const action=kind==='admin'?'admin-bootstrap':'screen-bootstrap';const fn=kind==='admin'?callAdminApi:callScreenApi;return fn<DemoState>(action,{slug},token).then(d=>{setData(d);setError('')}).catch(e=>setError(e.message))}
+  useEffect(()=>{if(!queryToken)return;sessionStorage.setItem(storageKey,queryToken);const next=new URLSearchParams(search);next.delete('token');setSearch(next,{replace:true})},[queryToken,storageKey])
+  const reload=()=>{if(!slug){setError('не указано событие');return Promise.resolve()}if(kind==='screen'&&!token&&!demoMode){setError('нужен закрытый ключ экрана');return Promise.resolve()}const action=kind==='admin'?'admin-bootstrap':'screen-bootstrap';const fn=kind==='admin'?callAdminApi:callScreenApi;return fn<DemoState>(action,{slug},token).then(d=>{setData(d);setError('')}).catch(e=>setError(e.message))}
   useEffect(()=>{reload();const timer=window.setInterval(reload,kind==='screen'?2500:5000);return()=>window.clearInterval(timer)},[kind,slug,token])
   return {data,error,reload,token}
 }

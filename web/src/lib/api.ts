@@ -188,22 +188,29 @@ function demoAction(action:string,payload:Record<string,unknown>){
 
 export async function buyTicket(slug:string){
   if(demoMode) return callApi('reserve-ticket',{slug})
-  const res=await fetch(`${supabaseUrl}/functions/v1/${fn}?mode=invoice`,{
-    method:'POST',headers:{'content-type':'application/json','x-telegram-init-data':telegramInitData()},body:JSON.stringify({slug})
-  })
-  const data=await res.json()
-  if(res.status===409 && data.waitlist) return data
-  if(!res.ok) throw new Error(data.error||`Payment API ${res.status}`)
-  if(data.invoiceUrl){
-    const app=telegramWebApp()
-    if(app?.openInvoice){
-      const invoiceStatus=await new Promise<string>(resolve=>{
-        try{app.openInvoice?.(data.invoiceUrl,(status:string)=>resolve(status||'closed'))}
-        catch{resolve('failed')}
-      })
-      return {...data,invoiceStatus}
+  const controller=new AbortController()
+  const timeout=window.setTimeout(()=>controller.abort(),15000)
+  try{
+    const res=await fetch(`${supabaseUrl}/functions/v1/${fn}?mode=invoice`,{
+      method:'POST',headers:{'content-type':'application/json','x-telegram-init-data':telegramInitData()},body:JSON.stringify({slug}),signal:controller.signal
+    })
+    const data=await res.json().catch(()=>({error:'сервер оплаты вернул пустой ответ'}))
+    if(res.status===409 && data.waitlist) return data
+    if(!res.ok) throw new Error(data.error||`Payment API ${res.status}`)
+    if(data.invoiceUrl){
+      const app=telegramWebApp()
+      if(app?.openInvoice){
+        const invoiceStatus=await new Promise<string>(resolve=>{
+          try{app.openInvoice?.(data.invoiceUrl,(status:string)=>resolve(status||'closed'))}
+          catch{resolve('failed')}
+        })
+        return {...data,invoiceStatus}
+      }
+      location.href=data.invoiceUrl
     }
-    location.href=data.invoiceUrl
-  }
-  return data
+    return data
+  }catch(e:any){
+    if(e?.name==='AbortError')throw new Error('оплата отвечает слишком долго. попробуйте ещё раз')
+    throw e
+  }finally{window.clearTimeout(timeout)}
 }

@@ -1,1 +1,0 @@
-{"root":["./src/App.tsx","./src/ProductPages.tsx","./src/demo.ts","./src/main.tsx","./src/types.ts","./src/vite-env.d.ts","./src/components/Layout.tsx","./src/components/Rabbit.tsx","./src/components/UI.tsx","./src/hooks/useVoiceInput.ts","./src/lib/api.ts","./src/lib/telegram.ts"],"errors":true,"version":"5.8.3"}

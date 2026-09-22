@@ -1,0 +1,21 @@
+# dependencies and build output
+node_modules/
+web/node_modules/
+web/dist/
+web/*.tsbuildinfo
+.extract/
+
+# local configuration
+.env
+.env.*
+!.env.example
+!web/.env.example
+!web/.env.production.example
+!supabase/functions/.env.example
+
+# local OS/editor files
+.DS_Store
+*.swp
+
+# repository snapshots are history, not source
+*.zip

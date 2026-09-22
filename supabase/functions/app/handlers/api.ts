@@ -94,13 +94,37 @@ function notificationsQuietNow(pref:any){
   try{const hour=Number(new Intl.DateTimeFormat('en-GB',{timeZone:zone,hour:'2-digit',hour12:false}).format(new Date()))%24;return hour>=22||hour<9}catch{return false}
 }
 
+async function telegramRuntimeReady(){
+  const token=String(Deno.env.get('TELEGRAM_BOT_TOKEN')||'').trim()
+  const webAppUrl=String(Deno.env.get('TELEGRAM_WEBAPP_URL')||'').trim()
+  const webhookSecret=String(Deno.env.get('TELEGRAM_WEBHOOK_SECRET')||'').trim()
+  if(!token||!webAppUrl||!webhookSecret)return false
+  try{
+    const web=new URL(webAppUrl)
+    if(web.protocol!=='https:')return false
+    const [me,hook]=await Promise.all([telegramBot('getMe',{}),telegramBot('getWebhookInfo',{})])
+    const expectedBot='nasipateli_v_kinobot'
+    const botOk=String(me?.username||'').replace(/^@/,'').toLowerCase()===expectedBot
+    const supabaseUrl=String(Deno.env.get('SUPABASE_URL')||'').replace(/\/$/,'')
+    const expectedHook=supabaseUrl?`${supabaseUrl}/functions/v1/app?mode=telegram`:''
+    const actualHook=String(hook?.url||'').replace(/\/$/,'')
+    return botOk&&!!actualHook&&(!expectedHook||actualHook===expectedHook)
+  }catch{return false}
+}
+
 async function runtimeHealth(db:any){
-  const requiredTables=['creatures','story_definitions','dating_profiles','notification_preferences','encounter_tokens']
-  const tableChecks=await Promise.all(requiredTables.map(async table=>{const r=await db.from(table).select('*',{head:true}).limit(1);return !r.error}))
+  const requiredTables=['users','cinema_profiles','events','registrations','creatures','story_definitions','dating_profiles','notification_preferences','encounter_tokens']
+  const [tableChecks,pilot,telegram]=await Promise.all([
+    Promise.all(requiredTables.map(async table=>{const r=await db.from(table).select('*',{head:true}).limit(1);return !r.error})),
+    db.from('events').select('slug,capacity,ticket_price_rub').eq('slug','2026-10-03').maybeSingle(),
+    telegramRuntimeReady()
+  ])
   const env=(name:string)=>!!String(Deno.env.get(name)||'').trim()
+  const pilotOk=!pilot.error&&pilot.data?.slug==='2026-10-03'&&Number(pilot.data?.capacity)===30&&Number(pilot.data?.ticket_price_rub)===500
   const checks={
     database:tableChecks.every(Boolean),
-    telegram:env('TELEGRAM_BOT_TOKEN')&&env('TELEGRAM_WEBAPP_URL')&&env('TELEGRAM_WEBHOOK_SECRET'),
+    pilot:pilotOk,
+    telegram,
     payments:env('TELEGRAM_PROVIDER_TOKEN'),
     openai:env('OPENAI_API_KEY'),
     admin:env('ADMIN_ACCESS_TOKEN')||env('ADMIN_TELEGRAM_IDS')||env('ADMIN_TELEGRAM_USERNAMES'),
@@ -193,7 +217,13 @@ export async function handleApi(req:Request){
       const event=await eventBySlug(db,String(body.slug||'2026-10-03'));return json(await buildEventState(db,event,{includeActuals:false}))
     }
     if(action==='admin-bootstrap'){
-      if(!adminTokenOk)return err('Admin access denied',401)
+      if(!adminTokenOk){
+        try{
+          const adminTg=await telegramUserFromRequest(req)
+          const adminUser=await getOrCreateUser(db,adminTg)
+          await mustAdmin(db,adminUser,adminTg)
+        }catch{return err('Admin access denied',401)}
+      }
       const event=await eventBySlug(db,String(body.slug||'2026-10-03'));return json(await buildEventState(db,event,{includeActuals:true,includePrivateOutputs:true}))
     }
 
