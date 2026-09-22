@@ -82,7 +82,7 @@ function normalizeBootstrap(raw:any):DemoState{
     event:{...base.event,...re},
     profile:{...emptyProfile,...rp,taste:{...emptyProfile.taste,...(rp.taste||{})},favoriteFilms:Array.isArray(rp.favoriteFilms)?rp.favoriteFilms:[],favoriteGenres:Array.isArray(rp.favoriteGenres)?rp.favoriteGenres:[],avoid:Array.isArray(rp.avoid)?rp.avoid:[],watchReasons:Array.isArray(rp.watchReasons)?rp.watchReasons:[],clubWants:Array.isArray(rp.clubWants)?rp.clubWants:[]},
     onboardingComplete:r.onboardingComplete===true,
-    registration:['none','reserved','paid','waitlist','refunded'].includes(r.registration)?r.registration:'none',
+    registration:['none','reserved','paid','attended','waitlist','refunded'].includes(r.registration)?r.registration:'none',
     ideaFinalists:Array.isArray(r.ideaFinalists)?r.ideaFinalists:[],movieFinalists:Array.isArray(r.movieFinalists)?r.movieFinalists:[],predictions:Array.isArray(r.predictions)?r.predictions:[],leaderboard:Array.isArray(r.leaderboard)?r.leaderboard:[],pastEvents:Array.isArray(r.pastEvents)?r.pastEvents:[],jipitinaMessages:Array.isArray(r.jipitinaMessages)?r.jipitinaMessages:[],
     profileStats:{...base.profileStats,...(r.profileStats||{})},
     creature:{...base.creature,...rc,traits:{...base.creature.traits,...(rc.traits||{})},cosmetics:Array.isArray(rc.cosmetics)?rc.cosmetics:[],timeline:Array.isArray(rc.timeline)?rc.timeline:[]},
@@ -196,8 +196,14 @@ export async function buyTicket(slug:string){
   if(!res.ok) throw new Error(data.error||`Payment API ${res.status}`)
   if(data.invoiceUrl){
     const app=telegramWebApp()
-    if(app?.openInvoice) app.openInvoice(data.invoiceUrl)
-    else location.href=data.invoiceUrl
+    if(app?.openInvoice){
+      const invoiceStatus=await new Promise<string>(resolve=>{
+        try{app.openInvoice?.(data.invoiceUrl,(status:string)=>resolve(status||'closed'))}
+        catch{resolve('failed')}
+      })
+      return {...data,invoiceStatus}
+    }
+    location.href=data.invoiceUrl
   }
   return data
 }
