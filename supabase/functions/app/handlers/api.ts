@@ -82,6 +82,16 @@ async function getOrCreateUser(db:any,tg:any){
 async function mustAdmin(db:any,user:any,tg:any){if(isConfiguredAdmin(tg))return;const r=await db.from('admins').select('role').eq('user_id',user.id).maybeSingle();if(r.error)throw r.error;if(!r.data)throw new Error('Admin access required')}
 async function hasPaidAccess(db:any,eventId:string,userId:string){const r=await db.from('registrations').select('status').eq('event_id',eventId).eq('user_id',userId).maybeSingle();if(r.error)throw r.error;return ['paid','attended'].includes(r.data?.status||'')}
 function effectiveRegistrationStatus(reg:any){const status=String(reg?.status||'none');if(status==='reserved'){const expires=reg?.reservation_expires_at?new Date(reg.reservation_expires_at).getTime():0;if(!expires||expires<=Date.now())return 'none'}return status}
+async function activeSeatCount(db:any,eventId:string){
+  const now=new Date().toISOString()
+  const [paid,reserved]=await Promise.all([
+    db.from('registrations').select('*',{count:'exact',head:true}).eq('event_id',eventId).in('status',['paid','attended']),
+    db.from('registrations').select('*',{count:'exact',head:true}).eq('event_id',eventId).eq('status','reserved').gt('reservation_expires_at',now)
+  ])
+  if(paid.error)throw paid.error
+  if(reserved.error)throw reserved.error
+  return Number(paid.count||0)+Number(reserved.count||0)
+}
 
 function tokenMatches(req:Request,header:string,envName:string){
   const expected=Deno.env.get(envName)||'';const got=req.headers.get(header)||''
@@ -451,12 +461,12 @@ export async function handleApi(req:Request){
       if(body.maxMovieRuntimeMin!==undefined){const n=Number(body.maxMovieRuntimeMin);if(!Number.isInteger(n)||n<45||n>360)return err('Лимит хронометража: 45–360 минут',422);patch.max_movie_runtime_min=n}
       if(body.venueName!==undefined)patch.venue_name=String(body.venueName||'').trim().slice(0,160)||null
       if(body.venueAddress!==undefined)patch.venue_address=String(body.venueAddress||'').trim().slice(0,300)||null
-      if(body.ticketPriceRub!==undefined){const n=Number(body.ticketPriceRub);if(!Number.isInteger(n)||n<0||n>100000)return err('Некорректная цена билета',422);if(n!==Number(event.ticket_price_rub||0)){const active=await db.from('registrations').select('*',{count:'exact',head:true}).eq('event_id',event.id).in('status',['reserved','paid','attended']);if(active.error)throw active.error;if(Number(active.count||0)>0)return err('Цену нельзя менять после появления резервов или оплаченных билетов',409)}patch.ticket_price_rub=n}
+      if(body.ticketPriceRub!==undefined){const n=Number(body.ticketPriceRub);if(!Number.isInteger(n)||n<0||n>100000)return err('Некорректная цена билета',422);if(n!==Number(event.ticket_price_rub||0)){const active=await activeSeatCount(db,event.id);if(active>0)return err('Цену нельзя менять после появления активных резервов или оплаченных билетов',409)}patch.ticket_price_rub=n}
       if(!Object.keys(patch).length)return json({ok:true,event})
       const r=await db.from('events').update(patch).eq('id',event.id).select('id,slug,title,starts_at,capacity,ticket_price_rub,max_movie_runtime_min,venue_name,venue_address').single();if(r.error)throw r.error;return json({ok:true,event:r.data})
     }
     if(action==='admin-capacity'){
-      const capacity=Math.max(1,Math.min(500,Number(body.capacity)||30));const occupied=await db.from('registrations').select('*',{count:'exact',head:true}).eq('event_id',event.id).in('status',['reserved','paid','attended']);if(occupied.error)throw occupied.error;if(capacity<Number(occupied.count||0))return err(`Вместимость не может быть меньше уже занятых мест: ${occupied.count||0}`,409);const r=await db.from('events').update({capacity}).eq('id',event.id);if(r.error)throw r.error;return json({ok:true,capacity})
+      const capacity=Math.max(1,Math.min(500,Number(body.capacity)||30));const occupied=await activeSeatCount(db,event.id);if(capacity<occupied)return err(`Вместимость не может быть меньше уже занятых мест: ${occupied}`,409);const r=await db.from('events').update({capacity}).eq('id',event.id);if(r.error)throw r.error;return json({ok:true,capacity})
     }
     if(action==='admin-grant-test-ticket'){
       const raw=String(body.username||'').trim().replace(/^@/,'');if(!raw)return err('Telegram username required')
