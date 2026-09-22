@@ -31,7 +31,7 @@ jobs:
         run: |
           rm -rf app app-web
           mkdir -p app
-          unzip -q -o nasypateli-cinema-mvp-v0.6.4.zip -d app
+          unzip -q -o nasypateli-cinema-mvp-v0.6.5.zip -d app
 
           PACKAGE_JSON="$(find app -type f -path '*/web/package.json' -print -quit)"
           if [ -z "$PACKAGE_JSON" ]; then
