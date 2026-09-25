@@ -17,7 +17,7 @@ export async function creatureState(db:any,userId:string){
   if(cosmetics.error)throw cosmetics.error;if(stories.error)throw stories.error
   const cs=(cosmetics.data||[]).map((x:any)=>({...(x.creature_cosmetics||{}),equipped:!!x.equipped}))
   const timeline=(stories.data||[]).map((x:any)=>({id:x.id,code:x.story_definitions?.code||'',title:x.story_definitions?.title||'',description:x.story_definitions?.description||'',category:x.story_definitions?.category||'',rarity:x.story_definitions?.rarity||'common',secret:x.story_definitions?.visibility==='secret',happenedAt:x.happened_at,eventTitle:x.events?.title||undefined,rewardName:cs.find((c:any)=>c.code===x.story_definitions?.reward?.cosmetic)?.name}))
-  return {born:!!creature.born_at,bornAt:creature.born_at||undefined,name:creature.name||'Животина',stage:creature.stage||'tiny',crumbs:Number(creature.crumbs||0),storyCount:Number(stories.count??timeline.length),traits:{curiosity:0,argumentative:0,social:0,romantic:0,chaotic:0,cinephile:0,...(creature.traits||{})},cosmetics:cs,timeline}
+  return {born:!!creature.born_at,bornAt:creature.born_at||undefined,name:creature.name||'Животина',stage:(['stage_0','stage_1','stage_2','stage_3','stage_4'].includes(String(creature.stage))?creature.stage:(creature.stage==='grown'?'stage_4':creature.stage==='young'?'stage_2':'stage_0')),crumbs:Number(creature.crumbs||0),growthProgress:Number(creature.growth_progress||0),lastFedAt:creature.last_fed_at||undefined,storyCount:Number(stories.count??timeline.length),traits:{curiosity:0,argumentative:0,social:0,romantic:0,chaotic:0,cinephile:0,...(creature.traits||{})},cosmetics:cs,timeline}
 }
 
 async function conditionPasses(db:any,userId:string,trigger:string,condition:any,context:any){
