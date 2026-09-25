@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom'
 import { Button, Card, Empty, Field, Pill } from './components/UI'
 import { CreatureCard, Rabbit, type CreatureAnimationState } from './components/Rabbit'
 import { callApi } from './lib/api'
+import { CREATURE_VISUAL_LEVELS, creatureVisualLabel, creatureVisualLevel } from './lib/creature'
 import { haptic, hapticSuccess, requestTelegramWriteAccess, telegramWebApp } from './lib/telegram'
 import type { CreatureState, DatingIntent, DemoState, NotificationPrefs } from './types'
 
@@ -15,19 +16,21 @@ function useBootstrap(){
 function Load({error}:{error?:string}){return <div className="page"><Card>{error?`ошибка: ${error}`:'загрузка…'}</Card></div>}
 function cleanDate(iso:string){try{return new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'short',year:'numeric'}).format(new Date(iso))}catch{return iso}}
 async function copyText(value:string){try{await navigator.clipboard.writeText(value);return true}catch{window.prompt('скопируйте ссылку',value);return false}}
-const creatureStages:CreatureState['stage'][]=['stage_0','stage_1','stage_2','stage_3','stage_4']
-const creatureStageLabels:Record<CreatureState['stage'],string>={stage_0:'новорождённая',stage_1:'малышка',stage_2:'подросшая',stage_3:'большая',stage_4:'взрослая'}
 function creatureGrowthView(creature:CreatureState){
-  const defaults={stage_0:0,stage_1:10,stage_2:25,stage_3:50,stage_4:90}
-  const thresholds={...defaults,...(creature.stageThresholds||{})}
-  const index=Math.max(0,creatureStages.indexOf(creature.stage))
-  const nextStage=creatureStages[index+1]
-  const growth=Math.max(0,Number(creature.growthProgress||0))
-  const currentAt=Number(thresholds[creature.stage]??0)
-  if(!nextStage)return {label:creatureStageLabels[creature.stage],nextLabel:'',nextAt:growth,remaining:0,percent:100,maxed:true}
-  const nextAt=Math.max(currentAt+1,Number(thresholds[nextStage]??currentAt+1))
-  const percent=Math.max(0,Math.min(100,Math.round(((growth-currentAt)/(nextAt-currentAt))*100)))
-  return {label:creatureStageLabels[creature.stage],nextLabel:creatureStageLabels[nextStage],nextAt,remaining:Math.max(0,nextAt-growth),percent,maxed:false}
+  const level=creatureVisualLevel(creature)
+  const maxed=level>=CREATURE_VISUAL_LEVELS
+  const bandEnd=Math.min(CREATURE_VISUAL_LEVELS,Math.ceil(level/10)*10)
+  const nextBandEnd=level%10===0&&!maxed?Math.min(CREATURE_VISUAL_LEVELS,bandEnd+10):bandEnd
+  const milestone=maxed?CREATURE_VISUAL_LEVELS:nextBandEnd
+  const percent=Math.round((level/CREATURE_VISUAL_LEVELS)*100)
+  return {
+    level,
+    label:creatureVisualLabel(creature),
+    remaining:maxed?0:Math.max(0,milestone-level),
+    milestone,
+    percent,
+    maxed
+  }
 }
 
 export function BirthPage(){
