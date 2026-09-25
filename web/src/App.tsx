@@ -94,7 +94,7 @@ function Home(){
   return <div className="page home-page cinematic-page">
     <section className="home-creature-hero">
       <div className="home-creature-top"><div><div className="eyebrow">ваша животина</div><span className="home-creature-stage-label">{creatureVisualLabel(data.creature)} · рост {creatureVisualLevel(data.creature)}/50 · {data.creature.storyCount} историй</span></div><button className="micro-link" onClick={()=>nav('/profile')}>открыть профиль ↗</button></div>
-      <button type="button" className="home-rabbit-stage" onClick={()=>nav('/profile')} aria-label="открыть Животину"><span className="home-rabbit-halo"/><span className="home-rabbit-shadow"/><Rabbit creature={data.creature}/></button>
+      <button type="button" className="home-rabbit-stage" onClick={()=>nav('/profile')} aria-label="открыть Животину"><span className="home-rabbit-halo"/><span className="home-rabbit-shadow"/><Rabbit creature={data.creature} state={data.creature.canFeedToday&&data.creature.crumbs>=data.creature.feedingCost?'hungry':'idle'}/></button>
       <div className="home-creature-name">{data.creature.name||'животина'}</div>
       <p className="home-creature-copy">растёт понемногу: всего 50 уровней от маленького кролика до полноценной взрослой Животины. встречи, фильмы и кормление двигают её дальше</p>
     </section>

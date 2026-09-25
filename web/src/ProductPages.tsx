@@ -383,15 +383,36 @@ export function MotionLabPage(){
   const nav=useNavigate()
   const [level,setLevel]=useState(1)
   const [animation,setAnimation]=useState<CreatureAnimationState>('idle')
+  const [autoGrow,setAutoGrow]=useState(false)
+  const [autoStates,setAutoStates]=useState(false)
+  const states:CreatureAnimationState[]=['idle','happy','hungry','feeding','growing','thinking','sleeping','waking']
+  const stateLabels:Record<CreatureAnimationState,string>={unborn:'до рождения',birth:'рождение',idle:'спокойно',hungry:'голодная',feeding:'ест',happy:'радуется',thinking:'думает',sleeping:'спит',waking:'просыпается',growing:'растёт'}
+  useEffect(()=>{
+    if(!autoGrow)return
+    if(level>=50){setAutoGrow(false);setAnimation('growing');const t=window.setTimeout(()=>setAnimation('idle'),1100);return()=>window.clearTimeout(t)}
+    const t=window.setTimeout(()=>setLevel(current=>Math.min(50,current+1)),115)
+    return()=>window.clearTimeout(t)
+  },[autoGrow,level])
+  useEffect(()=>{
+    if(!autoStates)return
+    let index=0
+    setAnimation(states[0])
+    const timer=window.setInterval(()=>{
+      index++
+      if(index>=states.length){window.clearInterval(timer);setAutoStates(false);setAnimation('idle');return}
+      setAnimation(states[index])
+      haptic(index%2?'light':'medium')
+    },1050)
+    return()=>window.clearInterval(timer)
+  },[autoStates])
   if(!data)return <Load error={error}/>
   const creature={...data.creature,growthProgress:growthProgressForVisualLevel(level,data.creature)}
-  const states:CreatureAnimationState[]=['idle','happy','feeding','growing','thinking','sleeping','waking']
   return <div className="page motion-lab-page">
     <div className="eyebrow">скрытая лаборатория</div>
     <h1 className="page-title">движение<br/>Животины</h1>
-    <Card className="motion-lab-stage"><Rabbit creature={creature} state={animation}/><div><b>{creatureVisualLabel(creature)}</b><span>рост {level}/50</span></div></Card>
-    <Card><div className="section-title">50 уровней роста</div><input className="motion-level-range" type="range" min="1" max="50" value={level} onChange={e=>setLevel(Number(e.target.value))}/><div className="row spread"><span>1</span><b>{level}/50</b><span>50</span></div></Card>
-    <Card><div className="section-title">реакции</div><div className="motion-state-grid">{states.map(state=><button type="button" className={animation===state?'active':''} key={state} onClick={()=>setAnimation(state)}>{state}</button>)}</div></Card>
+    <Card className="motion-lab-stage"><Rabbit creature={creature} state={animation}/><div><b>{creatureVisualLabel(creature)}</b><span>рост {level}/50</span><small>{stateLabels[animation]}</small></div></Card>
+    <Card><div className="section-title">50 уровней роста</div><input className="motion-level-range" type="range" min="1" max="50" value={level} onChange={e=>{setAutoGrow(false);setLevel(Number(e.target.value))}}/><div className="row spread"><span>1</span><b>{level}/50</b><span>50</span></div><Button onClick={()=>{setLevel(1);setAnimation('growing');setAutoGrow(true)}}>{autoGrow?'растёт…':'прогнать рост 1 → 50'}</Button></Card>
+    <Card><div className="section-title">реакции</div><div className="motion-state-grid">{states.map(state=><button type="button" className={animation===state?'active':''} key={state} onClick={()=>{setAutoStates(false);setAnimation(state);haptic('light')}}>{stateLabels[state]}</button>)}</div><Button kind="secondary" onClick={()=>setAutoStates(true)}>{autoStates?'показываю…':'прогнать все реакции'}</Button></Card>
     <Button onClick={()=>nav('/birth?preview=1')}>проиграть рождение</Button>
     <Button kind="secondary" onClick={()=>nav('/profile')}>назад к профилю</Button>
   </div>
@@ -400,13 +421,14 @@ export function MotionLabPage(){
 export function CreatureProfilePage(){
   const {data,error,reload}=useBootstrap();const nav=useNavigate();const [busy,setBusy]=useState('');const [msg,setMsg]=useState('');const [notice,setNotice]=useState('');const [encounterLink,setEncounterLink]=useState('');const [tasks,setTasks]=useState<any[]>([]);const [creatureAnim,setCreatureAnim]=useState<CreatureAnimationState>('idle');useEffect(()=>{if(data?.creature?.born)callApi<any>('creature-tasks').then(r=>setTasks(r.tasks||[])).catch(()=>{})},[data?.creature?.born,data?.creature?.crumbs]);if(!data)return <Load error={error}/>
   const growth=creatureGrowthView(data.creature)
+  const visibleCreatureAnim:CreatureAnimationState=creatureAnim==='idle'&&data.creature.canFeedToday&&data.creature.crumbs>=data.creature.feedingCost?'hungry':creatureAnim
   const flashNotice=(text:string)=>{setNotice(text);window.setTimeout(()=>setNotice(current=>current===text?'':current),1800)}
   const equip=async(code:string,equipped:boolean)=>{try{setBusy(code);await callApi('equip-cosmetic',{code,equipped});await reload()}catch(e:any){setMsg(e.message)}finally{setBusy('')}}
   const tapCreature=()=>{if(creatureAnim!=='idle')return;haptic('light');setCreatureAnim('happy');window.setTimeout(()=>setCreatureAnim('idle'),700)}
   const feed=async()=>{if(!data.creature.canFeedToday||data.creature.crumbs<data.creature.feedingCost)return;try{setBusy('feed');setMsg('');const previousStage=data.creature.stage;const previousLevel=creatureVisualLevel(data.creature);const previousLabel=creatureVisualLabel(data.creature);const result:any=await callApi('feed-creature');if(result?.alreadyFed){await reload();setCreatureAnim('idle');flashNotice('сегодня уже ела');return}const nextCreature={...data.creature,stage:(result?.stage||data.creature.stage) as CreatureState['stage'],growthProgress:Number(result?.growthProgress??data.creature.growthProgress)};const nextLevel=creatureVisualLevel(nextCreature);const nextLabel=creatureVisualLabel(nextCreature);const stageChanged=nextCreature.stage!==previousStage;const levelChanged=nextLevel>previousLevel;hapticSuccess();setCreatureAnim('feeding');await reload();if(stageChanged||nextLabel!==previousLabel){flashNotice(`новая форма: ${nextLabel} · рост ${nextLevel}/50`);window.setTimeout(()=>setCreatureAnim('growing'),260);window.setTimeout(()=>setCreatureAnim('idle'),1450)}else if(levelChanged){flashNotice(`подросла: ${previousLevel} → ${nextLevel} / 50`);window.setTimeout(()=>setCreatureAnim('growing'),260);window.setTimeout(()=>setCreatureAnim('idle'),1250)}else{flashNotice('покормлена');window.setTimeout(()=>setCreatureAnim('happy'),260);window.setTimeout(()=>setCreatureAnim('idle'),900)}}catch(e:any){setMsg(e.message);setCreatureAnim('idle')}finally{setBusy('')}}
   const remove=async()=>{if(!window.confirm('Удалить кинопрофиль, Животину, знакомства и персональную историю? Это действие нельзя отменить.'))return;if(!window.confirm('Точно удалить профиль? Билеты и платёжные записи останутся у организаторов, персонализация будет удалена.'))return;try{setBusy('delete');await callApi('delete-profile',{confirm:'DELETE_PROFILE'});location.hash='#/onboarding'}catch(e:any){setMsg(e.message)}finally{setBusy('')}}
   const makeEncounterLink=async()=>{try{setBusy('encounter');setMsg('');const r:any=await callApi('my-encounter-token');setEncounterLink(String(r.deepLink||r.token||''))}catch(e:any){setMsg(e.message)}finally{setBusy('')}}
-  return <div className="page creature-page"><CreatureCard creature={data.creature} animationState={creatureAnim} onOpen={tapCreature}/><div className="creature-meta"><Pill>{growth.label}</Pill><span>рост {growth.level}/50</span><span>{data.creature.crumbs} 🍿</span><span>{data.creature.storyCount} историй</span></div>
+  return <div className="page creature-page"><CreatureCard creature={data.creature} animationState={visibleCreatureAnim} onOpen={tapCreature}/><div className="creature-meta"><Pill>{growth.label}</Pill><span>рост {growth.level}/50</span><span>{data.creature.crumbs} 🍿</span><span>{data.creature.storyCount} историй</span></div>
     <Card className="creature-loop"><div className="section-title">крошки и рост</div><div className="creature-economy"><b>{data.creature.crumbs} кинокрошек</b><span>{growth.maxed?'полноценная взрослая Животина':`до следующего образа · ${growth.remaining} ур.`}</span></div><div className="creature-growth-track" aria-label={growth.maxed?'максимальная взрослая форма':`уровень роста ${growth.level} из 50`}><i style={{width:`${growth.percent}%`}}/></div><div className="creature-growth-caption"><span>{growth.label}</span><b>{growth.level} / 50</b>{!growth.maxed&&<span>следующий образ · {growth.milestone}</span>}</div><p className="muted">каждое кормление немного меняет размер. крупные изменения формы происходят примерно раз в 10 уровней</p><p className="muted">одно кормление стоит {data.creature.feedingCost} крошк{data.creature.feedingCost===1?'у':'и'}</p><Button disabled={busy==='feed'||!data.creature.canFeedToday||data.creature.crumbs<data.creature.feedingCost} onClick={feed}>{busy==='feed'?'секунду…':!data.creature.canFeedToday?'сегодня уже ела':data.creature.crumbs<data.creature.feedingCost?`нужно ${data.creature.feedingCost} крошек`:'покормить'}</Button>{notice&&<div className="creature-notice" role="status">{notice}</div>}{!data.creature.canFeedToday&&<p className="muted">следующее кормление откроется в новый день. прогресс не сбрасывается</p>}</Card>
     <Card><div className="section-title">задания</div>{tasks.length?tasks.map((t:any)=><div className="creature-task" key={t.id}><div><b>{t.title}</b><p>{t.description}</p><small>+{t.rewardCrumbs} крошки</small></div><Button kind="secondary" disabled={busy===t.id||t.status==='completed'} onClick={async()=>{try{setBusy(t.id);setMsg('');const r:any=await callApi('complete-creature-task',{taskId:t.id});hapticSuccess();flashNotice(r?.alreadyCompleted?'уже засчитано':`+${Number(r?.rewardCrumbs||t.rewardCrumbs||0)} крошки`);await reload()}catch(e:any){setMsg(e.message)}finally{setBusy('')}}}>{t.status==='completed'?'готово':'выполнить'}</Button></div>):<Empty>новых заданий пока нет</Empty>}{msg&&<div className="form-error">{msg}</div>}</Card>
     <Card><div className="section-title">характер</div><div className="trait-grid">{Object.entries(data.creature.traits||{}).map(([k,v])=><div key={k}><span>{({curiosity:'любопытство',argumentative:'спорщик',social:'общительность',romantic:'романтика',chaotic:'хаос',cinephile:'кино'} as any)[k]||k}</span><i><b style={{width:`${Math.min(100,Number(v))}%`}}/></i></div>)}</div><p className="muted">характер не выбирается в анкете. Животина постепенно набирается ваших привычек и из-за этого по-разному разговаривает с вами</p></Card>
