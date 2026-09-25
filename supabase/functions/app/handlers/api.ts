@@ -117,6 +117,14 @@ function notificationsQuietNow(pref:any){
   const zone=Deno.env.get('NOTIFICATION_TIMEZONE')||'Europe/Moscow'
   try{const hour=Number(new Intl.DateTimeFormat('en-GB',{timeZone:zone,hour:'2-digit',hour12:false}).format(new Date()))%24;return hour>=22||hour<9}catch{return false}
 }
+function notificationRetryAt(attempt:number){
+  const minutes=Math.min(30,Math.max(5,attempt*5))
+  return new Date(Date.now()+minutes*60_000).toISOString()
+}
+function notificationErrorIsPermanent(error:unknown){
+  const message=String(error||'').toLowerCase()
+  return ['blocked by the user','chat not found','user is deactivated','bot was blocked'].some(x=>message.includes(x))
+}
 
 async function telegramRuntimeReady(){
   const token=String(Deno.env.get('TELEGRAM_BOT_TOKEN')||'').trim()
@@ -274,9 +282,48 @@ export async function handleApi(req:Request){
 
     if(action==='cron-notifications'){
       if(!cronTokenOk)return err('Доступ к служебному запуску запрещён',401)
-      const due=await db.from('notification_queue').select('id,user_id,kind,text,users(telegram_id)').eq('status','pending').lte('send_after',new Date().toISOString()).order('send_after').limit(50);if(due.error)throw due.error;let sent=0
-      for(const n of due.data||[]){try{const prefR=await db.from('notification_preferences').select('*').eq('user_id',n.user_id).maybeSingle();if(prefR.error)throw prefR.error;const pref=prefR.data;const allowed=pref?.write_access===true&&pref?.[n.kind]!==false;if(!allowed){await db.from('notification_queue').update({status:'cancelled',error:'preference disabled'}).eq('id',n.id);continue}if(notificationsQuietNow(pref))continue;const chatId=(n as any).users?.telegram_id;if(!chatId){await db.from('notification_queue').update({status:'failed',error:'telegram id missing'}).eq('id',n.id);continue}await telegramBot('sendMessage',{chat_id:chatId,text:n.text});await db.from('notification_queue').update({status:'sent',sent_at:new Date().toISOString(),error:null}).eq('id',n.id);sent++}catch(e){await db.from('notification_queue').update({status:'failed',error:String(e).slice(0,500)}).eq('id',n.id)}}
-      return json({ok:true,sent,checked:(due.data||[]).length})
+      const due=await db.from('notification_queue').select('id,user_id,kind,text,attempts,users(telegram_id)').eq('status','pending').lte('send_after',new Date().toISOString()).order('send_after').limit(50)
+      if(due.error)throw due.error
+      let sent=0,retried=0,failed=0,cancelled=0
+      for(const n of due.data||[]){
+        const attempt=Math.max(0,Number(n.attempts||0))+1
+        const attemptedAt=new Date().toISOString()
+        try{
+          const prefR=await db.from('notification_preferences').select('*').eq('user_id',n.user_id).maybeSingle()
+          if(prefR.error)throw prefR.error
+          const pref=prefR.data
+          const allowed=pref?.write_access===true&&pref?.[n.kind]!==false
+          if(!allowed){
+            const r=await db.from('notification_queue').update({status:'cancelled',error:'preference disabled'}).eq('id',n.id)
+            if(r.error)throw r.error
+            cancelled++
+            continue
+          }
+          if(notificationsQuietNow(pref))continue
+          const chatId=(n as any).users?.telegram_id
+          if(!chatId){
+            const r=await db.from('notification_queue').update({status:'failed',error:'telegram id missing',attempts:attempt,last_attempt_at:attemptedAt}).eq('id',n.id)
+            if(r.error)throw r.error
+            failed++
+            continue
+          }
+          await telegramBot('sendMessage',{chat_id:chatId,text:n.text})
+          const r=await db.from('notification_queue').update({status:'sent',sent_at:new Date().toISOString(),error:null,attempts:attempt,last_attempt_at:attemptedAt}).eq('id',n.id)
+          if(r.error)throw r.error
+          sent++
+        }catch(e){
+          const message=String(e).slice(0,500)
+          const permanent=notificationErrorIsPermanent(e)
+          const exhausted=attempt>=3
+          const patch=permanent||exhausted
+            ?{status:'failed',error:message,attempts:attempt,last_attempt_at:attemptedAt}
+            :{status:'pending',error:message,attempts:attempt,last_attempt_at:attemptedAt,send_after:notificationRetryAt(attempt)}
+          const r=await db.from('notification_queue').update(patch).eq('id',n.id)
+          if(r.error)console.error('notification retry state failed',r.error)
+          if(permanent||exhausted)failed++;else retried++
+        }
+      }
+      return json({ok:true,sent,retried,failed,cancelled,checked:(due.data||[]).length})
     }
 
     const isAdminAction=action.startsWith('admin-')||action.startsWith('ai-')||action.startsWith('draw-')

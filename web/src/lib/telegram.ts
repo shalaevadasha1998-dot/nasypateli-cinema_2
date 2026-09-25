@@ -44,6 +44,6 @@ export function initTelegram() {
 export function telegramInitData() { return telegramWebApp()?.initData || '' }
 export function telegramUser() { return telegramWebApp()?.initDataUnsafe?.user }
 export function telegramStartParam(){ return telegramWebApp()?.initDataUnsafe?.start_param || '' }
-export function requestTelegramWriteAccess(){return new Promise<boolean>(resolve=>{const app=telegramWebApp();if(!app?.requestWriteAccess)return resolve(false);app.requestWriteAccess(granted=>resolve(!!granted))})}
+export function requestTelegramWriteAccess(){return new Promise<boolean>(resolve=>{const app=telegramWebApp();if(!app?.requestWriteAccess)return resolve(false);let settled=false;const finish=(granted:boolean)=>{if(settled)return;settled=true;window.clearTimeout(timer);resolve(granted)};const timer=window.setTimeout(()=>finish(false),8000);try{app.requestWriteAccess(granted=>finish(!!granted))}catch{finish(false)}})}
 export function haptic(style:'light'|'medium'|'heavy'|'rigid'|'soft'='light'){telegramWebApp()?.HapticFeedback?.impactOccurred?.(style)}
 export function hapticSuccess(){telegramWebApp()?.HapticFeedback?.notificationOccurred?.('success')}
