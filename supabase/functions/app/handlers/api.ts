@@ -148,11 +148,16 @@ async function runtimeHealth(db:any){
   const env=(name:string)=>!!String(Deno.env.get(name)||'').trim()
   const pilotOk=!pilot.error&&pilot.data?.slug==='2026-10-03'&&Number(pilot.data?.capacity)===30&&Number(pilot.data?.ticket_price_rub)===500
   const thresholds=gameConfig.data?.stage_thresholds||{}
+  const thresholdValues=['stage_0','stage_1','stage_2','stage_3','stage_4'].map(stage=>Number(thresholds?.[stage]))
+  const thresholdsOk=
+    thresholdValues.every(Number.isFinite)&&
+    thresholdValues[0]===0&&
+    thresholdValues.every((value,index)=>index===0||value>thresholdValues[index-1])
   const gameLoop=
     !gameConfig.error&&!!gameConfig.data&&
     Number(gameConfig.data.feeding_cost)>0&&
     Number(gameConfig.data.feeding_growth)>0&&
-    ['stage_0','stage_1','stage_2','stage_3','stage_4'].every(stage=>Number.isFinite(Number(thresholds?.[stage])))&&
+    thresholdsOk&&
     !testTask.error&&
     testTask.data?.id==='first_test_task'&&
     testTask.data?.status==='active'&&
