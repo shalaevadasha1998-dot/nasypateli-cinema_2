@@ -95,6 +95,8 @@ export type CreatureState = {
   crumbs:number
   growthProgress:number
   lastFedAt?:string
+  feedingCost:number
+  canFeedToday:boolean
   storyCount:number
   traits:Record<CreatureTrait,number>
   cosmetics:CreatureCosmetic[]
@@ -165,6 +167,7 @@ export type DemoState = {
   datingCards:DatingCard[]
   datingMatches:DatingMatch[]
   notificationPrefs:NotificationPrefs
+  creatureTaskCompletions?:Record<string,string>
   screenMessage?: string
   outputs?: Record<string, unknown>
   outputApprovals?: Record<string,boolean>
