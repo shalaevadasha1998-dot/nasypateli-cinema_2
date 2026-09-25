@@ -55,6 +55,10 @@ export function Rabbit({
     <span className="rabbit-art" aria-hidden><img src={`${import.meta.env.BASE_URL}assets/${asset}`} alt="" draggable={false}/></span>
     {state==='feeding'&&<span className="rabbit-feed-fx" aria-hidden>{[0,1,2,3,4,5].map(i=><i key={i}/>)}</span>}
     {state==='growing'&&<span className="rabbit-growth-fx" aria-hidden>{[0,1,2,3,4,5,6,7].map(i=><i key={i}/>)}</span>}
+    {state==='hungry'&&<span className="rabbit-hungry-fx" aria-hidden>{[0,1,2].map(i=><i key={i}/>)}</span>}
+    {state==='thinking'&&<span className="rabbit-thinking-fx" aria-hidden><i/><i/><i/></span>}
+    {state==='sleeping'&&<span className="rabbit-sleep-fx" aria-hidden><i>z</i><i>z</i><i>z</i></span>}
+    {state==='waking'&&<span className="rabbit-wake-fx" aria-hidden><i/><i/><i/></span>}
     <span className="rabbit-scarf"/><span className="rabbit-fangs"/><span className="rabbit-heart">♥</span><span className="rabbit-ticket">КИНО</span><span className="rabbit-hat"/><span className="rabbit-bag"/><span className="rabbit-flower">✦</span>{(creature.cosmetics||[]).filter(x=>x.equipped&&!['scarf-red','horror-fangs','romantic-heart','travel-ticket','night-cap','random-bag','first-flower'].includes(x.code)).map(x=><span key={x.code} className={`rabbit-trace slot-${x.slot} rarity-${x.rarity}`}>{String(x.visual?.glyph||'•')}</span>)}
   </div>
 }
