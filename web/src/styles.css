@@ -702,3 +702,47 @@ button:active,.btn:active{transform:scale(.985)}
   .motion-lab-stage .rabbit{width:210px;height:300px}
   .motion-lab-stage>div:last-child{justify-self:start;align-self:end}
 }
+
+
+/* rabbit emotional states */
+.rabbit-hungry-fx,.rabbit-thinking-fx,.rabbit-sleep-fx,.rabbit-wake-fx{position:absolute;inset:0;pointer-events:none;z-index:5}
+.rabbit-state-hungry{animation:rabbit-hungry-body 1.4s ease-in-out infinite}
+.rabbit-state-hungry .rabbit-art{animation:rabbit-hungry-lean 1.4s ease-in-out infinite}
+.rabbit-hungry-fx i{position:absolute;left:50%;bottom:34%;width:10px;height:9px;border-radius:58% 42% 54% 46%;background:#eee7d9;border:1px solid rgba(56,52,45,.7);box-shadow:inset 2px -1px 0 rgba(95,85,70,.18);opacity:0}
+.rabbit-hungry-fx i:nth-child(1){--hx:-34px;--hy:-26px;animation:rabbit-hungry-crumb 1.5s .05s ease-in-out infinite}
+.rabbit-hungry-fx i:nth-child(2){--hx:4px;--hy:-42px;animation:rabbit-hungry-crumb 1.5s .28s ease-in-out infinite}
+.rabbit-hungry-fx i:nth-child(3){--hx:34px;--hy:-22px;animation:rabbit-hungry-crumb 1.5s .52s ease-in-out infinite}
+@keyframes rabbit-hungry-body{0%,100%{transform:scale(var(--rabbit-growth-scale,1))}50%{transform:translateY(2px) scale(calc(var(--rabbit-growth-scale,1) * .992))}}
+@keyframes rabbit-hungry-lean{0%,100%{transform:rotate(0)}50%{transform:rotate(-2.2deg)}}
+@keyframes rabbit-hungry-crumb{0%,100%{opacity:0;transform:translate(0,10px) scale(.55)}35%{opacity:.85}70%{opacity:.2;transform:translate(var(--hx),var(--hy)) rotate(28deg) scale(.9)}}
+
+.rabbit-state-thinking .rabbit-art{animation:rabbit-think 1.75s cubic-bezier(.2,.78,.2,1) infinite}
+.rabbit-thinking-fx{display:block}
+.rabbit-thinking-fx i{position:absolute;border-radius:50%;background:var(--paper);opacity:.78;box-shadow:0 0 10px rgba(234,229,220,.12)}
+.rabbit-thinking-fx i:nth-child(1){width:5px;height:5px;left:69%;top:28%;animation:think-dot 1.5s 0s ease-in-out infinite}
+.rabbit-thinking-fx i:nth-child(2){width:7px;height:7px;left:75%;top:21%;animation:think-dot 1.5s .18s ease-in-out infinite}
+.rabbit-thinking-fx i:nth-child(3){width:10px;height:10px;left:82%;top:12%;animation:think-dot 1.5s .36s ease-in-out infinite}
+@keyframes rabbit-think{0%,100%{transform:rotate(0deg) translateY(0)}45%{transform:rotate(-1.8deg) translateY(-2px)}65%{transform:rotate(1deg) translateY(-1px)}}
+@keyframes think-dot{0%,100%{opacity:.15;transform:translateY(4px) scale(.72)}50%{opacity:.9;transform:translateY(-4px) scale(1)}}
+
+.rabbit-state-sleeping{transform:scale(var(--rabbit-growth-scale,1)) translateY(5px)}
+.rabbit-state-sleeping .rabbit-art{animation:rabbit-sleep-breathe 3.2s ease-in-out infinite;filter:brightness(.78) saturate(.78)}
+.rabbit-state-sleeping .rabbit-aura{opacity:.16}
+.rabbit-sleep-fx i{position:absolute;right:18%;top:24%;font:700 12px/1 ui-monospace,monospace;color:#d7d2c9;opacity:0}
+.rabbit-sleep-fx i:nth-child(1){animation:sleep-z 2.4s 0s ease-out infinite}
+.rabbit-sleep-fx i:nth-child(2){right:11%;top:17%;font-size:15px;animation:sleep-z 2.4s .55s ease-out infinite}
+.rabbit-sleep-fx i:nth-child(3){right:4%;top:9%;font-size:18px;animation:sleep-z 2.4s 1.1s ease-out infinite}
+@keyframes rabbit-sleep-breathe{0%,100%{transform:scaleY(.985) translateY(3px)}50%{transform:scaleY(1.008) translateY(0)}}
+@keyframes sleep-z{0%{opacity:0;transform:translate(0,6px) scale(.75)}30%{opacity:.85}100%{opacity:0;transform:translate(8px,-16px) scale(1.08)}}
+
+.rabbit-state-waking .rabbit-art{animation:rabbit-wake-stretch .95s cubic-bezier(.2,.85,.2,1) both}
+.rabbit-wake-fx i{position:absolute;left:50%;bottom:27%;width:3px;height:18px;background:linear-gradient(var(--paper),transparent);transform-origin:50% 100%;opacity:0}
+.rabbit-wake-fx i:nth-child(1){transform:translateX(-42px) rotate(-38deg);animation:wake-ray .7s .08s ease-out both}
+.rabbit-wake-fx i:nth-child(2){transform:translateX(-1px) rotate(0);animation:wake-ray .7s .14s ease-out both}
+.rabbit-wake-fx i:nth-child(3){transform:translateX(38px) rotate(38deg);animation:wake-ray .7s .20s ease-out both}
+@keyframes rabbit-wake-stretch{0%{transform:translateY(8px) scaleY(.94);filter:brightness(.78)}45%{transform:translateY(-5px) scaleY(1.06);filter:brightness(1.08)}75%{transform:translateY(1px) scaleY(.99)}100%{transform:none;filter:none}}
+@keyframes wake-ray{0%{opacity:0;scale:.5}40%{opacity:.85}100%{opacity:0;scale:1.2}}
+
+@media(prefers-reduced-motion:reduce){
+  .rabbit-state-hungry,.rabbit-state-hungry .rabbit-art,.rabbit-hungry-fx i,.rabbit-state-thinking .rabbit-art,.rabbit-thinking-fx i,.rabbit-state-sleeping .rabbit-art,.rabbit-sleep-fx i,.rabbit-state-waking .rabbit-art,.rabbit-wake-fx i{animation:none!important}
+}
