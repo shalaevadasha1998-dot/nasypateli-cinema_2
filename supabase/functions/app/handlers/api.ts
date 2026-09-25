@@ -310,6 +310,11 @@ export async function handleApi(req:Request){
       const existing=ex.data
       if(existing?.born_at)return json({ok:true,alreadyBorn:true,creature:await creatureState(db,user.id)})
 
+      // A fresh birth starts a fresh creature-task lifecycle. Older profile
+      // deletion code could leave task rows behind after removing the creature.
+      const staleTasks=await db.from('user_creature_tasks').delete().eq('user_id',user.id)
+      if(staleTasks.error)throw staleTasks.error
+
       const bornAt=new Date().toISOString()
 
       if(existing){
@@ -450,9 +455,24 @@ export async function handleApi(req:Request){
     }
     if(action==='delete-profile'){
       if(String(body.confirm)!=='DELETE_PROFILE')return err('Нужно подтверждение удаления',422)
-      const tables=['jipitina_messages','jipitina_memory','dating_swipes','dating_profiles','user_blocks','notification_preferences','notification_queue','encounter_tokens','user_creature_cosmetics','crumb_ledger','user_stories','story_trigger_log','creatures','film_ideas','prediction_answers','discussion_thoughts','post_film_reactions','final_reviews','event_feedback','event_scores','leaderboard','cinema_profiles']
-      for(const t of tables){let q=db.from(t).delete();if(t==='jipitina_memory')q=q.eq('scope','user').eq('scope_id',user.id);else if(t==='dating_swipes')q=q.or(`swiper_id.eq.${user.id},target_id.eq.${user.id}`);else if(t==='user_blocks')q=q.or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`);else if(t==='encounter_tokens')q=q.eq('owner_user_id',user.id);else q=q.eq('user_id',user.id);const r=await q;if(r.error)console.error('profile delete',t,r.error)}
-      await db.from('social_connections').delete().or(`user_a.eq.${user.id},user_b.eq.${user.id}`);await db.from('users').update({display_name:'участник',telegram_username:null,updated_at:new Date().toISOString()}).eq('id',user.id);return json({ok:true})
+      const failures:string[]=[]
+      const tables=['jipitina_messages','jipitina_memory','dating_swipes','dating_profiles','user_blocks','notification_preferences','notification_queue','encounter_tokens','user_creature_tasks','user_creature_cosmetics','user_collectibles','crumb_ledger','user_stories','story_trigger_log','creatures','film_ideas','prediction_answers','discussion_thoughts','post_film_reactions','final_reviews','event_feedback','event_scores','leaderboard','cinema_profiles']
+      for(const t of tables){
+        let q=db.from(t).delete()
+        if(t==='jipitina_memory')q=q.eq('scope','user').eq('scope_id',user.id)
+        else if(t==='dating_swipes')q=q.or(`swiper_id.eq.${user.id},target_id.eq.${user.id}`)
+        else if(t==='user_blocks')q=q.or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`)
+        else if(t==='encounter_tokens')q=q.eq('owner_user_id',user.id)
+        else q=q.eq('user_id',user.id)
+        const r=await q
+        if(r.error){console.error('profile delete',t,r.error);failures.push(t)}
+      }
+      const social=await db.from('social_connections').delete().or(`user_a.eq.${user.id},user_b.eq.${user.id}`)
+      if(social.error){console.error('profile delete social_connections',social.error);failures.push('social_connections')}
+      const resetUser=await db.from('users').update({display_name:'участник',telegram_username:null,updated_at:new Date().toISOString()}).eq('id',user.id)
+      if(resetUser.error){console.error('profile delete users',resetUser.error);failures.push('users')}
+      if(failures.length)return err('Не удалось полностью удалить профиль. Попробуйте ещё раз.',500)
+      return json({ok:true})
     }
 
     const slug=String(body.slug||'2026-10-03');const event=await eventBySlug(db,slug)
