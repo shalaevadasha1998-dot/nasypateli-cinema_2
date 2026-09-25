@@ -96,6 +96,7 @@ export type CreatureState = {
   growthProgress:number
   lastFedAt?:string
   feedingCost:number
+  stageThresholds:Record<'stage_0'|'stage_1'|'stage_2'|'stage_3'|'stage_4',number>
   canFeedToday:boolean
   storyCount:number
   traits:Record<CreatureTrait,number>
