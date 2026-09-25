@@ -381,3 +381,24 @@ button,input,textarea,select{max-width:100%}
 .creature-task small{color:#a9b98a}
 .creature-task .btn{width:auto;min-width:100px}
 @media(max-width:360px){.creature-task{grid-template-columns:1fr}.creature-task .btn{width:100%}}
+
+
+/* zhivotina progressive birth + state reactions */
+.birth-progress-meter{height:3px;background:rgba(255,255,255,.12);overflow:hidden;margin:16px 0 18px}
+.birth-progress-meter>i{display:block;height:100%;background:currentColor;transition:width .24s ease}
+.birth-progress-1 .birth-cartoon-sealed{animation:birthPackNudge 1.8s ease-in-out infinite}
+.birth-progress-2 .birth-cartoon-sealed{animation:birthPackNudge 1.25s ease-in-out infinite}
+.birth-progress-3 .birth-cartoon-sealed{animation:birthPackNudge .82s ease-in-out infinite}
+.birth-progress-4 .birth-cartoon-sealed{animation:birthPackNudge .58s ease-in-out infinite}
+@keyframes birthPackNudge{0%,100%{transform:translate3d(0,0,0) rotate(0)}35%{transform:translate3d(-2px,-1px,0) rotate(-.8deg)}70%{transform:translate3d(2px,0,0) rotate(.7deg)}}
+.rabbit-state-feeding img{animation:rabbitFeedReaction .48s ease-in-out 2}
+.rabbit-state-happy img{animation:rabbitHappyReaction .62s ease-in-out 1}
+.rabbit-state-growing img{animation:rabbitGrowReaction .9s cubic-bezier(.2,.8,.2,1) 1}
+@keyframes rabbitFeedReaction{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(5px) scale(.985)}}
+@keyframes rabbitHappyReaction{0%,100%{transform:rotate(0) translateY(0)}35%{transform:rotate(-2deg) translateY(-3px)}70%{transform:rotate(2deg) translateY(-2px)}}
+@keyframes rabbitGrowReaction{0%{transform:scale(1)}45%{transform:scale(1.08)}100%{transform:scale(1)}}
+@media(prefers-reduced-motion:reduce){
+  .birth-progress-1 .birth-cartoon-sealed,.birth-progress-2 .birth-cartoon-sealed,.birth-progress-3 .birth-cartoon-sealed,.birth-progress-4 .birth-cartoon-sealed,
+  .rabbit-state-feeding img,.rabbit-state-happy img,.rabbit-state-growing img{animation:none!important}
+  .birth-progress-meter>i{transition:none}
+}
