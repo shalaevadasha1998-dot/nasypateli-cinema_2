@@ -2,6 +2,7 @@ import { ensureCreature } from './stories.ts'
 
 function tasteDistance(a:any,b:any){const keys=['weirdness','heaviness','atmosphere','oldness','experimental','slowness','surrealism'];const diffs=keys.map(k=>Math.abs(Number(a?.[k]??50)-Number(b?.[k]??50)));return diffs.reduce((x,y)=>x+y,0)/(keys.length*100)}
 function overlap(a:string[]=[],b:string[]=[]){const bs=new Set(b.map(x=>x.toLowerCase().trim()));return a.filter(x=>bs.has(x.toLowerCase().trim()))}
+function creatureStage(value:any){const s=String(value||'');return ['stage_0','stage_1','stage_2','stage_3','stage_4'].includes(s)?s:s==='grown'?'stage_4':s==='young'?'stage_2':'stage_0'}
 export function allowedGender(show:string,self:string){return show==='all'||(show==='women'&&self==='woman')||(show==='men'&&self==='man')}
 
 export async function datingState(db:any,userId:string){
@@ -22,7 +23,7 @@ export async function datingState(db:any,userId:string){
       if(u.error||cp.error)continue
       const sharedFilms=overlap(mine.data?.favorite_films||[],cp.data?.favorite_films||[]);const sharedGenres=overlap(mine.data?.favorite_genres||[],cp.data?.favorite_genres||[]);const dist=tasteDistance(mine.data?.profile_json?.taste,cp.data?.profile_json?.taste);const compatibility=Math.round(Math.max(0,Math.min(100,50+sharedFilms.length*18+sharedGenres.length*7+(1-dist)*25)))
       let note=sharedFilms.length?`у вас совпал ${sharedFilms[0]}`:sharedGenres.length?`вы оба зачем-то любите ${sharedGenres[0]}`:dist>.55?'по кино вы почти противоположности. это подозрительно интересно':'ваши вкусы стоят довольно близко'
-      cards.push({userId:c.user_id,displayName:u.data.display_name||'участник',creatureName:cr.name||'Животина',creatureStage:cr.stage||'tiny',favoriteFilms:cp.data?.favorite_films||[],favoriteGenres:cp.data?.favorite_genres||[],taste:cp.data?.profile_json?.taste||{},matchNote:note,compatibility})
+      cards.push({userId:c.user_id,displayName:u.data.display_name||'участник',creatureName:cr.name||'Животина',creatureStage:creatureStage(cr.stage),favoriteFilms:cp.data?.favorite_films||[],favoriteGenres:cp.data?.favorite_genres||[],taste:cp.data?.profile_json?.taste||{},matchNote:note,compatibility})
     }
     cards.sort((a,b)=>b.compatibility-a.compatibility)
   }

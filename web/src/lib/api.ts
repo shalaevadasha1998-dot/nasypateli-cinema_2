@@ -6,39 +6,13 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const fn = (import.meta.env.VITE_API_FUNCTION as string | undefined) || 'app'
 export const demoMode = import.meta.env.VITE_DEMO_MODE !== 'false' || !supabaseUrl
 
-const pendingBirthKey='nasypateli-birth-shadow-v1'
-type PendingBirth={name:string;at:number}
-function readPendingBirth():PendingBirth|null{
-  try{
-    const raw=localStorage.getItem(pendingBirthKey);if(!raw)return null
-    const parsed=JSON.parse(raw);if(!parsed?.name||!parsed?.at)return null
-    if(Date.now()-Number(parsed.at)>1000*60*60*24*30){localStorage.removeItem(pendingBirthKey);return null}
-    return {name:String(parsed.name).slice(0,32),at:Number(parsed.at)}
-  }catch{return null}
+function normalizeCreatureStage(stage:unknown):DemoState['creature']['stage']{
+  const value=String(stage||'')
+  if(['stage_0','stage_1','stage_2','stage_3','stage_4'].includes(value))return value as DemoState['creature']['stage']
+  if(value==='grown')return 'stage_4'
+  if(value==='young')return 'stage_2'
+  return 'stage_0'
 }
-function writePendingBirth(name:string){try{localStorage.setItem(pendingBirthKey,JSON.stringify({name,at:Date.now()}))}catch{}}
-function clearPendingBirth(){try{localStorage.removeItem(pendingBirthKey)}catch{}}
-function overlayPendingBirth(state:DemoState):DemoState{
-  const pending=readPendingBirth();if(!pending)return state
-  const serverBorn=state.creature?.born===true
-  const serverName=String(state.creature?.name||'')
-  if(serverBorn&&serverName===pending.name){clearPendingBirth();return state}
-  return {...state,creature:{...state.creature,born:true,bornAt:state.creature?.bornAt||new Date(pending.at).toISOString(),name:pending.name,stage:state.creature?.stage||'tiny',crumbs:Math.max(3,Number(state.creature?.crumbs||0))}}
-}
-async function syncPendingBirth(){
-  const pending=readPendingBirth();if(!pending||demoMode)return
-  try{
-    try{await requestApi('birth-creature',{name:pending.name})}
-    catch{await requestApi('participant-birth-v2',{name:pending.name})}
-    clearPendingBirth();bootstrapCache=null
-  }catch{/* local birth shadow intentionally keeps the UX alive; retry on next bootstrap */}
-}
-export function optimisticBirth(name:string){
-  const clean=name.trim().slice(0,32)||'Животина';writePendingBirth(clean);bootstrapCache=null
-  window.setTimeout(()=>{void syncPendingBirth()},60)
-  return clean
-}
-
 function notifyDemo(){ window.dispatchEvent(new CustomEvent('nasypateli-demo-change')) }
 
 function requestTimeoutMs(action:string){
@@ -85,7 +59,7 @@ function normalizeBootstrap(raw:any):DemoState{
     registration:['none','reserved','paid','attended','waitlist','refunded'].includes(r.registration)?r.registration:'none',
     ideaFinalists:Array.isArray(r.ideaFinalists)?r.ideaFinalists:[],movieFinalists:Array.isArray(r.movieFinalists)?r.movieFinalists:[],predictions:Array.isArray(r.predictions)?r.predictions:[],leaderboard:Array.isArray(r.leaderboard)?r.leaderboard:[],pastEvents:Array.isArray(r.pastEvents)?r.pastEvents:[],jipitinaMessages:Array.isArray(r.jipitinaMessages)?r.jipitinaMessages:[],
     profileStats:{...base.profileStats,...(r.profileStats||{})},
-    creature:{...base.creature,...rc,traits:{...base.creature.traits,...(rc.traits||{})},cosmetics:Array.isArray(rc.cosmetics)?rc.cosmetics:[],timeline:Array.isArray(rc.timeline)?rc.timeline:[]},
+    creature:{...base.creature,...rc,stage:normalizeCreatureStage(rc.stage),feedingCost:Math.max(1,Number(rc.feedingCost||base.creature.feedingCost||1)),canFeedToday:rc.canFeedToday!==false,traits:{...base.creature.traits,...(rc.traits||{})},cosmetics:Array.isArray(rc.cosmetics)?rc.cosmetics:[],timeline:Array.isArray(rc.timeline)?rc.timeline:[]},
     dating:{...base.dating,...rd,intents:Array.isArray(rd.intents)?rd.intents:[]},datingCards:Array.isArray(r.datingCards)?r.datingCards:[],datingMatches:Array.isArray(r.datingMatches)?r.datingMatches:[],
     notificationPrefs:{...base.notificationPrefs,...rn},outputs:r.outputs&&typeof r.outputs==='object'?r.outputs:{},outputApprovals:r.outputApprovals&&typeof r.outputApprovals==='object'?r.outputApprovals:{}
   } as DemoState
@@ -98,7 +72,7 @@ export async function callApi<T=unknown>(action:string,payload:Record<string,unk
     const now=Date.now()
     if(bootstrapCache&&now-bootstrapCache.at<15000)return bootstrapCache.value as T
     if(bootstrapInFlight)return bootstrapInFlight as Promise<T>
-    bootstrapInFlight=requestApi<any>(action,payload).then(value=>{const normalized=overlayPendingBirth(normalizeBootstrap(value));bootstrapCache={at:Date.now(),value:normalized};if(readPendingBirth())window.setTimeout(()=>{void syncPendingBirth()},80);return normalized}).finally(()=>{bootstrapInFlight=null})
+    bootstrapInFlight=requestApi<any>(action,payload).then(value=>{const normalized=normalizeBootstrap(value);bootstrapCache={at:Date.now(),value:normalized};return normalized}).finally(()=>{bootstrapInFlight=null})
     return bootstrapInFlight as Promise<T>
   }
   const result=await requestApi<T>(action,payload)
@@ -128,6 +102,7 @@ function demoReply(message:string,mode:string):string{
   return 'я здесь. могу разобрать твой вкус, помочь придумать идею для вечера или поговорить про то, что мы уже смотрели.'
 }
 
+type growthStage=DemoState['creature']['stage']
 function demoAction(action:string,payload:Record<string,unknown>){
   switch(action){
     case 'bootstrap': return loadDemo()
@@ -135,8 +110,34 @@ function demoAction(action:string,payload:Record<string,unknown>){
     case 'screen-bootstrap': return loadDemo()
     case 'save-profile-progress': return mutate(s=>({...s,profile:{...s.profile,...(payload.profile as Partial<CinemaProfile>),onboardingStep:Number(payload.step)||s.profile.onboardingStep}}))
     case 'save-profile': return mutate(s=>({...s,profile:{...(payload.profile as CinemaProfile),completed:true,completedAt:new Date().toISOString()},onboardingComplete:true}))
-    case 'birth-creature':
-    case 'participant-birth-v2': return mutate(s=>({...s,creature:{...s.creature,born:true,bornAt:new Date().toISOString(),name:String(payload.name||'Животина'),crumbs:Math.max(3,s.creature.crumbs)}}))
+    case 'participant-birth-v2':
+    case 'birth-creature': {
+      const current=loadDemo()
+      if(current.creature.born)return {ok:true,alreadyBorn:true,creature:current.creature}
+      const next=mutate(s=>({...s,creature:{...s.creature,born:true,bornAt:new Date().toISOString(),name:String(payload.name||'Животина'),stage:'stage_0',crumbs:s.creature.crumbs,growthProgress:s.creature.growthProgress||0,feedingCost:s.creature.feedingCost||1,canFeedToday:s.creature.canFeedToday!==false}}))
+      return {ok:true,alreadyBorn:false,creature:next.creature}
+    }
+    case 'creature-tasks': {
+      const s=loadDemo();const completed=s.creatureTaskCompletions?.first_test_task
+      return {ok:true,tasks:[{id:'first_test_task',title:'первая крошка',description:'тестовое задание для первого вертикального среза Животины',rewardCrumbs:3,completionType:'manual',status:completed?'completed':'available',completedAt:completed||undefined}]}
+    }
+    case 'complete-creature-task': {
+      if(String(payload.taskId||'')!=='first_test_task')throw new Error('task_unavailable')
+      const s=loadDemo();const completed=s.creatureTaskCompletions?.first_test_task
+      if(completed)return {ok:true,alreadyCompleted:true,crumbs:s.creature.crumbs,creature:s.creature}
+      const at=new Date().toISOString()
+      const next=mutate(v=>({...v,creature:{...v.creature,crumbs:v.creature.crumbs+3},creatureTaskCompletions:{...(v.creatureTaskCompletions||{}),first_test_task:at}}))
+      return {ok:true,alreadyCompleted:false,rewardCrumbs:3,crumbs:next.creature.crumbs,creature:next.creature}
+    }
+    case 'feed-creature': {
+      const s=loadDemo();const cost=Math.max(1,Number(s.creature.feedingCost||1))
+      if(!s.creature.canFeedToday)return {ok:true,alreadyFed:true,crumbs:s.creature.crumbs,growthProgress:s.creature.growthProgress,stage:s.creature.stage,creature:s.creature}
+      if(s.creature.crumbs<cost)throw new Error('not_enough_crumbs')
+      const growth=s.creature.growthProgress+3
+      const stage:growthStage = growth>=90?'stage_4':growth>=50?'stage_3':growth>=25?'stage_2':growth>=10?'stage_1':'stage_0'
+      const next=mutate(v=>({...v,creature:{...v.creature,crumbs:v.creature.crumbs-cost,growthProgress:growth,stage,lastFedAt:new Date().toISOString(),canFeedToday:false}}))
+      return {ok:true,alreadyFed:false,cost,crumbs:next.creature.crumbs,growthProgress:growth,stage,lastFedAt:next.creature.lastFedAt,creature:next.creature}
+    }
     case 'equip-cosmetic': return mutate(s=>({...s,creature:{...s.creature,cosmetics:s.creature.cosmetics.map(x=>x.code===payload.code?{...x,equipped:payload.equipped===true}:x)}}))
     case 'save-dating-profile': return mutate(s=>({...s,dating:{...s.dating,...(payload.dating as any)}}))
     case 'dating-swipe': return mutate(s=>({...s,datingCards:s.datingCards.filter(x=>x.userId!==payload.targetUserId),datingMatches:payload.direction==='like'?[...s.datingMatches,{id:`m-${Date.now()}`,kind:'cinema',displayName:'маша',creatureName:'Кишка',createdAt:new Date().toISOString()}]:s.datingMatches}))
