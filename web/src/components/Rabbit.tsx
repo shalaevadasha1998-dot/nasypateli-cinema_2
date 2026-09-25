@@ -7,10 +7,10 @@ export type CreatureAnimationState =
 
 const idleAsset:Record<CreatureState['stage'],string>={
   stage_0:'rabbit-idle.webp',
-  stage_1:'rabbit-baby.png',
-  stage_2:'rabbit-baby.png',
-  stage_3:'rabbit-baby.png',
-  stage_4:'rabbit-baby.png'
+  stage_1:'rabbit-idle.webp',
+  stage_2:'rabbit-idle.webp',
+  stage_3:'rabbit-idle.webp',
+  stage_4:'rabbit-idle.webp'
 }
 
 export function getCreatureAnimation(stage:CreatureState['stage'],state:CreatureAnimationState='idle'){

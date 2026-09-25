@@ -195,11 +195,7 @@ export function BirthPage(){
           :'birth-sealed.webp'
       )
       :phase==='hatch'
-        ?(
-          reducedMotion
-            ?'rabbit-idle.webp'
-            :'birth-hatch.webp'
-        )
+        ?'birth-sealed-poster.webp'
         :phase==='focus'
           ?'rabbit-head.png'
           :phase==='name'
@@ -247,7 +243,7 @@ export function BirthPage(){
       {phase==='sealed'&&<span className={`birth-kernel-fx birth-kernel-level-${bucket}`} aria-hidden>{[0,1,2,3,4,5,6].map(i=><i key={i}/>)}</span>}
       {phase==='hatch'&&<>
         <span className="birth-burst-fx" aria-hidden>{[0,1,2,3,4,5,6,7,8,9].map(i=><i key={i}/>)}</span>
-        <span className="birth-bunny-jump" aria-hidden><img src={`${import.meta.env.BASE_URL}assets/rabbit-baby.png`} alt="" draggable={false}/></span>
+        <span className="birth-bunny-jump" aria-hidden><img src={`${import.meta.env.BASE_URL}assets/rabbit-idle.webp`} alt="" draggable={false}/></span>
       </>}
 
       <div className="birth-film-scratch" aria-hidden/>
