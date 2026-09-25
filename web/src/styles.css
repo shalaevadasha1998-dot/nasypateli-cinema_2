@@ -590,5 +590,6 @@ button:active,.btn:active{transform:scale(.985)}
 }
 @media(prefers-reduced-motion:reduce){
   .rabbit-state-feeding,.rabbit-state-happy,.rabbit-state-growing,.rabbit-aura,.rabbit-feed-fx i,.rabbit-growth-fx i,.birth-kernel-fx i,.birth-burst-fx i,.birth-bunny-jump img,.dating-card.swipe-like,.dating-card.swipe-pass{animation:none!important}
+  .birth-bunny-jump{display:none}
   .dating-card.swipe-like,.dating-card.swipe-pass{opacity:.65}
 }
