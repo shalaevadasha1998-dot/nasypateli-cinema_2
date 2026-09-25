@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { Button, Card, Empty, Field, Pill } from './components/UI'
 import { CreatureCard, Rabbit, type CreatureAnimationState } from './components/Rabbit'
 import { callApi } from './lib/api'
-import { CREATURE_VISUAL_LEVELS, creatureVisualLabel, creatureVisualLevel } from './lib/creature'
+import { CREATURE_VISUAL_LEVELS, creatureVisualLabel, creatureVisualLevel, growthProgressForVisualLevel } from './lib/creature'
 import { haptic, hapticSuccess, requestTelegramWriteAccess, telegramWebApp } from './lib/telegram'
 import type { CreatureState, DatingIntent, DemoState, NotificationPrefs } from './types'
 
@@ -36,10 +36,12 @@ function creatureGrowthView(creature:CreatureState){
 export function BirthPage(){
   const {data,error}=useBootstrap()
   const nav=useNavigate()
-  const storedProgress=()=>{try{return Math.max(0,Math.min(100,Number(localStorage.getItem('nasypateli-birth-progress')||0)))}catch{return 0}}
+  const [search]=useSearchParams()
+  const preview=search.get('preview')==='1'
+  const storedProgress=()=>{if(preview)return 0;try{return Math.max(0,Math.min(100,Number(localStorage.getItem('nasypateli-birth-progress')||0)))}catch{return 0}}
   const [birthProgress,setBirthProgress]=useState(storedProgress)
   const [phase,setPhase]=useState<'sealed'|'hatch'|'focus'|'name'|'named'>(()=>storedProgress()>=100?'hatch':'sealed')
-  const [name,setName]=useState(()=>{try{return localStorage.getItem('nasypateli-pending-creature-name')||''}catch{return ''}})
+  const [name,setName]=useState(()=>{if(preview)return '';try{return localStorage.getItem('nasypateli-pending-creature-name')||''}catch{return ''}})
   const [shakeReady,setShakeReady]=useState(false)
   const [reducedMotion]=useState(()=>typeof window!=='undefined'&&window.matchMedia?.('(prefers-reduced-motion: reduce)').matches===true)
   const [birthBusy,setBirthBusy]=useState(false)
@@ -49,14 +51,14 @@ export function BirthPage(){
     if(phase!=='sealed')return
     setBirthProgress(current=>{
       const next=Math.min(100,current+amount)
-      try{localStorage.setItem('nasypateli-birth-progress',String(next))}catch{}
+      if(!preview){try{localStorage.setItem('nasypateli-birth-progress',String(next))}catch{}}
       if(next>=100){haptic('heavy');window.setTimeout(()=>setPhase('hatch'),0)}
       else haptic(next>=70?'medium':'light')
       return next
     })
   }
 
-  useEffect(()=>{if(data?.creature?.born)nav('/',{replace:true})},[data?.creature?.born,nav])
+  useEffect(()=>{if(!preview&&data?.creature?.born)nav('/',{replace:true})},[data?.creature?.born,nav,preview])
 
   useEffect(()=>{
     if(reducedMotion||birthProgress<=0||birthProgress>=100)return
@@ -157,22 +159,25 @@ export function BirthPage(){
       setBirthBusy(true)
       setBirthError('')
 
-      await callApi('birth-creature',{name:clean})
-
-      try{
-        localStorage.removeItem('nasypateli-pending-creature-name')
-        localStorage.removeItem('nasypateli-birth-progress')
-        localStorage.removeItem('nasypateli-birth-shadow-v1')
-      }catch{}
+      if(!preview){
+        await callApi('birth-creature',{name:clean})
+        try{
+          localStorage.removeItem('nasypateli-pending-creature-name')
+          localStorage.removeItem('nasypateli-birth-progress')
+          localStorage.removeItem('nasypateli-birth-shadow-v1')
+        }catch{}
+      }
 
       hapticSuccess()
       setName(clean)
       setPhase('named')
 
-      window.setTimeout(
-        ()=>nav('/',{replace:true}),
-        reducedMotion?500:1460
-      )
+      if(!preview){
+        window.setTimeout(
+          ()=>nav('/',{replace:true}),
+          reducedMotion?500:1460
+        )
+      }
     }catch(e:any){
       setBirthError(
         e?.message||'не удалось завершить рождение'
@@ -322,12 +327,12 @@ export function BirthPage(){
               setName(e.target.value)
               setBirthError('')
 
-              try{
+              if(!preview){try{
                 localStorage.setItem(
                   'nasypateli-pending-creature-name',
                   e.target.value
                 )
-              }catch{}
+              }catch{}}
             }}
             placeholder="Животина"
             onKeyDown={e=>{
@@ -365,11 +370,30 @@ export function BirthPage(){
           маленькая. пока.
         </p>
 
-        <div className="birth-loading-line">
-          <i/>
-        </div>
+        {preview
+          ?<><Button onClick={()=>{setBirthProgress(0);setPhase('sealed');setName('');setBirthError('')}}>повторить рождение</Button><Button kind="secondary" onClick={()=>nav('/motion-lab')}>в лабораторию движения</Button></>
+          :<div className="birth-loading-line"><i/></div>}
       </>}
     </div>
+  </div>
+}
+
+export function MotionLabPage(){
+  const {data,error}=useBootstrap()
+  const nav=useNavigate()
+  const [level,setLevel]=useState(1)
+  const [animation,setAnimation]=useState<CreatureAnimationState>('idle')
+  if(!data)return <Load error={error}/>
+  const creature={...data.creature,growthProgress:growthProgressForVisualLevel(level,data.creature)}
+  const states:CreatureAnimationState[]=['idle','happy','feeding','growing','thinking','sleeping','waking']
+  return <div className="page motion-lab-page">
+    <div className="eyebrow">скрытая лаборатория</div>
+    <h1 className="page-title">движение<br/>Животины</h1>
+    <Card className="motion-lab-stage"><Rabbit creature={creature} state={animation}/><div><b>{creatureVisualLabel(creature)}</b><span>рост {level}/50</span></div></Card>
+    <Card><div className="section-title">50 уровней роста</div><input className="motion-level-range" type="range" min="1" max="50" value={level} onChange={e=>setLevel(Number(e.target.value))}/><div className="row spread"><span>1</span><b>{level}/50</b><span>50</span></div></Card>
+    <Card><div className="section-title">реакции</div><div className="motion-state-grid">{states.map(state=><button type="button" className={animation===state?'active':''} key={state} onClick={()=>setAnimation(state)}>{state}</button>)}</div></Card>
+    <Button onClick={()=>nav('/birth?preview=1')}>проиграть рождение</Button>
+    <Button kind="secondary" onClick={()=>nav('/profile')}>назад к профилю</Button>
   </div>
 }
 

@@ -645,3 +645,60 @@ button:active,.btn:active{transform:scale(.985)}
   .rabbit{transition:none}
   .home-rabbit-stage .rabbit{animation:none!important}
 }
+
+
+/* fixes from real Telegram iPhone recording */
+.rabbit-art{
+  position:absolute;
+  inset:0;
+  display:grid;
+  place-items:end center;
+  transform:scale(var(--rabbit-art-zoom,1));
+  transform-origin:center bottom;
+  pointer-events:none;
+  z-index:1;
+}
+.rabbit-art img{width:100%;height:100%;object-fit:contain;object-position:center bottom}
+.rabbit-visual-band-0{--rabbit-art-zoom:4.6}
+.rabbit-visual-band-1,.rabbit-visual-band-2,.rabbit-visual-band-3,.rabbit-visual-band-4{--rabbit-art-zoom:1}
+.rabbit-aura{z-index:0}
+.rabbit-feed-fx,.rabbit-growth-fx,.rabbit-scarf,.rabbit-fangs,.rabbit-heart,.rabbit-ticket,.rabbit-hat,.rabbit-bag,.rabbit-flower,.rabbit-trace{z-index:4}
+.creature-card{min-height:286px}
+.creature-stage{height:276px}
+.home-rabbit-stage{height:344px}
+.home-rabbit-stage .rabbit{width:210px;height:292px}
+.danger-zone{margin-bottom:36px}
+@media(max-width:600px){
+  .page{padding-bottom:172px}
+  .creature-card{grid-template-columns:47% 53%;min-height:276px}
+  .creature-stage{height:264px}
+  .creature-stage .rabbit{width:190px;height:258px}
+  .home-creature-hero{min-height:548px}
+  .home-rabbit-stage{height:350px}
+  .home-rabbit-stage .rabbit{width:214px;height:300px;max-width:none}
+}
+@media(max-width:360px){
+  .page{padding-bottom:168px}
+  .creature-card{grid-template-columns:50% 50%}
+  .creature-stage .rabbit{width:176px;height:246px}
+  .home-rabbit-stage .rabbit{width:202px;height:286px}
+}
+@media(prefers-reduced-motion:reduce){
+  .rabbit-art{transition:none}
+}
+
+
+.motion-lab-stage{min-height:360px;display:grid;grid-template-columns:minmax(180px,.9fr) 1fr;align-items:end;gap:12px;overflow:hidden;background:radial-gradient(circle at 32% 68%,rgba(131,154,105,.16),transparent 43%),#0b0c09}
+.motion-lab-stage .rabbit{width:220px;height:310px;justify-self:center}
+.motion-lab-stage>div:last-child{align-self:center;display:grid;gap:8px}
+.motion-lab-stage>div:last-child b{font-size:28px}
+.motion-lab-stage>div:last-child span{color:var(--muted)}
+.motion-level-range{width:100%;accent-color:var(--rabbit);margin:10px 0 14px}
+.motion-state-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.motion-state-grid button{border:1px solid var(--line);background:#0c0d0a;color:var(--paper);min-height:44px;border-radius:10px}
+.motion-state-grid button.active{border-color:var(--rabbit);background:rgba(131,154,105,.12);color:#dce6d1}
+@media(max-width:430px){
+  .motion-lab-stage{grid-template-columns:1fr;min-height:430px;place-items:end center}
+  .motion-lab-stage .rabbit{width:210px;height:300px}
+  .motion-lab-stage>div:last-child{justify-self:start;align-self:end}
+}
