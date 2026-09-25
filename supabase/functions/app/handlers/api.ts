@@ -137,7 +137,7 @@ async function telegramRuntimeReady(){
 }
 
 async function runtimeHealth(db:any){
-  const requiredTables=['users','cinema_profiles','events','registrations','creatures','creature_tasks','user_creature_tasks','creature_game_config','crumb_ledger','story_definitions','dating_profiles','notification_preferences','encounter_tokens']
+  const requiredTables=['users','cinema_profiles','events','registrations','creatures','creature_tasks','user_creature_tasks','creature_game_config','crumb_ledger','story_definitions','dating_profiles','notification_preferences','notification_queue','encounter_tokens']
   const [tableChecks,pilot,telegram,gameConfig,testTask]=await Promise.all([
     Promise.all(requiredTables.map(async table=>{const r=await db.from(table).select('*',{head:true}).limit(1);return !r.error})),
     db.from('events').select('slug,capacity,ticket_price_rub').eq('slug','2026-10-03').maybeSingle(),
