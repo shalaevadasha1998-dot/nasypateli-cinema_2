@@ -6,39 +6,6 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const fn = (import.meta.env.VITE_API_FUNCTION as string | undefined) || 'app'
 export const demoMode = import.meta.env.VITE_DEMO_MODE !== 'false' || !supabaseUrl
 
-const pendingBirthKey='nasypateli-birth-shadow-v1'
-type PendingBirth={name:string;at:number}
-function readPendingBirth():PendingBirth|null{
-  try{
-    const raw=localStorage.getItem(pendingBirthKey);if(!raw)return null
-    const parsed=JSON.parse(raw);if(!parsed?.name||!parsed?.at)return null
-    if(Date.now()-Number(parsed.at)>1000*60*60*24*30){localStorage.removeItem(pendingBirthKey);return null}
-    return {name:String(parsed.name).slice(0,32),at:Number(parsed.at)}
-  }catch{return null}
-}
-function writePendingBirth(name:string){try{localStorage.setItem(pendingBirthKey,JSON.stringify({name,at:Date.now()}))}catch{}}
-function clearPendingBirth(){try{localStorage.removeItem(pendingBirthKey)}catch{}}
-function overlayPendingBirth(state:DemoState):DemoState{
-  const pending=readPendingBirth();if(!pending)return state
-  const serverBorn=state.creature?.born===true
-  const serverName=String(state.creature?.name||'')
-  if(serverBorn&&serverName===pending.name){clearPendingBirth();return state}
-  return {...state,creature:{...state.creature,born:true,bornAt:state.creature?.bornAt||new Date(pending.at).toISOString(),name:pending.name,stage:state.creature?.stage||'stage_0',crumbs:Number(state.creature?.crumbs||0),growthProgress:Number(state.creature?.growthProgress||0)}}
-}
-async function syncPendingBirth(){
-  const pending=readPendingBirth();if(!pending||demoMode)return
-  try{
-    try{await requestApi('birth-creature',{name:pending.name})}
-    catch{await requestApi('participant-birth-v2',{name:pending.name})}
-    clearPendingBirth();bootstrapCache=null
-  }catch{/* local birth shadow intentionally keeps the UX alive; retry on next bootstrap */}
-}
-export function optimisticBirth(name:string){
-  const clean=name.trim().slice(0,32)||'Животина';writePendingBirth(clean);bootstrapCache=null
-  window.setTimeout(()=>{void syncPendingBirth()},60)
-  return clean
-}
-
 function normalizeCreatureStage(stage:unknown):DemoState['creature']['stage']{
   const value=String(stage||'')
   if(['stage_0','stage_1','stage_2','stage_3','stage_4'].includes(value))return value as DemoState['creature']['stage']
@@ -105,7 +72,7 @@ export async function callApi<T=unknown>(action:string,payload:Record<string,unk
     const now=Date.now()
     if(bootstrapCache&&now-bootstrapCache.at<15000)return bootstrapCache.value as T
     if(bootstrapInFlight)return bootstrapInFlight as Promise<T>
-    bootstrapInFlight=requestApi<any>(action,payload).then(value=>{const normalized=overlayPendingBirth(normalizeBootstrap(value));bootstrapCache={at:Date.now(),value:normalized};if(readPendingBirth())window.setTimeout(()=>{void syncPendingBirth()},80);return normalized}).finally(()=>{bootstrapInFlight=null})
+    bootstrapInFlight=requestApi<any>(action,payload).then(value=>{const normalized=normalizeBootstrap(value);bootstrapCache={at:Date.now(),value:normalized};return normalized}).finally(()=>{bootstrapInFlight=null})
     return bootstrapInFlight as Promise<T>
   }
   const result=await requestApi<T>(action,payload)
