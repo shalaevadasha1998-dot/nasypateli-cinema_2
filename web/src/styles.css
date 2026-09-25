@@ -611,3 +611,37 @@ button:active,.btn:active{transform:scale(.985)}
 .creature-task:has(.btn:disabled){opacity:.58}
 .bottom-nav a:active i{transform:scale(.9)}
 @media(prefers-reduced-motion:reduce){.chat-msg,.timeline>div,.archive-event{animation:none!important}}
+
+
+/* creature growth: 50 visible micro-levels */
+.rabbit{
+  transform:scale(var(--rabbit-growth-scale,1));
+  transform-origin:center bottom;
+  transition:transform .82s cubic-bezier(.18,.86,.2,1)
+}
+.rabbit-visual-band-0 .rabbit-aura{opacity:.22}
+.rabbit-visual-band-1 .rabbit-aura{opacity:.31}
+.rabbit-visual-band-2 .rabbit-aura{opacity:.39}
+.rabbit-visual-band-3 .rabbit-aura{opacity:.47}
+.rabbit-visual-band-4 .rabbit-aura{opacity:.56}
+.home-rabbit-stage .rabbit{
+  animation:home-rabbit-growth-float 4.6s ease-in-out infinite
+}
+@keyframes home-rabbit-growth-float{
+  0%,100%{transform:translateY(0) scale(var(--rabbit-growth-scale,1))}
+  50%{transform:translateY(-4px) scale(var(--rabbit-growth-scale,1))}
+}
+.creature-stage .rabbit{
+  max-width:100%;
+}
+.creature-meta span{
+  white-space:nowrap
+}
+@media(max-width:430px){
+  .home-rabbit-stage .rabbit{max-width:88%}
+  .creature-card .creature-stage{overflow:visible}
+}
+@media(prefers-reduced-motion:reduce){
+  .rabbit{transition:none}
+  .home-rabbit-stage .rabbit{animation:none!important}
+}
