@@ -44,8 +44,8 @@ export const initialDemoState: DemoState = {
   profile: structuredClone(emptyProfile), onboardingComplete:false,
   registration:'none', ideaFinalists:[], movieFinalists:[], predictions:[], predictionSubmitted:false,
   profileStats:{eventsAttended:0,predictionPoints:0,wins:0,ideasSubmitted:0},pastEvents:[],jipitinaMessages:[],
-  creature:{born:false,name:'',stage:'tiny',crumbs:0,storyCount:0,traits:{curiosity:0,argumentative:0,social:0,romantic:0,chaotic:0,cinephile:0},cosmetics:[],timeline:[]},
-  dating:{enabled:false,selfGender:'',showGender:'',intents:[],paused:false},datingCards:[{userId:'demo-date-1',displayName:'маша',creatureName:'Кишка',creatureStage:'young',favoriteFilms:['Суспирия','Шрек 2','Меланхолия'],favoriteGenres:['хоррор','драма'],taste:{weirdness:78,heaviness:62,atmosphere:84,oldness:55,experimental:73,slowness:66,surrealism:81},matchNote:'вы оба любите Суспирию, но она зачем-то поставила Титанику 3',compatibility:84}],datingMatches:[],
+  creature:{born:false,name:'',stage:'stage_0',crumbs:0,growthProgress:0,storyCount:0,traits:{curiosity:0,argumentative:0,social:0,romantic:0,chaotic:0,cinephile:0},cosmetics:[],timeline:[]},
+  dating:{enabled:false,selfGender:'',showGender:'',intents:[],paused:false},datingCards:[{userId:'demo-date-1',displayName:'маша',creatureName:'Кишка',creatureStage:'stage_2',favoriteFilms:['Суспирия','Шрек 2','Меланхолия'],favoriteGenres:['хоррор','драма'],taste:{weirdness:78,heaviness:62,atmosphere:84,oldness:55,experimental:73,slowness:66,surrealism:81},matchNote:'вы оба любите Суспирию, но она зачем-то поставила Титанику 3',compatibility:84}],datingMatches:[],
   notificationPrefs:{writeAccess:false,events:true,creature:true,stories:true,matches:true,tickets:true,reminders:true,quietHours:true},
   leaderboard:[
     {name:'аня',points:18,wins:1,events:2},
