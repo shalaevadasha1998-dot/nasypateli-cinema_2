@@ -262,6 +262,32 @@ export async function handleApi(req:Request){
     let tg:any=null,user:any=null
     if(!isAdminAction||!adminTokenOk){tg=await telegramUserFromRequest(req);user=await getOrCreateUser(db,tg)}
 
+    if(action==='creature-tasks'){
+      const tg=await telegramUserFromRequest(req);const user=await getOrCreateUser(db,tg);const creature=await ensureCreature(db,user.id)
+      if(!creature.born_at)return err('Сначала должна родиться Животина',409)
+      const [tasks,done]=await Promise.all([
+        db.from('creature_tasks').select('id,title,description,reward_crumbs,completion_type,available_from,available_until').eq('active',true).order('created_at',{ascending:true}),
+        db.from('user_creature_tasks').select('task_id,status,completed_at').eq('user_id',user.id)
+      ])
+      if(tasks.error)throw tasks.error;if(done.error)throw done.error
+      const by=new Map((done.data||[]).map((x:any)=>[x.task_id,x]))
+      const now=Date.now()
+      return json({ok:true,tasks:(tasks.data||[]).filter((x:any)=>(!x.available_from||new Date(x.available_from).getTime()<=now)&&(!x.available_until||new Date(x.available_until).getTime()>=now)).map((x:any)=>({id:x.id,title:x.title,description:x.description,rewardCrumbs:Number(x.reward_crumbs||0),completionType:x.completion_type,status:by.get(x.id)?.status||'available',completedAt:by.get(x.id)?.completed_at||undefined}))})
+    }
+
+    if(action==='complete-creature-task'){
+      const tg=await telegramUserFromRequest(req);const user=await getOrCreateUser(db,tg);const taskId=String(body.taskId||'').trim()
+      if(!taskId)return err('Не указано задание',400)
+      const r=await db.rpc('complete_creature_task',{p_user_id:user.id,p_task_id:taskId});if(r.error)throw r.error
+      return json({...(r.data||{}),creature:await creatureState(db,user.id)})
+    }
+
+    if(action==='feed-creature'){
+      const tg=await telegramUserFromRequest(req);const user=await getOrCreateUser(db,tg)
+      const r=await db.rpc('feed_creature',{p_user_id:user.id});if(r.error)throw r.error
+      return json({...(r.data||{}),creature:await creatureState(db,user.id)})
+    }
+
     if(action==='birth-creature'||action==='participant-birth-v2'){
       const name=String(body.name||'Животина').trim().slice(0,32)||'Животина'
       let existing:any=null
