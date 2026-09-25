@@ -46,9 +46,14 @@ jobs:
             process.stdin.on("end",()=>{
               const data=JSON.parse(s);
               if(data?.ok!==true)throw new Error("notification dispatch failed: "+s);
-              console.log("Notification dispatch OK:", JSON.stringify({
+              const summary={
                 checked:Number(data.checked||0),
-                sent:Number(data.sent||0)
-              }));
+                sent:Number(data.sent||0),
+                retried:Number(data.retried||0),
+                failed:Number(data.failed||0),
+                cancelled:Number(data.cancelled||0)
+              };
+              console.log("Notification dispatch OK:", JSON.stringify(summary));
+              if(summary.failed>0)console.log("::warning::Some notifications reached permanent failure");
             });
           '
