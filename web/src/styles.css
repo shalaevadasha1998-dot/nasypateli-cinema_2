@@ -593,3 +593,21 @@ button:active,.btn:active{transform:scale(.985)}
   .birth-bunny-jump{display:none}
   .dating-card.swipe-like,.dating-card.swipe-pass{opacity:.65}
 }
+
+
+/* participant-screen micro motion */
+.seat-line i,.trait-grid b,.taste-line i:after{transition:width .72s cubic-bezier(.2,.78,.2,1)}
+.chat-msg{animation:chat-message-in .28s cubic-bezier(.2,.78,.2,1) both}
+.chat-msg.user{transform-origin:100% 100%}.chat-msg.assistant{transform-origin:0 100%}
+@keyframes chat-message-in{from{opacity:0;transform:translateY(5px) scale(.985)}to{opacity:1;transform:none}}
+.timeline>div,.archive-event{animation:list-row-in .32s cubic-bezier(.2,.78,.2,1) both}
+.timeline>div:nth-child(2),.archive-event:nth-child(2){animation-delay:.025s}
+.timeline>div:nth-child(3),.archive-event:nth-child(3){animation-delay:.05s}
+.timeline>div:nth-child(4),.archive-event:nth-child(4){animation-delay:.075s}
+@keyframes list-row-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.setting-row i,.switch i{transition:transform .22s cubic-bezier(.2,.8,.2,1),background-color .18s ease,box-shadow .18s ease}
+.setting-row:active,.wardrobe button:active,.creature-task .btn:active{transform:scale(.99)}
+.creature-task{transition:opacity .22s ease,background-color .22s ease}
+.creature-task:has(.btn:disabled){opacity:.58}
+.bottom-nav a:active i{transform:scale(.9)}
+@media(prefers-reduced-motion:reduce){.chat-msg,.timeline>div,.archive-event{animation:none!important}}
