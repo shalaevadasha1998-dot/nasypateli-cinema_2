@@ -1,0 +1,66 @@
+name: Production Health
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/production-health.yml"
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-health
+  cancel-in-progress: true
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check live runtime
+        run: |
+          node <<'NODE'
+          const endpoint='https://vwteokawtqnoiyzmsldj.supabase.co/functions/v1/app'
+          async function post(body){
+            const r=await fetch(endpoint,{
+              method:'POST',
+              headers:{'content-type':'application/json'},
+              body:JSON.stringify(body)
+            })
+            let data={}
+            try{data=await r.json()}catch{}
+            return {status:r.status,data}
+          }
+
+          const health=await post({action:'health'})
+          if(health.status!==200||health.data?.ok!==true||health.data?.version!=='0.9.0'){
+            throw new Error('Production API health failed: '+JSON.stringify(health))
+          }
+
+          const blockers=Object.entries(health.data?.checks||{})
+            .filter(([,ok])=>ok!==true)
+            .map(([name])=>name)
+          const hardBlockers=blockers.filter(name=>name!=='payments')
+          if(hardBlockers.length){
+            throw new Error('Production readiness blockers: '+hardBlockers.join(', '))
+          }
+          if(blockers.includes('payments')){
+            console.log('::warning::Payments are intentionally pending')
+          }
+
+          const [admin,screen,cron]=await Promise.all([
+            post({action:'admin-bootstrap',slug:'2026-10-03'}),
+            post({action:'screen-bootstrap',slug:'2026-10-03'}),
+            post({action:'cron-notifications'})
+          ])
+          if(admin.status!==401)throw new Error('Admin endpoint is not protected')
+          if(screen.status!==401)throw new Error('Screen endpoint is not protected')
+          if(cron.status!==401)throw new Error('Cron endpoint is not protected')
+
+          console.log('Production health and auth gates are OK')
+          NODE
