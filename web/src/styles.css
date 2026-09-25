@@ -367,3 +367,17 @@ button,input,textarea,select{max-width:100%}
   .stats-grid{grid-template-columns:1fr}
   .onboarding-actions{grid-template-columns:1fr 1.35fr}
 }
+
+/* zhivotina loop v1 */
+.creature-loop{position:relative;overflow:hidden}
+.creature-loop:after{content:"";position:absolute;width:140px;height:140px;right:-65px;top:-70px;border-radius:50%;border:1px solid rgba(150,170,118,.16);box-shadow:0 0 80px rgba(150,170,118,.08);pointer-events:none}
+.creature-economy{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:8px 0 16px}
+.creature-economy b{font-size:24px;letter-spacing:-.035em}
+.creature-economy span{font-size:12px;color:#8f9187;text-transform:uppercase;letter-spacing:.08em}
+.creature-task{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:center;padding:15px 0;border-top:1px solid rgba(255,255,255,.08)}
+.creature-task:first-of-type{border-top:0}
+.creature-task b{display:block;font-size:16px}
+.creature-task p{margin:5px 0;color:#999b92;font-size:13px;line-height:1.4}
+.creature-task small{color:#a9b98a}
+.creature-task .btn{width:auto;min-width:100px}
+@media(max-width:360px){.creature-task{grid-template-columns:1fr}.creature-task .btn{width:100%}}
