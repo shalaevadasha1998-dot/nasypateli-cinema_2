@@ -47,6 +47,45 @@ jobs:
         with:
           node-version: 22
 
+      - name: Verify static asset references
+        run: |
+          node <<'NODE'
+          const fs=require('fs')
+          const path=require('path')
+          const sourceRoot=path.join(process.cwd(),'web','src')
+          const assetRoot=path.join(process.cwd(),'web','public','assets')
+          const sourceFiles=[]
+          function walk(dir){
+            for(const entry of fs.readdirSync(dir,{withFileTypes:true})){
+              const full=path.join(dir,entry.name)
+              if(entry.isDirectory())walk(full)
+              else if(/\.(?:ts|tsx|css)$/.test(entry.name))sourceFiles.push(full)
+            }
+          }
+          walk(sourceRoot)
+          const refs=new Map()
+          const patterns=[
+            /assets\/([A-Za-z0-9._-]+\.(?:png|webp|jpe?g|gif|svg))/g,
+            /['"`]([A-Za-z0-9._-]+\.(?:png|webp|jpe?g|gif|svg))['"`]/g
+          ]
+          for(const file of sourceFiles){
+            const source=fs.readFileSync(file,'utf8')
+            for(const pattern of patterns){
+              pattern.lastIndex=0
+              for(const match of source.matchAll(pattern)){
+                const name=match[1]
+                if(!refs.has(name))refs.set(name,[])
+                refs.get(name).push(path.relative(process.cwd(),file))
+              }
+            }
+          }
+          const missing=[...refs.keys()].filter(name=>!fs.existsSync(path.join(assetRoot,name)))
+          if(missing.length){
+            throw new Error('Missing public assets: '+missing.join(', '))
+          }
+          console.log('Static asset references verified:',refs.size)
+          NODE
+
       - name: Install dependencies
         working-directory: web
         run: npm install
