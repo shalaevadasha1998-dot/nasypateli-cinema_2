@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { Button, Card, Empty, Field, Pill } from './components/UI'
 import { CreatureCard, Rabbit, type CreatureAnimationState } from './components/Rabbit'
-import { callApi, optimisticBirth } from './lib/api'
+import { callApi } from './lib/api'
 import { haptic, hapticSuccess, requestTelegramWriteAccess, telegramWebApp } from './lib/telegram'
 import type { DatingIntent, DemoState, NotificationPrefs } from './types'
 
@@ -24,6 +24,8 @@ export function BirthPage(){
   const [shakeReady,setShakeReady]=useState(false)
   const [birthProgress,setBirthProgress]=useState(()=>{try{return Math.max(0,Math.min(99,Number(localStorage.getItem('nasypateli-birth-progress')||0)))}catch{return 0}})
   const [reducedMotion]=useState(()=>typeof window!=='undefined'&&window.matchMedia?.('(prefers-reduced-motion: reduce)').matches===true)
+  const [birthBusy,setBirthBusy]=useState(false)
+  const [birthError,setBirthError]=useState('')
 
   const advanceBirth=(amount:number)=>{
     if(phase!=='sealed')return
@@ -71,11 +73,17 @@ export function BirthPage(){
   if(!data)return <Load error={error}/>
   if(!data.onboardingComplete)return <Navigate to="/onboarding" replace/>
 
-  const finish=()=>{
-    const clean=optimisticBirth(name)
-    try{localStorage.removeItem('nasypateli-pending-creature-name');localStorage.removeItem('nasypateli-birth-progress')}catch{}
-    hapticSuccess();setName(clean);setPhase('named')
-    window.setTimeout(()=>nav('/',{replace:true}),reducedMotion?500:1460)
+  const finish=async()=>{
+    if(birthBusy)return
+    const clean=name.trim().slice(0,32)||'Животина'
+    try{
+      setBirthBusy(true);setBirthError('')
+      await callApi('birth-creature',{name:clean})
+      try{localStorage.removeItem('nasypateli-pending-creature-name');localStorage.removeItem('nasypateli-birth-progress');localStorage.removeItem('nasypateli-birth-shadow-v1')}catch{}
+      hapticSuccess();setName(clean);setPhase('named')
+      window.setTimeout(()=>nav('/',{replace:true}),reducedMotion?500:1460)
+    }catch(e:any){setBirthError(e?.message||'не удалось завершить рождение')}
+    finally{setBirthBusy(false)}
   }
   const sceneSrc=phase==='sealed'?'birth-sealed.webp':phase==='hatch'?'birth-hatch.webp':phase==='name'?'rabbit-idle.webp':'rabbit-name-react.webp'
   const bucket=Math.min(4,Math.floor(birthProgress/25))
@@ -93,7 +101,7 @@ export function BirthPage(){
     <div key={phase} className="birth-copy birth-copy-v090">
       {phase==='sealed'&&<><div className="eyebrow">последняя штука перед клубом</div><h1>там кто-то<br/>шуршит</h1><p>{shakeReady?'тряси телефон или тормоши пачку. одного раза не хватит':'потревожь пачку несколько раз'}</p><div className="birth-progress-meter" aria-label={`рождение ${birthProgress}%`}><i style={{width:`${birthProgress}%`}}/></div><Button onClick={()=>advanceBirth(22)}>{birthProgress<35?'проверить':birthProgress<75?'ещё шуршит':'почти вылезла'}</Button></>}
       {phase==='hatch'&&<><div className="eyebrow">не трогай экран</div><h1>сейчас<br/>вылезет</h1><p>у Животины свои планы на твой попкорн</p></>}
-      {phase==='name'&&<><div className="eyebrow">теперь твоя</div><h1>как её<br/>зовут?</h1><p className="birth-name-note">имя можно поменять потом</p><Field label="имя"><input autoFocus maxLength={32} value={name} onChange={e=>{setName(e.target.value);try{localStorage.setItem('nasypateli-pending-creature-name',e.target.value)}catch{}}} placeholder="Животина" onKeyDown={e=>{if(e.key==='Enter')finish()}}/></Field><Button onClick={finish}>забрать её</Button></>}
+      {phase==='name'&&<><div className="eyebrow">теперь твоя</div><h1>как её<br/>зовут?</h1><p className="birth-name-note">имя можно поменять потом</p><Field label="имя"><input autoFocus maxLength={32} value={name} onChange={e=>{setName(e.target.value);setBirthError('');try{localStorage.setItem('nasypateli-pending-creature-name',e.target.value)}catch{}}} placeholder="Животина" onKeyDown={e=>{if(e.key==='Enter')void finish()}}/></Field><Button disabled={birthBusy} onClick={()=>void finish()}>{birthBusy?'забираем…':'забрать её'}</Button>{birthError&&<div className="form-error">{birthError}</div>}</>}
       {phase==='named'&&<><div className="eyebrow">принято</div><h1>{name || 'Животина'}.</h1><p>маленькая. пока.</p><div className="birth-loading-line"><i/></div></>}
     </div>
   </div>
