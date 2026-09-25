@@ -23,6 +23,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Validate migration filenames
+        shell: bash
+        run: |
+          shopt -s nullglob
+          declare -A seen=()
+          for file in supabase/migrations/*.sql; do
+            base="${file##*/}"
+            if [[ ! "$base" =~ ^[0-9]{14}_.+\.sql$ ]]; then
+              echo "Invalid migration filename: $base"
+              exit 1
+            fi
+            version="${base%%_*}"
+            if [[ -n "${seen[$version]:-}" ]]; then
+              echo "Duplicate migration version: $version"
+              exit 1
+            fi
+            seen[$version]=1
+          done
+
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
