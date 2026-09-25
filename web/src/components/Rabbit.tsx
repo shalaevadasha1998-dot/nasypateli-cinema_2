@@ -1,4 +1,6 @@
+import type { CSSProperties } from 'react'
 import type { CreatureState } from '../types'
+import { creatureVisualBand, creatureVisualLevel, creatureVisualRatio, creatureVisualScale } from '../lib/creature'
 
 export type CreatureAnimationState =
   | 'unborn'|'birth'|'idle'|'hungry'|'feeding'|'happy'|'thinking'|'sleeping'|'waking'|'growing'
@@ -39,9 +41,16 @@ export function Rabbit({
   state?:CreatureAnimationState
 }){
   const eq=equippedCodes(creature)
-  const classes=['rabbit','rabbit-'+size,animate?'rabbit-alive':'',`rabbit-stage-${creature.stage}`,`rabbit-state-${state}`,...[...eq].map(x=>`wear-${x}`)].join(' ')
-  const asset=getCreatureAnimation(creature.stage,state)
-  return <div className={classes} aria-label={`Животина ${creature.name||''}`} data-stage={creature.stage} data-state={state}>
+  const visualLevel=creatureVisualLevel(creature)
+  const visualBand=creatureVisualBand(visualLevel)
+  const visualStage=(['stage_0','stage_1','stage_2','stage_3','stage_4'] as CreatureState['stage'][])[visualBand]
+  const classes=['rabbit','rabbit-'+size,animate?'rabbit-alive':'',`rabbit-stage-${visualStage}`,`rabbit-visual-band-${visualBand}`,`rabbit-state-${state}`,...[...eq].map(x=>`wear-${x}`)].join(' ')
+  const asset=getCreatureAnimation(visualStage,state)
+  const style={
+    '--rabbit-growth-scale':creatureVisualScale(creature),
+    '--rabbit-growth-ratio':creatureVisualRatio(creature)
+  } as CSSProperties
+  return <div className={classes} style={style} aria-label={`Животина ${creature.name||''}, уровень роста ${visualLevel} из 50`} data-stage={visualStage} data-state={state} data-growth-level={visualLevel}>
     <span className="rabbit-aura" aria-hidden/>
     <img src={`${import.meta.env.BASE_URL}assets/${asset}`} alt="" draggable={false}/>
     {state==='feeding'&&<span className="rabbit-feed-fx" aria-hidden>{[0,1,2,3,4,5].map(i=><i key={i}/>)}</span>}
