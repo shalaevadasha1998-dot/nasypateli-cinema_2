@@ -62,6 +62,8 @@ jobs:
           if(admin.status!==401)throw new Error('Admin endpoint is not protected: '+JSON.stringify(admin))
           const screen=await post({action:'screen-bootstrap',slug:'2026-10-03'})
           if(screen.status!==401)throw new Error('Screen endpoint is not protected: '+JSON.stringify(screen))
+          const cron=await post({action:'cron-notifications'})
+          if(cron.status!==401)throw new Error('Notification cron endpoint is not protected: '+JSON.stringify(cron))
 
           const blockers=Object.entries(health.data?.checks||{}).filter(([,ok])=>ok!==true).map(([name])=>name)
           const hardBlockers=blockers.filter(name=>name!=='payments')
