@@ -91,8 +91,10 @@ export type CreatureState = {
   born:boolean
   bornAt?:string
   name:string
-  stage:'tiny'|'young'|'grown'
+  stage:'stage_0'|'stage_1'|'stage_2'|'stage_3'|'stage_4'
   crumbs:number
+  growthProgress:number
+  lastFedAt?:string
   storyCount:number
   traits:Record<CreatureTrait,number>
   cosmetics:CreatureCosmetic[]
