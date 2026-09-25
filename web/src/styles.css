@@ -452,3 +452,15 @@ button,input,textarea,select{max-width:100%}
     transform:none
   }
 }
+
+
+/* zhivotina growth UX */
+.creature-growth-track{height:8px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden;margin:2px 0 8px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.035)}
+.creature-growth-track>i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--rabbit),#d8dfb5);transition:width .42s cubic-bezier(.2,.8,.2,1)}
+.creature-growth-caption{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:8px;align-items:center;margin-bottom:17px;color:#85877e;font-size:10px;letter-spacing:.06em;text-transform:uppercase}
+.creature-growth-caption b{color:#d8dbd0;text-align:center;font-size:11px}
+.creature-growth-caption span:last-child{text-align:right}
+.creature-notice{margin-top:10px;padding:9px 11px;border:1px solid rgba(169,185,138,.25);background:rgba(169,185,138,.07);font-size:12px;color:#bdc9a6;animation:creatureNoticeIn .2s ease-out both}
+@keyframes creatureNoticeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@media(max-width:360px){.creature-growth-caption{font-size:9px;gap:5px}.creature-growth-caption b{font-size:10px}}
+@media(prefers-reduced-motion:reduce){.creature-growth-track>i{transition:none}.creature-notice{animation:none}}
