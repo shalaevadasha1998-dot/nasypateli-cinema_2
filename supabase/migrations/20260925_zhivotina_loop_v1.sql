@@ -31,8 +31,9 @@ alter table public.crumb_ledger
   add column if not exists operation_key text,
   add column if not exists metadata jsonb not null default '{}'::jsonb;
 
-create unique index if not exists crumb_ledger_operation_key_uq
-  on public.crumb_ledger(operation_key)
+drop index if exists public.crumb_ledger_operation_key_uq;
+create unique index if not exists crumb_ledger_user_operation_key_uq
+  on public.crumb_ledger(user_id, operation_key)
   where operation_key is not null;
 
 create index if not exists user_creature_tasks_user_status_idx
@@ -69,6 +70,7 @@ declare
 begin
   select * into t from public.creature_tasks
   where id=p_task_id and active=true
+    and completion_type='manual'
     and (available_from is null or available_from <= now())
     and (available_until is null or available_until >= now());
   if not found then raise exception 'task_unavailable'; end if;
@@ -85,7 +87,7 @@ begin
 
   insert into public.crumb_ledger(user_id,delta,reason,operation_key,metadata)
   values(p_user_id,t.reward_crumbs,'task_reward',op,jsonb_build_object('taskId',p_task_id))
-  on conflict (operation_key) where operation_key is not null do nothing;
+  on conflict (user_id, operation_key) where operation_key is not null do nothing;
 
   update public.creatures set crumbs=crumbs+t.reward_crumbs,updated_at=now()
   where user_id=p_user_id returning * into c;
@@ -109,7 +111,7 @@ begin
   select * into cfg from public.creature_game_config where id='default';
   select * into c from public.creatures where user_id=p_user_id for update;
   if not found or c.born_at is null then raise exception 'creature_not_born'; end if;
-  if exists(select 1 from public.crumb_ledger where operation_key=op) then
+  if exists(select 1 from public.crumb_ledger where user_id=p_user_id and operation_key=op) then
     return jsonb_build_object('ok',true,'alreadyFed',true,'crumbs',c.crumbs,'growthProgress',c.growth_progress,'stage',c.stage);
   end if;
   if c.crumbs < cfg.feeding_cost then raise exception 'not_enough_crumbs'; end if;
@@ -132,3 +134,16 @@ begin
   return jsonb_build_object('ok',true,'alreadyFed',false,'cost',cfg.feeding_cost,'crumbs',c.crumbs,
     'growthProgress',c.growth_progress,'stage',c.stage,'lastFedAt',c.last_fed_at);
 end $$;
+
+
+-- RPCs are internal service-role entry points. Authenticated clients must use the Edge Function,
+-- which authenticates Telegram initData and passes the canonical user id.
+revoke execute on function public.complete_creature_task(uuid, text) from public;
+revoke execute on function public.complete_creature_task(uuid, text) from anon;
+revoke execute on function public.complete_creature_task(uuid, text) from authenticated;
+grant execute on function public.complete_creature_task(uuid, text) to service_role;
+
+revoke execute on function public.feed_creature(uuid) from public;
+revoke execute on function public.feed_creature(uuid) from anon;
+revoke execute on function public.feed_creature(uuid) from authenticated;
+grant execute on function public.feed_creature(uuid) to service_role;
