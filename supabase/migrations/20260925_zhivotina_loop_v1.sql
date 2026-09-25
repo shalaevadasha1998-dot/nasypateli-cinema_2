@@ -57,6 +57,15 @@ create table if not exists public.creature_game_config (
 alter table public.creature_game_config enable row level security;
 insert into public.creature_game_config(id) values ('default') on conflict (id) do nothing;
 
+-- The Edge Function owns all game-loop reads/writes. Keep the new tables off the public client surface
+-- and make service-role Data API access explicit for projects with auto-exposure disabled.
+revoke all on table public.creature_tasks from public, anon, authenticated;
+revoke all on table public.user_creature_tasks from public, anon, authenticated;
+revoke all on table public.creature_game_config from public, anon, authenticated;
+grant select, insert, update, delete on public.creature_tasks to service_role;
+grant select, insert, update, delete on public.user_creature_tasks to service_role;
+grant select, insert, update, delete on public.creature_game_config to service_role;
+
 create or replace function public.complete_creature_task(p_user_id uuid, p_task_id text)
 returns jsonb
 language plpgsql
