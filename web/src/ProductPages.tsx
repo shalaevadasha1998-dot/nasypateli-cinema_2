@@ -383,15 +383,36 @@ export function MotionLabPage(){
   const nav=useNavigate()
   const [level,setLevel]=useState(1)
   const [animation,setAnimation]=useState<CreatureAnimationState>('idle')
+  const [autoGrow,setAutoGrow]=useState(false)
+  const [autoStates,setAutoStates]=useState(false)
+  const states:CreatureAnimationState[]=['idle','happy','hungry','feeding','growing','thinking','sleeping','waking']
+  const stateLabels:Record<CreatureAnimationState,string>={unborn:'до рождения',birth:'рождение',idle:'спокойно',hungry:'голодная',feeding:'ест',happy:'радуется',thinking:'думает',sleeping:'спит',waking:'просыпается',growing:'растёт'}
+  useEffect(()=>{
+    if(!autoGrow)return
+    if(level>=50){setAutoGrow(false);setAnimation('growing');const t=window.setTimeout(()=>setAnimation('idle'),1100);return()=>window.clearTimeout(t)}
+    const t=window.setTimeout(()=>setLevel(current=>Math.min(50,current+1)),115)
+    return()=>window.clearTimeout(t)
+  },[autoGrow,level])
+  useEffect(()=>{
+    if(!autoStates)return
+    let index=0
+    setAnimation(states[0])
+    const timer=window.setInterval(()=>{
+      index++
+      if(index>=states.length){window.clearInterval(timer);setAutoStates(false);setAnimation('idle');return}
+      setAnimation(states[index])
+      haptic(index%2?'light':'medium')
+    },1050)
+    return()=>window.clearInterval(timer)
+  },[autoStates])
   if(!data)return <Load error={error}/>
   const creature={...data.creature,growthProgress:growthProgressForVisualLevel(level,data.creature)}
-  const states:CreatureAnimationState[]=['idle','happy','feeding','growing','thinking','sleeping','waking']
   return <div className="page motion-lab-page">
     <div className="eyebrow">скрытая лаборатория</div>
     <h1 className="page-title">движение<br/>Животины</h1>
-    <Card className="motion-lab-stage"><Rabbit creature={creature} state={animation}/><div><b>{creatureVisualLabel(creature)}</b><span>рост {level}/50</span></div></Card>
-    <Card><div className="section-title">50 уровней роста</div><input className="motion-level-range" type="range" min="1" max="50" value={level} onChange={e=>setLevel(Number(e.target.value))}/><div className="row spread"><span>1</span><b>{level}/50</b><span>50</span></div></Card>
-    <Card><div className="section-title">реакции</div><div className="motion-state-grid">{states.map(state=><button type="button" className={animation===state?'active':''} key={state} onClick={()=>setAnimation(state)}>{state}</button>)}</div></Card>
+    <Card className="motion-lab-stage"><Rabbit creature={creature} state={animation}/><div><b>{creatureVisualLabel(creature)}</b><span>рост {level}/50</span><small>{stateLabels[animation]}</small></div></Card>
+    <Card><div className="section-title">50 уровней роста</div><input className="motion-level-range" type="range" min="1" max="50" value={level} onChange={e=>{setAutoGrow(false);setLevel(Number(e.target.value))}}/><div className="row spread"><span>1</span><b>{level}/50</b><span>50</span></div><Button onClick={()=>{setLevel(1);setAnimation('growing');setAutoGrow(true)}}>{autoGrow?'растёт…':'прогнать рост 1 → 50'}</Button></Card>
+    <Card><div className="section-title">реакции</div><div className="motion-state-grid">{states.map(state=><button type="button" className={animation===state?'active':''} key={state} onClick={()=>{setAutoStates(false);setAnimation(state);haptic('light')}}>{stateLabels[state]}</button>)}</div><Button kind="secondary" onClick={()=>setAutoStates(true)}>{autoStates?'показываю…':'прогнать все реакции'}</Button></Card>
     <Button onClick={()=>nav('/birth?preview=1')}>проиграть рождение</Button>
     <Button kind="secondary" onClick={()=>nav('/profile')}>назад к профилю</Button>
   </div>
