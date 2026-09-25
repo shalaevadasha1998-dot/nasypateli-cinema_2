@@ -23,6 +23,13 @@ function parseTicketPayload(payload:unknown){
   return {eventId,userId}
 }
 
+function webAppRoute(base:string,hash:string){
+  if(!base)return ''
+  const u=new URL(base)
+  u.hash=hash.replace(/^#/,'')
+  return u.toString()
+}
+
 export async function handleTelegram(req:Request){
   try{
     if(req.method!=='POST')return json({ok:false},405)
@@ -93,6 +100,29 @@ export async function handleTelegram(req:Request){
       try{
         await tg('sendMessage',{chat_id:msg.chat.id,text:paymentAccepted?'оплата прошла. билет уже внутри мини-приложения':'платёж получен Telegram, но билет не удалось автоматически подтвердить. напишите организаторам — мы проверим оплату вручную.'})
       }catch(e){console.error('payment confirmation message failed',e)}
+      return json({ok:true})
+    }
+
+    const command=String(msg?.text||'').trim().toLowerCase()
+    if(['/motionlab','/motion-lab','/motion','#/motion-lab'].includes(command)){
+      const launchUrl=webAppRoute(webAppUrl,'/motion-lab')
+      const reply_markup=launchUrl?{inline_keyboard:[[{text:'открыть лабораторию движения',web_app:{url:launchUrl}}]]}:undefined
+      await tg('sendMessage',{
+        chat_id:msg.chat.id,
+        text:launchUrl?'лаборатория готова. здесь можно прогнать рост 1→50 и все реакции Животины':'мини-приложение пока не настроено',
+        ...(reply_markup?{reply_markup}:{})
+      })
+      return json({ok:true})
+    }
+
+    if(['/birthpreview','/birth-preview','#/birth?preview=1'].includes(command)){
+      const launchUrl=webAppRoute(webAppUrl,'/birth?preview=1')
+      const reply_markup=launchUrl?{inline_keyboard:[[{text:'проиграть рождение',web_app:{url:launchUrl}}]]}:undefined
+      await tg('sendMessage',{
+        chat_id:msg.chat.id,
+        text:launchUrl?'это безопасный preview: настоящее рождение и данные аккаунта не изменятся':'мини-приложение пока не настроено',
+        ...(reply_markup?{reply_markup}:{})
+      })
       return json({ok:true})
     }
 
