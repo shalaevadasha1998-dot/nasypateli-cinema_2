@@ -39,7 +39,7 @@ const predictions: Prediction[] = [
 export const initialDemoState: DemoState = {
   event: {
     id:'event-3-oct',slug:'2026-10-03',title:'НАСЫПАТЕЛИ В КИНО — 3 октября',
-    startsAt:'2026-10-03T18:00:00+03:00',capacity:30,sold:7,ticketPriceRub:500,maxMovieRuntimeMin:150,status:'SALES_OPEN',nonexistentFilmEnabled:false,movieAvailabilityStatus:'unchecked'
+    startsAt:'2026-10-03T18:00:00+03:00',capacity:30,sold:7,ticketPriceRub:500,maxMovieRuntimeMin:150,status:'SALES_OPEN',paymentsAvailable:true,nonexistentFilmEnabled:false,movieAvailabilityStatus:'unchecked'
   },
   profile: structuredClone(emptyProfile), onboardingComplete:false,
   registration:'none', ideaFinalists:[], movieFinalists:[], predictions:[], predictionSubmitted:false,
