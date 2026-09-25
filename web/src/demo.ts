@@ -57,6 +57,11 @@ export const initialDemoState: DemoState = {
 
 const KEY='nasypateli-cinema-demo-v3'
 
+function feedDayKey(value:unknown){
+  try{return new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Moscow',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(value as any))}
+  catch{return ''}
+}
+
 function normalizeLegacyCreatureStage(stage:unknown):DemoState['creature']['stage']{
   const value=String(stage||'')
   if(['stage_0','stage_1','stage_2','stage_3','stage_4'].includes(value))return value as DemoState['creature']['stage']
@@ -71,7 +76,9 @@ export function loadDemo():DemoState {
     if(!raw)return structuredClone(initialDemoState)
     const parsed=JSON.parse(raw)
     const base=structuredClone(initialDemoState)
-    return {...base,...parsed,profile:{...structuredClone(emptyProfile),...(parsed.profile||{}),taste:{...emptyProfile.taste,...(parsed.profile?.taste||{})}},creature:{...base.creature,...(parsed.creature||{}),stage:normalizeLegacyCreatureStage(parsed.creature?.stage),feedingCost:Math.max(1,Number(parsed.creature?.feedingCost||1)),canFeedToday:parsed.creature?.canFeedToday!==false}}
+    const lastFedAt=parsed.creature?.lastFedAt
+    const canFeedToday=!lastFedAt||feedDayKey(lastFedAt)!==feedDayKey(new Date())
+    return {...base,...parsed,profile:{...structuredClone(emptyProfile),...(parsed.profile||{}),taste:{...emptyProfile.taste,...(parsed.profile?.taste||{})}},creature:{...base.creature,...(parsed.creature||{}),stage:normalizeLegacyCreatureStage(parsed.creature?.stage),feedingCost:Math.max(1,Number(parsed.creature?.feedingCost||1)),canFeedToday}}
   } catch { return structuredClone(initialDemoState) }
 }
 
