@@ -64,8 +64,10 @@ jobs:
           if(screen.status!==401)throw new Error('Screen endpoint is not protected: '+JSON.stringify(screen))
 
           const blockers=Object.entries(health.data?.checks||{}).filter(([,ok])=>ok!==true).map(([name])=>name)
-          if(blockers.length)throw new Error('Production readiness blockers: '+blockers.join(', '))
-          console.log('Production API health, auth gates and readiness are OK')
+          const hardBlockers=blockers.filter(name=>name!=='payments')
+          if(hardBlockers.length)throw new Error('Production readiness blockers: '+hardBlockers.join(', '))
+          if(blockers.includes('payments'))console.log('::warning::Payments are intentionally pending: TELEGRAM_PROVIDER_TOKEN is not configured')
+          console.log('Production API health, auth gates and core readiness are OK')
           NODE
 
       - name: Publish CI status
@@ -79,7 +81,7 @@ jobs:
           const body={
             state,
             context:'nasypateli/ci-production-ready',
-            description:state==='success'?'Build + production readiness are green':'Build or production readiness failed',
+            description:state==='success'?'Build + core production readiness are green':'Build or core production readiness failed',
             target_url:`${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
           }
           const r=await fetch(`https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/statuses/${process.env.GITHUB_SHA}`,{
