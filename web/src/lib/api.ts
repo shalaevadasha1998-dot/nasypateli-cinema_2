@@ -111,7 +111,12 @@ function demoAction(action:string,payload:Record<string,unknown>){
     case 'save-profile-progress': return mutate(s=>({...s,profile:{...s.profile,...(payload.profile as Partial<CinemaProfile>),onboardingStep:Number(payload.step)||s.profile.onboardingStep}}))
     case 'save-profile': return mutate(s=>({...s,profile:{...(payload.profile as CinemaProfile),completed:true,completedAt:new Date().toISOString()},onboardingComplete:true}))
     case 'participant-birth-v2':
-    case 'birth-creature': return mutate(s=>({...s,creature:{...s.creature,born:true,bornAt:s.creature.bornAt||new Date().toISOString(),name:String(payload.name||'Животина'),stage:'stage_0',crumbs:s.creature.crumbs,growthProgress:s.creature.growthProgress||0,feedingCost:s.creature.feedingCost||1,canFeedToday:s.creature.canFeedToday!==false}}))
+    case 'birth-creature': {
+      const current=loadDemo()
+      if(current.creature.born)return {ok:true,alreadyBorn:true,creature:current.creature}
+      const next=mutate(s=>({...s,creature:{...s.creature,born:true,bornAt:new Date().toISOString(),name:String(payload.name||'Животина'),stage:'stage_0',crumbs:s.creature.crumbs,growthProgress:s.creature.growthProgress||0,feedingCost:s.creature.feedingCost||1,canFeedToday:s.creature.canFeedToday!==false}}))
+      return {ok:true,alreadyBorn:false,creature:next.creature}
+    }
     case 'creature-tasks': {
       const s=loadDemo();const completed=s.creatureTaskCompletions?.first_test_task
       return {ok:true,tasks:[{id:'first_test_task',title:'первая крошка',description:'тестовое задание для первого вертикального среза Животины',rewardCrumbs:3,completionType:'manual',status:completed?'completed':'available',completedAt:completed||undefined}]}

@@ -138,15 +138,31 @@ async function telegramRuntimeReady(){
 
 async function runtimeHealth(db:any){
   const requiredTables=['users','cinema_profiles','events','registrations','creatures','creature_tasks','user_creature_tasks','creature_game_config','crumb_ledger','story_definitions','dating_profiles','notification_preferences','encounter_tokens']
-  const [tableChecks,pilot,telegram]=await Promise.all([
+  const [tableChecks,pilot,telegram,gameConfig,testTask]=await Promise.all([
     Promise.all(requiredTables.map(async table=>{const r=await db.from(table).select('*',{head:true}).limit(1);return !r.error})),
     db.from('events').select('slug,capacity,ticket_price_rub').eq('slug','2026-10-03').maybeSingle(),
-    telegramRuntimeReady()
+    telegramRuntimeReady(),
+    db.from('creature_game_config').select('feeding_cost,feeding_growth,stage_thresholds').eq('id','default').maybeSingle(),
+    db.from('creature_tasks').select('id,status,active,reward_crumbs,completion_type').eq('id','first_test_task').maybeSingle()
   ])
   const env=(name:string)=>!!String(Deno.env.get(name)||'').trim()
   const pilotOk=!pilot.error&&pilot.data?.slug==='2026-10-03'&&Number(pilot.data?.capacity)===30&&Number(pilot.data?.ticket_price_rub)===500
+  const thresholds=gameConfig.data?.stage_thresholds||{}
+  const gameLoop=
+    !gameConfig.error&&!!gameConfig.data&&
+    Number(gameConfig.data.feeding_cost)>0&&
+    Number(gameConfig.data.feeding_growth)>0&&
+    ['stage_0','stage_1','stage_2','stage_3','stage_4'].every(stage=>Number.isFinite(Number(thresholds?.[stage])))&&
+    !testTask.error&&
+    testTask.data?.id==='first_test_task'&&
+    testTask.data?.status==='active'&&
+    testTask.data?.active===true&&
+    Number(testTask.data?.reward_crumbs)>0&&
+    testTask.data?.completion_type==='manual'
+
   const checks={
     database:tableChecks.every(Boolean),
+    gameLoop,
     pilot:pilotOk,
     telegram,
     payments:env('TELEGRAM_PROVIDER_TOKEN'),
@@ -266,7 +282,7 @@ export async function handleApi(req:Request){
       const creature=await ensureCreature(db,user.id)
       if(!creature.born_at)return err('Сначала должна родиться Животина',409)
       const [tasks,done]=await Promise.all([
-        db.from('creature_tasks').select('id,title,description,reward_crumbs,completion_type,available_from,available_until').eq('active',true).order('created_at',{ascending:true}),
+        db.from('creature_tasks').select('id,title,description,reward_crumbs,completion_type,available_from,available_until,status').eq('active',true).eq('status','active').order('created_at',{ascending:true}),
         db.from('user_creature_tasks').select('task_id,status,completed_at').eq('user_id',user.id)
       ])
       if(tasks.error)throw tasks.error;if(done.error)throw done.error
@@ -291,8 +307,10 @@ export async function handleApi(req:Request){
       const name=String(body.name||'Животина').trim().slice(0,32)||'Животина'
       let existing:any=null
       const ex=await db.from('creatures').select('user_id,name,born_at,crumbs').eq('user_id',user.id).maybeSingle()
-      if(!ex.error)existing=ex.data
-      const bornAt=existing?.born_at||new Date().toISOString()
+      if(ex.error)throw ex.error
+      existing=ex.data
+      if(existing?.born_at)return json({ok:true,alreadyBorn:true,creature:await creatureState(db,user.id)})
+      const bornAt=new Date().toISOString()
       let write:any
       if(existing)write=await db.from('creatures').update({name,born_at:bornAt}).eq('user_id',user.id)
       else write=await db.from('creatures').insert({user_id:user.id,name,born_at:bornAt,crumbs:0})
@@ -301,7 +319,7 @@ export async function handleApi(req:Request){
         const minimal=existing?await db.from('creatures').update({name,born_at:bornAt}).eq('user_id',user.id):await db.from('creatures').insert({user_id:user.id,name,born_at:bornAt})
         if(minimal.error)throw minimal.error
       }
-      return json({ok:true,creature:await creatureState(db,user.id)})
+      return json({ok:true,alreadyBorn:false,creature:await creatureState(db,user.id)})
     }
 
     if(action==='bootstrap'){

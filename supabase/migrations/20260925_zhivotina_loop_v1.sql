@@ -6,6 +6,7 @@ create table if not exists public.creature_tasks (
   title text not null,
   description text not null default '',
   reward_crumbs integer not null check (reward_crumbs > 0),
+  status text not null default 'active' check (status in ('draft','active','paused','archived')),
   completion_type text not null default 'manual',
   available_from timestamptz,
   available_until timestamptz,
@@ -56,12 +57,24 @@ create unique index if not exists crumb_ledger_user_operation_key_uq
 create index if not exists user_creature_tasks_user_status_idx
   on public.user_creature_tasks(user_id,status);
 
+alter table public.creature_tasks
+  add column if not exists status text not null default 'active'
+  check (status in ('draft','active','paused','archived'));
+
 alter table public.creature_tasks enable row level security;
 alter table public.user_creature_tasks enable row level security;
+alter table public.creatures enable row level security;
+alter table public.crumb_ledger enable row level security;
 
-insert into public.creature_tasks(id,title,description,reward_crumbs,completion_type,active)
-values ('first_test_task','первая крошка','тестовое задание для первого вертикального среза Животины',3,'manual',true)
-on conflict (id) do nothing;
+insert into public.creature_tasks(id,title,description,reward_crumbs,status,completion_type,active)
+values ('first_test_task','первая крошка','тестовое задание для первого вертикального среза Животины',3,'active','manual',true)
+on conflict (id) do update set
+  title=excluded.title,
+  description=excluded.description,
+  reward_crumbs=excluded.reward_crumbs,
+  status='active',
+  completion_type='manual',
+  active=true;
 
 
 create table if not exists public.creature_game_config (
@@ -79,9 +92,14 @@ insert into public.creature_game_config(id) values ('default') on conflict (id) 
 revoke all on table public.creature_tasks from public, anon, authenticated;
 revoke all on table public.user_creature_tasks from public, anon, authenticated;
 revoke all on table public.creature_game_config from public, anon, authenticated;
+revoke all on table public.creatures from public, anon, authenticated;
+revoke all on table public.crumb_ledger from public, anon, authenticated;
+
 grant select, insert, update, delete on public.creature_tasks to service_role;
 grant select, insert, update, delete on public.user_creature_tasks to service_role;
 grant select, insert, update, delete on public.creature_game_config to service_role;
+grant select, insert, update, delete on public.creatures to service_role;
+grant select, insert, update, delete on public.crumb_ledger to service_role;
 
 create or replace function public.complete_creature_task(p_user_id uuid, p_task_id text)
 returns jsonb
@@ -95,7 +113,7 @@ declare
   op text := 'task:' || p_task_id || ':' || p_user_id::text;
 begin
   select * into t from public.creature_tasks
-  where id=p_task_id and active=true
+  where id=p_task_id and active=true and status='active'
     and completion_type='manual'
     and (available_from is null or available_from <= now())
     and (available_until is null or available_until >= now());
@@ -114,6 +132,10 @@ begin
   insert into public.crumb_ledger(user_id,delta,reason,operation_key,metadata)
   values(p_user_id,t.reward_crumbs,'task_reward',op,jsonb_build_object('taskId',p_task_id))
   on conflict (user_id, operation_key) where operation_key is not null do nothing;
+
+  if not found then
+    raise exception 'task_reward_conflict';
+  end if;
 
   update public.creatures set crumbs=crumbs+t.reward_crumbs,updated_at=now()
   where user_id=p_user_id returning * into c;
@@ -135,6 +157,11 @@ declare
   next_stage text;
 begin
   select * into cfg from public.creature_game_config where id='default';
+
+  if not found then
+    raise exception 'creature_game_config_missing';
+  end if;
+
   select * into c from public.creatures where user_id=p_user_id for update;
   if not found or c.born_at is null then raise exception 'creature_not_born'; end if;
   if exists(select 1 from public.crumb_ledger where user_id=p_user_id and operation_key=op) then
