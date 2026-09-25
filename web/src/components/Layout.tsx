@@ -10,7 +10,7 @@ export default function Layout(){
     <main><Outlet/></main>
     <nav className="bottom-nav">
       <NavLink to="/"><i>●</i><span>событие</span></NavLink>
-      <NavLink to="/jipitina"><i>◉</i><span>джипитина</span></NavLink>
+      <NavLink to="/jipitina"><i>◉</i><span>чат</span></NavLink>
       <NavLink to="/dating"><i>↔</i><span>знакомства</span></NavLink>
       <NavLink to="/profile"><i>○</i><span>животина</span></NavLink>
       <NavLink to="/archive"><i>□</i><span>архив</span></NavLink>
