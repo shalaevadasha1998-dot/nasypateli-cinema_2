@@ -39,3 +39,9 @@ export function creatureVisualScale(creature:CreatureState){
 export function creatureVisualRatio(creature:CreatureState){
   return (creatureVisualLevel(creature)-1)/(CREATURE_VISUAL_LEVELS-1)
 }
+
+export function growthProgressForVisualLevel(level:number,creature:CreatureState){
+  const safe=clamp(Math.round(level||1),1,CREATURE_VISUAL_LEVELS)
+  const maxGrowth=Math.max(1,Number(creature.stageThresholds?.stage_4||90))
+  return ((safe-1)/(CREATURE_VISUAL_LEVELS-1))*maxGrowth
+}
