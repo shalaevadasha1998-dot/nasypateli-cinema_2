@@ -6,6 +6,7 @@ import { Rabbit } from './components/Rabbit'
 import { Button, Card, Empty, Field, Pill } from './components/UI'
 import { buyTicket, callAdminApi, callApi, callScreenApi, demoMode } from './lib/api'
 import { initTelegram, telegramUser } from './lib/telegram'
+import { creatureVisualLabel, creatureVisualLevel } from './lib/creature'
 import { useVoiceInput } from './hooks/useVoiceInput'
 import { ArchivePage, BirthPage, CreatureProfilePage, DatingPage, NotificationPage, RulesPage } from './ProductPages'
 import { emptyProfile, stages } from './demo'
@@ -40,7 +41,6 @@ function Loading({error}:{error?:string}){const initMissing=String(error||'').to
 function parseLines(v:string){return v.split(/\n+/).map(x=>x.trim()).filter(Boolean)}
 function parseCommaList(v:string){return v.split(/[\n,]+/).map(x=>x.trim()).filter(Boolean)}
 function eventDate(iso:string){try{return new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long'}).format(new Date(iso))}catch{return iso}}
-const creatureStageLabels:Record<DemoState['creature']['stage'],string>={stage_0:'новорождённая',stage_1:'малышка',stage_2:'подросшая',stage_3:'большая',stage_4:'взрослая'}
 
 function Onboarding(){
   const {data,error,reload}=useStateData();const [search]=useSearchParams();const nav=useNavigate();const editing=search.get('edit')==='1'
@@ -93,8 +93,8 @@ function Home(){
   const buy=async()=>{if(buyBusy||!e.paymentsAvailable)return;try{setBuyBusy(true);setBuyError('');await buyTicket(e.slug);await reload()}catch(err:any){setBuyError(err.message)}finally{setBuyBusy(false)}}
   return <div className="page home-page cinematic-page">
     <section className="home-creature-hero">
-      <div className="home-creature-top"><div><div className="eyebrow">ваша животина</div><span className="home-creature-stage-label">{creatureStageLabels[data.creature.stage]} · {data.creature.storyCount} историй</span></div><button className="micro-link" onClick={()=>nav('/profile')}>открыть профиль ↗</button></div>
-      <button type="button" className="home-rabbit-stage" onClick={()=>nav('/profile')} aria-label="открыть Животину"><span className="home-rabbit-halo"/><span className="home-rabbit-shadow"/>{data.creature.stage==='stage_0'?<img className="home-rabbit-cartoon" src={`${import.meta.env.BASE_URL}assets/rabbit-idle.webp`} alt="" draggable={false}/>:<Rabbit creature={data.creature}/>}</button>
+      <div className="home-creature-top"><div><div className="eyebrow">ваша животина</div><span className="home-creature-stage-label">{creatureVisualLabel(data.creature)} · рост {creatureVisualLevel(data.creature)}/50 · {data.creature.storyCount} историй</span></div><button className="micro-link" onClick={()=>nav('/profile')}>открыть профиль ↗</button></div>
+      <button type="button" className="home-rabbit-stage" onClick={()=>nav('/profile')} aria-label="открыть Животину"><span className="home-rabbit-halo"/><span className="home-rabbit-shadow"/><Rabbit creature={data.creature}/></button>
       <div className="home-creature-name">{data.creature.name||'животина'}</div>
       <p className="home-creature-copy">пока маленькая. будет расти от встреч, фильмов, споров и странных решений, которые случатся с вами внутри клуба</p>
     </section>
