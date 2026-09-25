@@ -44,9 +44,10 @@ export const initialDemoState: DemoState = {
   profile: structuredClone(emptyProfile), onboardingComplete:false,
   registration:'none', ideaFinalists:[], movieFinalists:[], predictions:[], predictionSubmitted:false,
   profileStats:{eventsAttended:0,predictionPoints:0,wins:0,ideasSubmitted:0},pastEvents:[],jipitinaMessages:[],
-  creature:{born:false,name:'',stage:'stage_0',crumbs:0,growthProgress:0,storyCount:0,traits:{curiosity:0,argumentative:0,social:0,romantic:0,chaotic:0,cinephile:0},cosmetics:[],timeline:[]},
+  creature:{born:false,name:'',stage:'stage_0',crumbs:0,growthProgress:0,feedingCost:1,canFeedToday:true,storyCount:0,traits:{curiosity:0,argumentative:0,social:0,romantic:0,chaotic:0,cinephile:0},cosmetics:[],timeline:[]},
   dating:{enabled:false,selfGender:'',showGender:'',intents:[],paused:false},datingCards:[{userId:'demo-date-1',displayName:'маша',creatureName:'Кишка',creatureStage:'stage_2',favoriteFilms:['Суспирия','Шрек 2','Меланхолия'],favoriteGenres:['хоррор','драма'],taste:{weirdness:78,heaviness:62,atmosphere:84,oldness:55,experimental:73,slowness:66,surrealism:81},matchNote:'вы оба любите Суспирию, но она зачем-то поставила Титанику 3',compatibility:84}],datingMatches:[],
   notificationPrefs:{writeAccess:false,events:true,creature:true,stories:true,matches:true,tickets:true,reminders:true,quietHours:true},
+  creatureTaskCompletions:{},
   leaderboard:[
     {name:'аня',points:18,wins:1,events:2},
     {name:'ваня',points:16,wins:0,events:2},
@@ -56,12 +57,21 @@ export const initialDemoState: DemoState = {
 
 const KEY='nasypateli-cinema-demo-v3'
 
+function normalizeLegacyCreatureStage(stage:unknown):DemoState['creature']['stage']{
+  const value=String(stage||'')
+  if(['stage_0','stage_1','stage_2','stage_3','stage_4'].includes(value))return value as DemoState['creature']['stage']
+  if(value==='grown')return 'stage_4'
+  if(value==='young')return 'stage_2'
+  return 'stage_0'
+}
+
 export function loadDemo():DemoState {
   try {
     const raw=localStorage.getItem(KEY)
     if(!raw)return structuredClone(initialDemoState)
     const parsed=JSON.parse(raw)
-    return {...structuredClone(initialDemoState),...parsed,profile:{...structuredClone(emptyProfile),...(parsed.profile||{}),taste:{...emptyProfile.taste,...(parsed.profile?.taste||{})}}}
+    const base=structuredClone(initialDemoState)
+    return {...base,...parsed,profile:{...structuredClone(emptyProfile),...(parsed.profile||{}),taste:{...emptyProfile.taste,...(parsed.profile?.taste||{})}},creature:{...base.creature,...(parsed.creature||{}),stage:normalizeLegacyCreatureStage(parsed.creature?.stage),feedingCost:Math.max(1,Number(parsed.creature?.feedingCost||1)),canFeedToday:parsed.creature?.canFeedToday!==false}}
   } catch { return structuredClone(initialDemoState) }
 }
 
