@@ -310,6 +310,11 @@ export async function handleApi(req:Request){
       const existing=ex.data
       if(existing?.born_at)return json({ok:true,alreadyBorn:true,creature:await creatureState(db,user.id)})
 
+      // A fresh birth starts a fresh creature-task lifecycle. Older profile
+      // deletion code could leave task rows behind after removing the creature.
+      const staleTasks=await db.from('user_creature_tasks').delete().eq('user_id',user.id)
+      if(staleTasks.error)throw staleTasks.error
+
       const bornAt=new Date().toISOString()
 
       if(existing){
