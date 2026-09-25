@@ -23,7 +23,7 @@ function overlayPendingBirth(state:DemoState):DemoState{
   const serverBorn=state.creature?.born===true
   const serverName=String(state.creature?.name||'')
   if(serverBorn&&serverName===pending.name){clearPendingBirth();return state}
-  return {...state,creature:{...state.creature,born:true,bornAt:state.creature?.bornAt||new Date(pending.at).toISOString(),name:pending.name,stage:state.creature?.stage||'tiny',crumbs:Math.max(3,Number(state.creature?.crumbs||0))}}
+  return {...state,creature:{...state.creature,born:true,bornAt:state.creature?.bornAt||new Date(pending.at).toISOString(),name:pending.name,stage:state.creature?.stage||'stage_0',crumbs:Number(state.creature?.crumbs||0),growthProgress:Number(state.creature?.growthProgress||0)}}
 }
 async function syncPendingBirth(){
   const pending=readPendingBirth();if(!pending||demoMode)return
