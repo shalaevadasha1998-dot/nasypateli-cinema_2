@@ -283,7 +283,7 @@ button,a,input,textarea,select{-webkit-tap-highlight-color:transparent}
 .birth-cartoon{display:block;width:min(100%,520px);height:auto;max-height:330px;object-fit:contain;filter:drop-shadow(0 13px 9px rgba(0,0,0,.18));image-rendering:auto}
 .birth-cartoon-sealed{transform:translateY(5px)}
 .birth-cartoon-hatch{transform:translateY(4px)}
-.birth-cartoon-name,.birth-cartoon-named{width:min(58%,280px);max-height:230px;transform:translateY(12px)}
+.birth-cartoon-name,.birth-cartoon-named{width:min(58%,280px);max-height:230px;transform:translateY(12px) scale(1.82);transform-origin:center 58%}
 .birth-film-scratch{position:absolute;inset:8% 0 5%;z-index:9;pointer-events:none;opacity:.22;mix-blend-mode:screen;background:
   linear-gradient(96deg,transparent 0 18%,rgba(238,233,223,.045) 18.2%,transparent 18.7% 66%,rgba(238,233,223,.025) 66.2%,transparent 66.7%),
   radial-gradient(circle at 13% 33%,rgba(238,233,223,.18) 0 .8px,transparent 1.1px),
@@ -309,7 +309,7 @@ button,a,input,textarea,select{-webkit-tap-highlight-color:transparent}
   .birth-v090 .birth-scene{min-height:285px}
   .birth-cartoon-button{min-height:272px}
   .birth-cartoon{width:min(112%,500px);max-height:300px}
-  .birth-cartoon-name,.birth-cartoon-named{width:min(62%,250px);max-height:205px;transform:translateY(8px)}
+  .birth-cartoon-name,.birth-cartoon-named{width:min(62%,250px);max-height:205px;transform:translateY(8px) scale(1.82);transform-origin:center 58%}
   .birth-copy-v090 h1{font-size:clamp(47px,12.8vw,60px)}
   .home-rabbit-cartoon{width:min(58vw,210px)}
 }
