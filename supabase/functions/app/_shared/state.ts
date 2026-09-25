@@ -38,7 +38,7 @@ export async function buildEventState(db:any,event:any,opts:{includeActuals?:boo
   const publicOutputKeys=new Set(['score_summary','tiebreaker','post_film_synthesis','collective_review'])
   const visibleOutputs=opts.includePrivateOutputs?(outputs.data||[]):(outputs.data||[]).filter((x:any)=>x.approved===true&&publicOutputKeys.has(x.output_key))
   return {
-    event:{id:event.id,slug:event.slug,title:event.title,startsAt:event.starts_at,capacity:event.capacity,sold:paid.count||0,held:reserved.count||0,ticketPriceRub:event.ticket_price_rub,maxMovieRuntimeMin:event.max_movie_runtime_min,status:event.status,venueName:event.venue_name,venueAddress:event.venue_address,nonexistentFilmEnabled:nonexistentFilmEnabled(event),movieAvailabilityStatus:(selMovie.data as any)?.availability_status||'unchecked'},
+    event:{id:event.id,slug:event.slug,title:event.title,startsAt:event.starts_at,capacity:event.capacity,sold:paid.count||0,held:reserved.count||0,ticketPriceRub:event.ticket_price_rub,maxMovieRuntimeMin:event.max_movie_runtime_min,status:event.status,venueName:event.venue_name,venueAddress:event.venue_address,paymentsAvailable:!!String(Deno.env.get('TELEGRAM_PROVIDER_TOKEN')||'').trim(),nonexistentFilmEnabled:nonexistentFilmEnabled(event),movieAvailabilityStatus:(selMovie.data as any)?.availability_status||'unchecked'},
     screenMessage:event.settings?.screen_message||'',
     ideaFinalists:(ideaF.data||[]).map((x:any)=>x.film_ideas),
     selectedIdea,
