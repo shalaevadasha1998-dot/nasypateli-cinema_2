@@ -93,7 +93,7 @@ function Home(){
   return <div className="page home-page cinematic-page">
     <section className="home-creature-hero">
       <div className="home-creature-top"><div><div className="eyebrow">ваша животина</div><span className="home-creature-stage-label">{data.creature.stage} · {data.creature.storyCount} историй</span></div><button className="micro-link" onClick={()=>nav('/profile')}>открыть профиль ↗</button></div>
-      <button type="button" className="home-rabbit-stage" onClick={()=>nav('/profile')} aria-label="открыть Животину"><span className="home-rabbit-halo"/><span className="home-rabbit-shadow"/>{data.creature.stage==='tiny'?<img className="home-rabbit-cartoon" src={`${import.meta.env.BASE_URL}assets/rabbit-idle.webp`} alt="" draggable={false}/>:<Rabbit creature={data.creature}/>}</button>
+      <button type="button" className="home-rabbit-stage" onClick={()=>nav('/profile')} aria-label="открыть Животину"><span className="home-rabbit-halo"/><span className="home-rabbit-shadow"/>{data.creature.stage==='stage_0'?<img className="home-rabbit-cartoon" src={`${import.meta.env.BASE_URL}assets/rabbit-idle.webp`} alt="" draggable={false}/>:<Rabbit creature={data.creature}/>}</button>
       <div className="home-creature-name">{data.creature.name||'животина'}</div>
       <p className="home-creature-copy">пока маленькая. будет расти от встреч, фильмов, споров и странных решений, которые случатся с вами внутри клуба</p>
     </section>
