@@ -53,6 +53,7 @@ export type EventInfo = {
   status: EventStatus
   venueName?: string
   venueAddress?: string
+  paymentsAvailable:boolean
   nonexistentFilmEnabled:boolean
   movieAvailabilityStatus?:'unchecked'|'confirmed'|'unavailable'
 }
