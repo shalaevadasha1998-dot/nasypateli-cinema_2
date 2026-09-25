@@ -137,7 +137,7 @@ async function telegramRuntimeReady(){
 }
 
 async function runtimeHealth(db:any){
-  const requiredTables=['users','cinema_profiles','events','registrations','creatures','story_definitions','dating_profiles','notification_preferences','encounter_tokens']
+  const requiredTables=['users','cinema_profiles','events','registrations','creatures','creature_tasks','user_creature_tasks','creature_game_config','crumb_ledger','story_definitions','dating_profiles','notification_preferences','encounter_tokens']
   const [tableChecks,pilot,telegram]=await Promise.all([
     Promise.all(requiredTables.map(async table=>{const r=await db.from(table).select('*',{head:true}).limit(1);return !r.error})),
     db.from('events').select('slug,capacity,ticket_price_rub').eq('slug','2026-10-03').maybeSingle(),
@@ -263,7 +263,7 @@ export async function handleApi(req:Request){
     if(!isAdminAction||!adminTokenOk){tg=await telegramUserFromRequest(req);user=await getOrCreateUser(db,tg)}
 
     if(action==='creature-tasks'){
-      const tg=await telegramUserFromRequest(req);const user=await getOrCreateUser(db,tg);const creature=await ensureCreature(db,user.id)
+      const creature=await ensureCreature(db,user.id)
       if(!creature.born_at)return err('Сначала должна родиться Животина',409)
       const [tasks,done]=await Promise.all([
         db.from('creature_tasks').select('id,title,description,reward_crumbs,completion_type,available_from,available_until').eq('active',true).order('created_at',{ascending:true}),
@@ -276,14 +276,13 @@ export async function handleApi(req:Request){
     }
 
     if(action==='complete-creature-task'){
-      const tg=await telegramUserFromRequest(req);const user=await getOrCreateUser(db,tg);const taskId=String(body.taskId||'').trim()
+      const taskId=String(body.taskId||'').trim()
       if(!taskId)return err('Не указано задание',400)
       const r=await db.rpc('complete_creature_task',{p_user_id:user.id,p_task_id:taskId});if(r.error)throw r.error
       return json({...(r.data||{}),creature:await creatureState(db,user.id)})
     }
 
     if(action==='feed-creature'){
-      const tg=await telegramUserFromRequest(req);const user=await getOrCreateUser(db,tg)
       const r=await db.rpc('feed_creature',{p_user_id:user.id});if(r.error)throw r.error
       return json({...(r.data||{}),creature:await creatureState(db,user.id)})
     }
@@ -293,10 +292,10 @@ export async function handleApi(req:Request){
       let existing:any=null
       const ex=await db.from('creatures').select('user_id,name,born_at,crumbs').eq('user_id',user.id).maybeSingle()
       if(!ex.error)existing=ex.data
-      const bornAt=existing?.born_at||new Date().toISOString();const crumbs=Math.max(3,Number(existing?.crumbs||0))
+      const bornAt=existing?.born_at||new Date().toISOString()
       let write:any
-      if(existing)write=await db.from('creatures').update({name,born_at:bornAt,crumbs}).eq('user_id',user.id)
-      else write=await db.from('creatures').insert({user_id:user.id,name,born_at:bornAt,crumbs})
+      if(existing)write=await db.from('creatures').update({name,born_at:bornAt}).eq('user_id',user.id)
+      else write=await db.from('creatures').insert({user_id:user.id,name,born_at:bornAt,crumbs:0})
       if(write.error){
         // compatibility retry for older v0.6-era tables where only the core fields exist
         const minimal=existing?await db.from('creatures').update({name,born_at:bornAt}).eq('user_id',user.id):await db.from('creatures').insert({user_id:user.id,name,born_at:bornAt})
