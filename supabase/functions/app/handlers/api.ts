@@ -305,20 +305,44 @@ export async function handleApi(req:Request){
 
     if(action==='birth-creature'||action==='participant-birth-v2'){
       const name=String(body.name||'Животина').trim().slice(0,32)||'Животина'
-      let existing:any=null
       const ex=await db.from('creatures').select('user_id,name,born_at,crumbs').eq('user_id',user.id).maybeSingle()
       if(ex.error)throw ex.error
-      existing=ex.data
+      const existing=ex.data
       if(existing?.born_at)return json({ok:true,alreadyBorn:true,creature:await creatureState(db,user.id)})
+
       const bornAt=new Date().toISOString()
-      let write:any
-      if(existing)write=await db.from('creatures').update({name,born_at:bornAt}).eq('user_id',user.id)
-      else write=await db.from('creatures').insert({user_id:user.id,name,born_at:bornAt,crumbs:0})
-      if(write.error){
-        // compatibility retry for older v0.6-era tables where only the core fields exist
-        const minimal=existing?await db.from('creatures').update({name,born_at:bornAt}).eq('user_id',user.id):await db.from('creatures').insert({user_id:user.id,name,born_at:bornAt})
-        if(minimal.error)throw minimal.error
+
+      if(existing){
+        const write=await db.from('creatures')
+          .update({name,born_at:bornAt})
+          .eq('user_id',user.id)
+          .is('born_at',null)
+          .select('user_id')
+          .maybeSingle()
+
+        if(write.error)throw write.error
+
+        // Another request may have completed birth after the initial read.
+        // In that case the conditional update touches no row and the first
+        // successful birth remains canonical.
+        if(!write.data)return json({ok:true,alreadyBorn:true,creature:await creatureState(db,user.id)})
+      }else{
+        const write=await db.from('creatures')
+          .insert({user_id:user.id,name,born_at:bornAt,crumbs:0})
+          .select('user_id')
+          .maybeSingle()
+
+        if(write.error){
+          // user_id is the creatures primary key. A duplicate means another
+          // concurrent request created the creature first, so treat this as
+          // an idempotent retry rather than overwriting birth state.
+          if(String(write.error.code||'')==='23505'){
+            return json({ok:true,alreadyBorn:true,creature:await creatureState(db,user.id)})
+          }
+          throw write.error
+        }
       }
+
       return json({ok:true,alreadyBorn:false,creature:await creatureState(db,user.id)})
     }
 
