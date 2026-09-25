@@ -135,8 +135,8 @@ function demoAction(action:string,payload:Record<string,unknown>){
     case 'screen-bootstrap': return loadDemo()
     case 'save-profile-progress': return mutate(s=>({...s,profile:{...s.profile,...(payload.profile as Partial<CinemaProfile>),onboardingStep:Number(payload.step)||s.profile.onboardingStep}}))
     case 'save-profile': return mutate(s=>({...s,profile:{...(payload.profile as CinemaProfile),completed:true,completedAt:new Date().toISOString()},onboardingComplete:true}))
-    case 'birth-creature':
-    case 'participant-birth-v2': case 'birth-creature': return mutate(s=>({...s,creature:{...s.creature,born:true,bornAt:new Date().toISOString(),name:String(payload.name||'Животина'),stage:'stage_0',crumbs:s.creature.crumbs,growthProgress:s.creature.growthProgress||0}}))
+    case 'participant-birth-v2':
+    case 'birth-creature': return mutate(s=>({...s,creature:{...s.creature,born:true,bornAt:new Date().toISOString(),name:String(payload.name||'Животина'),stage:'stage_0',crumbs:s.creature.crumbs,growthProgress:s.creature.growthProgress||0}}))
     case 'equip-cosmetic': return mutate(s=>({...s,creature:{...s.creature,cosmetics:s.creature.cosmetics.map(x=>x.code===payload.code?{...x,equipped:payload.equipped===true}:x)}}))
     case 'save-dating-profile': return mutate(s=>({...s,dating:{...s.dating,...(payload.dating as any)}}))
     case 'dating-swipe': return mutate(s=>({...s,datingCards:s.datingCards.filter(x=>x.userId!==payload.targetUserId),datingMatches:payload.direction==='like'?[...s.datingMatches,{id:`m-${Date.now()}`,kind:'cinema',displayName:'маша',creatureName:'Кишка',createdAt:new Date().toISOString()}]:s.datingMatches}))
