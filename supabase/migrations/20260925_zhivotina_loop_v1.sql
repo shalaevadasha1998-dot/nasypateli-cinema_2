@@ -27,6 +27,23 @@ alter table public.creatures
   add column if not exists growth_progress integer not null default 0,
   add column if not exists last_fed_at timestamptz;
 
+-- Production currently constrains stage to tiny/young/grown. Replace that legacy constraint
+-- before any feed RPC can write stage_0..stage_4, and normalize existing rows in place.
+alter table public.creatures drop constraint if exists creatures_stage_check;
+alter table public.creatures alter column stage set default 'stage_0';
+update public.creatures
+set stage = case
+  when stage = 'grown' then 'stage_4'
+  when stage = 'young' then 'stage_2'
+  when stage = 'tiny' then 'stage_0'
+  when stage in ('stage_0','stage_1','stage_2','stage_3','stage_4') then stage
+  else 'stage_0'
+end
+where stage not in ('stage_0','stage_1','stage_2','stage_3','stage_4');
+alter table public.creatures
+  add constraint creatures_stage_check
+  check (stage in ('stage_0','stage_1','stage_2','stage_3','stage_4'));
+
 alter table public.crumb_ledger
   add column if not exists operation_key text,
   add column if not exists metadata jsonb not null default '{}'::jsonb;
