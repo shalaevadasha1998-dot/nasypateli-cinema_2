@@ -17,15 +17,23 @@ export async function creatureState(db:any,userId:string){
   const [cosmetics,stories,config]=await Promise.all([
     db.from('user_creature_cosmetics').select('equipped,acquired_at,creature_cosmetics(code,name,slot,rarity,visual)').eq('user_id',userId).order('acquired_at',{ascending:false}),
     db.from('user_stories').select('id,happened_at,event_id,context,story_definitions(code,title,description,category,rarity,visibility,reward),events(title)',{count:'exact'}).eq('user_id',userId).order('happened_at',{ascending:false}).limit(80),
-    db.from('creature_game_config').select('feeding_cost').eq('id','default').maybeSingle()
+    db.from('creature_game_config').select('feeding_cost,stage_thresholds').eq('id','default').maybeSingle()
   ])
   if(cosmetics.error)throw cosmetics.error;if(stories.error)throw stories.error;if(config.error)throw config.error
   if(!config.data)throw new Error('creature_game_config_missing')
   const cs=(cosmetics.data||[]).map((x:any)=>({...(x.creature_cosmetics||{}),equipped:!!x.equipped}))
   const timeline=(stories.data||[]).map((x:any)=>({id:x.id,code:x.story_definitions?.code||'',title:x.story_definitions?.title||'',description:x.story_definitions?.description||'',category:x.story_definitions?.category||'',rarity:x.story_definitions?.rarity||'common',secret:x.story_definitions?.visibility==='secret',happenedAt:x.happened_at,eventTitle:x.events?.title||undefined,rewardName:cs.find((c:any)=>c.code===x.story_definitions?.reward?.cosmetic)?.name}))
   const feedingCost=Math.max(1,Number(config.data?.feeding_cost||1))
+  const rawThresholds=config.data?.stage_thresholds||{}
+  const stageThresholds={
+    stage_0:Number(rawThresholds.stage_0??0),
+    stage_1:Number(rawThresholds.stage_1??10),
+    stage_2:Number(rawThresholds.stage_2??25),
+    stage_3:Number(rawThresholds.stage_3??50),
+    stage_4:Number(rawThresholds.stage_4??90)
+  }
   const canFeedToday=!creature.last_fed_at||feedDayKey(creature.last_fed_at)!==feedDayKey(new Date())
-  return {born:!!creature.born_at,bornAt:creature.born_at||undefined,name:creature.name||'Животина',stage:(['stage_0','stage_1','stage_2','stage_3','stage_4'].includes(String(creature.stage))?creature.stage:(creature.stage==='grown'?'stage_4':creature.stage==='young'?'stage_2':'stage_0')),crumbs:Number(creature.crumbs||0),growthProgress:Number(creature.growth_progress||0),lastFedAt:creature.last_fed_at||undefined,feedingCost,canFeedToday,storyCount:Number(stories.count??timeline.length),traits:{curiosity:0,argumentative:0,social:0,romantic:0,chaotic:0,cinephile:0,...(creature.traits||{})},cosmetics:cs,timeline}
+  return {born:!!creature.born_at,bornAt:creature.born_at||undefined,name:creature.name||'Животина',stage:(['stage_0','stage_1','stage_2','stage_3','stage_4'].includes(String(creature.stage))?creature.stage:(creature.stage==='grown'?'stage_4':creature.stage==='young'?'stage_2':'stage_0')),crumbs:Number(creature.crumbs||0),growthProgress:Number(creature.growth_progress||0),lastFedAt:creature.last_fed_at||undefined,feedingCost,stageThresholds,canFeedToday,storyCount:Number(stories.count??timeline.length),traits:{curiosity:0,argumentative:0,social:0,romantic:0,chaotic:0,cinephile:0,...(creature.traits||{})},cosmetics:cs,timeline}
 }
 
 async function conditionPasses(db:any,userId:string,trigger:string,condition:any,context:any){
