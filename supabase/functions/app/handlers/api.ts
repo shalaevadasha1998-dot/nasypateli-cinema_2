@@ -282,6 +282,9 @@ export async function handleApi(req:Request){
 
     if(action==='cron-notifications'){
       if(!cronTokenOk)return err('Доступ к служебному запуску запрещён',401)
+      const saleEvents=await db.from('events').select('id').eq('status','SALES_OPEN');if(saleEvents.error)throw saleEvents.error
+      let promoted=0
+      for(const ev of saleEvents.data||[]){const p=await db.rpc('promote_event_waitlist',{p_event_id:ev.id});if(p.error)throw p.error;promoted+=Number(p.data||0)}
       const due=await db.from('notification_queue').select('id,user_id,kind,text,attempts,users(telegram_id)').eq('status','pending').lte('send_after',new Date().toISOString()).order('send_after').limit(50)
       if(due.error)throw due.error
       let sent=0,retried=0,failed=0,cancelled=0
@@ -323,7 +326,7 @@ export async function handleApi(req:Request){
           if(permanent||exhausted)failed++;else retried++
         }
       }
-      return json({ok:true,sent,retried,failed,cancelled,checked:(due.data||[]).length})
+      return json({ok:true,promoted,sent,retried,failed,cancelled,checked:(due.data||[]).length})
     }
 
     const isAdminAction=action.startsWith('admin-')||action.startsWith('ai-')||action.startsWith('draw-')
@@ -406,6 +409,7 @@ export async function handleApi(req:Request){
     if(action==='bootstrap'){
       const event=await nextEvent(db)
       if(!event)return json({user,profile:null,event:null,onboardingComplete:false})
+      if(event.status==='SALES_OPEN'){const promoted=await db.rpc('promote_event_waitlist',{p_event_id:event.id});if(promoted.error)throw promoted.error}
       const [common,profileRow,reg,idea,answers,thought,reaction,review,feedback,extras,creature,datingBundle,notif]=await Promise.all([
         buildEventState(db,event,{includeActuals:false}),
         db.from('cinema_profiles').select('*').eq('user_id',user.id).maybeSingle(),
@@ -424,7 +428,7 @@ export async function handleApi(req:Request){
       for(const r of [profileRow,reg,idea,answers,thought,reaction,review,feedback,notif])if(r.error)throw r.error
       if(!notif.data)await db.from('notification_preferences').insert({user_id:user.id})
       const profile=normalizeProfile(user,profileRow.data,reg.data,tg);const answerMap=new Map((answers.data||[]).map((x:any)=>[x.question_id,x.answer]))
-      return json({...common,user,profile,onboardingComplete:profile.completed,registration:effectiveRegistrationStatus(reg.data),idea:idea.data||undefined,predictions:(common.predictions||[]).map((p:any)=>({...p,answer:answerMap.get(p.id)})),predictionSubmitted:(answers.data||[]).length>0,thought:thought.data?.text,reaction:reaction.data?{rating:reaction.data.rating,stateWord:reaction.data.state_word,thought:reaction.data.thought,recommendation:reaction.data.recommendation}:undefined,review:review.data?{rating:review.data.rating,sentence:review.data.final_sentence}:undefined,feedback:feedback.data?{returnIntent:feedback.data.return_intent,strongest:feedback.data.strongest_part||'',improve:feedback.data.improve_text||'',willingness:feedback.data.willingness_to_pay||0,durationFeel:feedback.data.duration_feel||'нормально',inviteFriend:feedback.data.invite_friend===null||feedback.data.invite_friend===undefined?8:Number(feedback.data.invite_friend)}:undefined,...extras,creature,...datingBundle,notificationPrefs:{writeAccess:!!notif.data?.write_access,events:notif.data?.events!==false,creature:notif.data?.creature!==false,stories:notif.data?.stories!==false,matches:notif.data?.matches!==false,tickets:notif.data?.tickets!==false,reminders:notif.data?.reminders!==false,quietHours:notif.data?.quiet_hours!==false}})
+      return json({...common,user,profile,onboardingComplete:profile.completed,registration:effectiveRegistrationStatus(reg.data),queuePosition:effectiveRegistrationStatus(reg.data)==='waitlist'?Number(reg.data?.queue_position||0)||undefined:undefined,reservationExpiresAt:effectiveRegistrationStatus(reg.data)==='reserved'?reg.data?.reservation_expires_at||undefined:undefined,idea:idea.data||undefined,predictions:(common.predictions||[]).map((p:any)=>({...p,answer:answerMap.get(p.id)})),predictionSubmitted:(answers.data||[]).length>0,thought:thought.data?.text,reaction:reaction.data?{rating:reaction.data.rating,stateWord:reaction.data.state_word,thought:reaction.data.thought,recommendation:reaction.data.recommendation}:undefined,review:review.data?{rating:review.data.rating,sentence:review.data.final_sentence}:undefined,feedback:feedback.data?{returnIntent:feedback.data.return_intent,strongest:feedback.data.strongest_part||'',improve:feedback.data.improve_text||'',willingness:feedback.data.willingness_to_pay||0,durationFeel:feedback.data.duration_feel||'нормально',inviteFriend:feedback.data.invite_friend===null||feedback.data.invite_friend===undefined?8:Number(feedback.data.invite_friend)}:undefined,...extras,creature,...datingBundle,notificationPrefs:{writeAccess:!!notif.data?.write_access,events:notif.data?.events!==false,creature:notif.data?.creature!==false,stories:notif.data?.stories!==false,matches:notif.data?.matches!==false,tickets:notif.data?.tickets!==false,reminders:notif.data?.reminders!==false,quietHours:notif.data?.quiet_hours!==false}})
     }
 
     if(action==='save-profile-progress'||action==='save-profile'){
