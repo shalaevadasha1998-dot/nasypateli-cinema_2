@@ -624,13 +624,13 @@ export async function handleApi(req:Request){
       const r=await db.from('events').update(patch).eq('id',event.id).select('id,slug,title,starts_at,capacity,ticket_price_rub,max_movie_runtime_min,venue_name,venue_address').single();if(r.error)throw r.error;return json({ok:true,event:r.data})
     }
     if(action==='admin-capacity'){
-      const capacity=Math.max(1,Math.min(500,Number(body.capacity)||30));const occupied=await activeSeatCount(db,event.id);if(capacity<occupied)return err(`Вместимость не может быть меньше уже занятых мест: ${occupied}`,409);const r=await db.from('events').update({capacity}).eq('id',event.id);if(r.error)throw r.error;return json({ok:true,capacity})
+      const capacity=Math.max(1,Math.min(500,Number(body.capacity)||30));const r=await db.rpc('set_event_capacity',{p_event_id:event.id,p_capacity:capacity});if(r.error){const message=String(r.error.message||'');if(message.includes('capacity below occupied seats')){const occupied=await activeSeatCount(db,event.id);return err(`Вместимость не может быть меньше уже занятых мест: ${occupied}`,409)}throw r.error}const result=r.data?.[0]||{};return json({ok:true,capacity:Number(result.capacity||capacity),promoted:Number(result.promoted||0)})
     }
     if(action==='admin-grant-test-ticket'){
       const raw=String(body.username||'').trim().replace(/^@/,'');if(!raw)return err('Укажите имя пользователя в Telegram')
       const target=await db.from('users').select('id,telegram_username,display_name').ilike('telegram_username',raw).maybeSingle();if(target.error)throw target.error;if(!target.data)return err('Пользователь ещё не открывал мини-приложение',404)
-      const r=await db.from('registrations').upsert({event_id:event.id,user_id:target.data.id,status:'paid',amount_rub:0,payment_provider:'test',paid_at:new Date().toISOString(),reservation_expires_at:null},{onConflict:'event_id,user_id'});if(r.error)throw r.error
-      return json({ok:true,user:{username:target.data.telegram_username,name:target.data.display_name}})
+      const r=await db.rpc('grant_test_ticket',{p_event_id:event.id,p_user_id:target.data.id});if(r.error){const message=String(r.error.message||'');if(message.includes('active waitlist'))return err('Тестовый билет нельзя выдать в обход активного листа ожидания',409);if(message.includes('event is full'))return err('Свободных мест нет',409);throw r.error}
+      return json({ok:true,status:String(r.data||'paid'),user:{username:target.data.telegram_username,name:target.data.display_name}})
     }
     if(action==='admin-screen-message'){
       const settings={...(event.settings||{}),screen_message:String(body.message||'').slice(0,180)};const r=await db.from('events').update({settings}).eq('id',event.id);if(r.error)throw r.error;return json({ok:true})
