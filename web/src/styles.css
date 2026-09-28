@@ -950,6 +950,12 @@ button:active,.btn:active{transform:scale(.985)}
 
 
 /* named creature chat portrait */
+.zhivotina-portal{
+  display:grid;
+  grid-template-columns:88px minmax(0,1fr) auto;
+  align-items:center;
+  gap:16px;
+}
 .zhivotina-portrait,
 .chat-creature-portrait{
   position:relative;
