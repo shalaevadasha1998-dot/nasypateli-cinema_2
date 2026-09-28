@@ -31,7 +31,7 @@ function equippedCodes(creature:CreatureState){
 }
 
 export function Rabbit({
-  creature,size='large',animate=true,state='idle'
+  creature,size='large',animate=false,state='idle'
 }:{
   creature:CreatureState
   size?:'tiny'|'small'|'large'
