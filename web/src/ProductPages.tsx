@@ -85,7 +85,7 @@ export function CreatureProfilePage(){
       <div className="creature-static-art"><img src={`${import.meta.env.BASE_URL}assets/rabbit-idle.webp`} alt={creatureName} draggable={false}/></div>
       <h1>{creatureName}</h1>
       <p>ваш личный персонаж внутри НАСЫПАТЕЛЕЙ В КИНО. {creatureName} знает ваш кинопрофиль и может обсуждать с вами фильмы, вкус и происходящее в клубе.</p>
-      <Button onClick={()=>nav('/zhivotina')}>открыть чат</Button>
+      <Button onClick={()=>nav('/zhivotina')}>поговорить с {creatureName}</Button>
     </section>
 
     <Card className="creature-coming-soon">
