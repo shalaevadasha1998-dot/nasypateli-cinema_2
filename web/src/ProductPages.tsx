@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Button, Card, Empty, Field, Pill } from './components/UI'
 import { Rabbit } from './components/Rabbit'
 import { callApi } from './lib/api'
-import { haptic, hapticSuccess, requestTelegramWriteAccess, telegramWebApp } from './lib/telegram'
+import { haptic, hapticSuccess, requestTelegramWriteAccess } from './lib/telegram'
 import type { DatingIntent, DemoState, NotificationPrefs } from './types'
 
 function useBootstrap(){
