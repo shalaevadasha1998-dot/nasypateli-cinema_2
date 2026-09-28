@@ -64,7 +64,8 @@ export type Prediction = { id:string; position:number; text:string; answer?:bool
 export type LeaderRow = { name:string; points:number; wins:number; events:number }
 export type JipitinaMessage = { id:string; role:'user'|'assistant'; text:string; mode:string; createdAt:string }
 export type PostFilmReaction = {rating:number;stateWord:string;thought:string;recommendation:'yes'|'no'|'depends'|''}
-export type ClubEvent = {id:string;slug:string;title:string;startsAt:string;movie?:{title:string;year?:number};review?:Record<string,unknown>}
+export type CollectiveReview = {intro?:string;caption?:string;averageRating?:number;sentences?:string[]}
+export type ClubEvent = {id:string;slug:string;title:string;startsAt:string;movie?:{title:string;year?:number};review?:CollectiveReview}
 export type ProfileStats = {eventsAttended:number;predictionPoints:number;wins:number;ideasSubmitted:number}
 
 export type CreatureTrait = 'curiosity'|'argumentative'|'social'|'romantic'|'chaotic'|'cinephile'
