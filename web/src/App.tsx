@@ -100,7 +100,7 @@ function Home(){
     </section>
     {encounterMsg&&<div className="success floating-success">{encounterMsg}</div>}
     <section className="home-event-hero">
-      <div className="home-event-date"><div className="eyebrow">ближайший вечер</div><h1>{eventDate(e.startsAt)}</h1><p>{eventTime(e.startsAt)} · {e.venueName?e.venueName:'место объявим позже'} · москва</p>{e.venueAddress&&<small>{e.venueAddress}</small>}</div>
+      <div className="home-event-date"><div className="eyebrow">ближайший вечер</div><h1>{eventDate(e.startsAt)}</h1><p>{eventTime(e.startsAt)} · {e.venueName?e.venueName:'место объявим позже'} · москва{e.venueAddress&&<><br/>{e.venueAddress}</>}</p></div>
       <div className="home-event-ticket">
         <div className="home-ticket-head"><div><span>{e.title}</span><strong>{e.ticketPriceRub} ₽</strong></div><Pill>{left} свободно</Pill></div>
         <div className="seat-line"><i style={{width:`${Math.min(100,(e.sold+held)/e.capacity*100)}%`}}/></div><div className="seat-copy">{left?`ещё ${left} мест`:'мест больше нет'}</div>
