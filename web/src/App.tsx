@@ -38,7 +38,8 @@ function usePrivilegedState(kind:'admin'|'screen',slug:string|undefined){
 function Loading({error}:{error?:string}){const initMissing=String(error||'').toLowerCase().includes('initdata');if(initMissing)return <div className="telegram-gate"><div className="telegram-gate-noise"/><div className="eyebrow">мини-приложение</div><h1>откройте нас<br/>из Telegram</h1><p>браузер не передаёт ваш Telegram-профиль. внутри бота всё откроется нормально</p><a className="btn telegram-gate-btn" href="https://t.me/nasipateli_v_kinobot">открыть бота</a></div>;return <div className="page loading-page"><div className="loading-orbit"><i/><i/><i/></div><Card>{error?<>ошибка: {error}</>:<>загрузка…</>}</Card></div>}
 function parseLines(v:string){return v.split(/\n+/).map(x=>x.trim()).filter(Boolean)}
 function parseCommaList(v:string){return v.split(/[\n,]+/).map(x=>x.trim()).filter(Boolean)}
-function eventDate(iso:string){try{return new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long'}).format(new Date(iso))}catch{return iso}}
+function eventDate(iso:string){try{return new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long',timeZone:'Europe/Moscow'}).format(new Date(iso))}catch{return iso}}
+function eventTime(iso:string){try{return new Intl.DateTimeFormat('ru-RU',{hour:'2-digit',minute:'2-digit',timeZone:'Europe/Moscow'}).format(new Date(iso))}catch{return ''}}
 
 function Onboarding(){
   const {data,error,reload}=useStateData();const [search]=useSearchParams();const nav=useNavigate();const editing=search.get('edit')==='1'
@@ -99,7 +100,7 @@ function Home(){
     </section>
     {encounterMsg&&<div className="success floating-success">{encounterMsg}</div>}
     <section className="home-event-hero">
-      <div className="home-event-date"><div className="eyebrow">ближайший вечер</div><h1>{eventDate(e.startsAt)}</h1><p>{e.venueName?`${e.venueName} · `:''}москва</p></div>
+      <div className="home-event-date"><div className="eyebrow">ближайший вечер</div><h1>{eventDate(e.startsAt)}</h1><p>{eventTime(e.startsAt)} · {e.venueName?e.venueName:'место объявим позже'} · москва</p>{e.venueAddress&&<small>{e.venueAddress}</small>}</div>
       <div className="home-event-ticket">
         <div className="home-ticket-head"><div><span>{e.title}</span><strong>{e.ticketPriceRub} ₽</strong></div><Pill>{left} свободно</Pill></div>
         <div className="seat-line"><i style={{width:`${Math.min(100,(e.sold+held)/e.capacity*100)}%`}}/></div><div className="seat-copy">{left?`ещё ${left} мест`:'мест больше нет'}</div>
