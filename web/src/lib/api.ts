@@ -69,10 +69,13 @@ let bootstrapInFlight:Promise<unknown>|null=null
 let bootstrapCache:{at:number;value:unknown}|null=null
 export async function callApi<T=unknown>(action:string,payload:Record<string,unknown>={}):Promise<T>{
   if(action==='bootstrap'){
+    const fresh=payload.fresh===true
     const now=Date.now()
-    if(bootstrapCache&&now-bootstrapCache.at<15000)return bootstrapCache.value as T
-    if(bootstrapInFlight)return bootstrapInFlight as Promise<T>
-    bootstrapInFlight=requestApi<any>(action,payload).then(value=>{const normalized=normalizeBootstrap(value);bootstrapCache={at:Date.now(),value:normalized};return normalized}).finally(()=>{bootstrapInFlight=null})
+    if(!fresh&&bootstrapCache&&now-bootstrapCache.at<15000)return bootstrapCache.value as T
+    if(!fresh&&bootstrapInFlight)return bootstrapInFlight as Promise<T>
+    const run=requestApi<any>(action,payload).then(value=>{const normalized=normalizeBootstrap(value);bootstrapCache={at:Date.now(),value:normalized};return normalized})
+    if(fresh)return run as Promise<T>
+    bootstrapInFlight=run.finally(()=>{bootstrapInFlight=null})
     return bootstrapInFlight as Promise<T>
   }
   const result=await requestApi<T>(action,payload)
