@@ -9,11 +9,11 @@ export default function Layout(){
     </header>
     <main><Outlet/></main>
     <nav className="bottom-nav">
-      <NavLink to="/"><i>●</i><span>событие</span></NavLink>
-      <NavLink to="/zhivotina"><i>◉</i><span>чат</span></NavLink>
-      <NavLink to="/dating"><i>↔</i><span>знакомства</span></NavLink>
-      <NavLink to="/profile"><i>○</i><span>животина</span></NavLink>
-      <NavLink to="/archive"><i>□</i><span>архив</span></NavLink>
+      <NavLink end className={({isActive})=>isActive?'active':''} to="/"><i>●</i><span>событие</span></NavLink>
+      <NavLink className={({isActive})=>isActive?'active':''} to="/zhivotina"><i>◉</i><span>чат</span></NavLink>
+      <NavLink className={({isActive})=>isActive?'active':''} to="/dating"><i>↔</i><span>знакомства</span></NavLink>
+      <NavLink className={({isActive})=>isActive?'active':''} to="/profile"><i>○</i><span>животина</span></NavLink>
+      <NavLink className={({isActive})=>isActive?'active':''} to="/archive"><i>□</i><span>архив</span></NavLink>
     </nav>
   </div>
 }
