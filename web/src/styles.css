@@ -1006,3 +1006,16 @@ button:active,.btn:active{transform:scale(.985)}
     grid-column:1/-1;
   }
 }
+
+/* event/settings polish */
+.idea-coach-compose{display:grid;grid-template-columns:minmax(0,1fr) 44px;gap:8px;align-items:stretch;margin-top:12px}
+.idea-coach-compose input{width:100%;min-width:0;background:#0d0e0b;color:var(--paper);border:1px solid #34372e;border-radius:10px;padding:12px 13px;font-size:16px;outline:none}
+.idea-coach-compose input:focus{border-color:var(--rabbit);box-shadow:0 0 0 2px rgba(130,150,106,.08)}
+.idea-coach-compose button{border:0;border-radius:10px;background:var(--rabbit);color:var(--ink);font-size:22px;font-weight:800;cursor:pointer}
+.idea-coach-compose button:disabled{opacity:.35;cursor:not-allowed}
+.event-page-head{margin-bottom:16px}
+.event-page-head h2{margin:6px 0 0}
+@media(max-width:360px){
+  .event-page-head{display:block}
+  .event-page-head .pill{display:inline-block;margin-top:10px}
+}
