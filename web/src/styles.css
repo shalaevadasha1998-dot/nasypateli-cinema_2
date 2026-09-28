@@ -759,6 +759,7 @@ button:active,.btn:active{transform:scale(.985)}
 .home-creature-static-art{
   width:100%;
   min-height:360px;
+  overflow:hidden;
   display:grid;
   place-items:center;
   border:0;
@@ -774,6 +775,8 @@ button:active,.btn:active{transform:scale(.985)}
   width:min(74vw,330px);
   max-height:350px;
   object-fit:contain;
+  transform:scale(4.35);
+  transform-origin:50% 62%;
   filter:drop-shadow(0 16px 13px rgba(0,0,0,.28));
 }
 .home-creature-static .home-creature-name{
@@ -817,6 +820,8 @@ button:active,.btn:active{transform:scale(.985)}
   width:min(82vw,380px);
   max-height:380px;
   object-fit:contain;
+  transform:scale(4.35);
+  transform-origin:50% 62%;
   filter:drop-shadow(0 18px 16px rgba(0,0,0,.34));
 }
 .creature-coming-soon{
