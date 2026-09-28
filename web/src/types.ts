@@ -150,6 +150,8 @@ export type DemoState = {
   profile: CinemaProfile
   onboardingComplete:boolean
   registration: 'none'|'reserved'|'paid'|'attended'|'waitlist'|'refunded'|'cancelled'|'no_show'
+  queuePosition?: number
+  reservationExpiresAt?: string
   idea?: FilmIdea
   ideaFinalists: FilmIdea[]
   selectedIdea?: FilmIdea
