@@ -749,3 +749,117 @@ button:active,.btn:active{transform:scale(.985)}
 @media(prefers-reduced-motion:reduce){
   .rabbit-state-hungry,.rabbit-state-hungry .rabbit-art,.rabbit-hungry-fx i,.rabbit-state-thinking .rabbit-art,.rabbit-thinking-fx i,.rabbit-state-sleeping .rabbit-art,.rabbit-sleep-fx i,.rabbit-state-waking .rabbit-art,.rabbit-wake-fx i{animation:none!important}
 }
+
+
+/* static creature v1: name + chat now, growth/customization later */
+.home-creature-static{
+  min-height:auto;
+  padding-bottom:28px;
+}
+.home-creature-static-art{
+  width:100%;
+  min-height:360px;
+  display:grid;
+  place-items:center;
+  border:0;
+  background:
+    radial-gradient(circle at 50% 72%,rgba(131,154,105,.12),transparent 32%),
+    transparent;
+  padding:12px 0 0;
+  cursor:pointer;
+  appearance:none;
+}
+.home-creature-static-art img{
+  display:block;
+  width:min(74vw,330px);
+  max-height:350px;
+  object-fit:contain;
+  filter:drop-shadow(0 16px 13px rgba(0,0,0,.28));
+}
+.home-creature-static .home-creature-name{
+  margin-top:-8px;
+}
+.home-creature-static .btn{
+  margin-top:12px;
+}
+.creature-static-page{
+  padding-top:18px;
+}
+.creature-static-hero{
+  display:grid;
+  gap:12px;
+}
+.creature-static-hero h1{
+  margin:0;
+  font-size:clamp(48px,13vw,72px);
+  line-height:.9;
+  letter-spacing:-.055em;
+}
+.creature-static-hero>p{
+  margin:0 0 4px;
+  max-width:560px;
+  color:var(--muted);
+  line-height:1.5;
+}
+.creature-static-art{
+  min-height:390px;
+  display:grid;
+  place-items:center;
+  overflow:hidden;
+  border:1px solid var(--line);
+  border-radius:18px;
+  background:
+    radial-gradient(circle at 50% 68%,rgba(131,154,105,.15),transparent 36%),
+    linear-gradient(180deg,#0a0b08,#090a08);
+}
+.creature-static-art img{
+  display:block;
+  width:min(82vw,380px);
+  max-height:380px;
+  object-fit:contain;
+  filter:drop-shadow(0 18px 16px rgba(0,0,0,.34));
+}
+.creature-coming-soon{
+  overflow:hidden;
+  background:
+    radial-gradient(circle at 100% 0,rgba(131,154,105,.13),transparent 42%),
+    var(--card);
+}
+.creature-coming-soon h2{
+  margin:4px 0 8px;
+  font-size:30px;
+  line-height:1;
+}
+.creature-coming-soon>p{
+  margin:0;
+  color:var(--muted);
+  line-height:1.5;
+}
+.soon-grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px;
+  margin-top:18px;
+}
+.soon-grid span{
+  min-height:64px;
+  display:flex;
+  align-items:flex-end;
+  padding:10px;
+  border:1px solid var(--line);
+  border-radius:11px;
+  color:#d8d4cb;
+  font-size:12px;
+  line-height:1.25;
+  background:rgba(255,255,255,.015);
+}
+@media(max-width:600px){
+  .home-creature-static-art{min-height:310px}
+  .home-creature-static-art img{width:min(78vw,292px);max-height:304px}
+  .creature-static-art{min-height:340px}
+  .creature-static-art img{width:min(88vw,330px);max-height:330px}
+}
+@media(max-width:360px){
+  .soon-grid{grid-template-columns:1fr}
+  .soon-grid span{min-height:48px}
+}
