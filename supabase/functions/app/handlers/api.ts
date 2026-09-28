@@ -285,7 +285,7 @@ export async function handleApi(req:Request){
       const saleEvents=await db.from('events').select('id').eq('status','SALES_OPEN');if(saleEvents.error)throw saleEvents.error
       let promoted=0
       for(const ev of saleEvents.data||[]){const p=await db.rpc('promote_event_waitlist',{p_event_id:ev.id});if(p.error)throw p.error;promoted+=Number(p.data||0)}
-      const due=await db.from('notification_queue').select('id,user_id,kind,text,attempts,users(telegram_id)').eq('status','pending').lte('send_after',new Date().toISOString()).order('send_after').limit(50)
+      const due=await db.from('notification_queue').select('id,user_id,kind,text,dedupe_key,attempts,users(telegram_id)').eq('status','pending').lte('send_after',new Date().toISOString()).order('send_after').limit(50)
       if(due.error)throw due.error
       let sent=0,retried=0,failed=0,cancelled=0
       for(const n of due.data||[]){
@@ -310,7 +310,8 @@ export async function handleApi(req:Request){
             failed++
             continue
           }
-          await telegramBot('sendMessage',{chat_id:chatId,text:n.text})
+          const webAppUrl=String(Deno.env.get('TELEGRAM_WEBAPP_URL')||'').trim();const waitlistPromotion=n.kind==='tickets'&&String(n.dedupe_key||'').startsWith('waitlist_promoted:');const replyMarkup=n.kind==='tickets'&&webAppUrl?{inline_keyboard:[[{text:waitlistPromotion?'оплатить место':'открыть билет',web_app:{url:webAppUrl}}]]}:undefined
+          await telegramBot('sendMessage',{chat_id:chatId,text:n.text,...(replyMarkup?{reply_markup:replyMarkup}:{})})
           const r=await db.from('notification_queue').update({status:'sent',sent_at:new Date().toISOString(),error:null,attempts:attempt,last_attempt_at:attemptedAt}).eq('id',n.id)
           if(r.error)throw r.error
           sent++
