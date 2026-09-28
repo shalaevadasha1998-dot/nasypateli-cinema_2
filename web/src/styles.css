@@ -947,3 +947,56 @@ button:active,.btn:active{transform:scale(.985)}
   .birth-simple-copy{padding-left:18px;padding-right:18px}
   .birth-simple-art img{width:min(82vw,300px)}
 }
+
+
+/* named creature chat portrait */
+.zhivotina-portrait,
+.chat-creature-portrait{
+  position:relative;
+  overflow:hidden;
+  border:1px solid var(--line);
+  background:
+    radial-gradient(circle at 50% 68%,rgba(131,154,105,.15),transparent 38%),
+    #090a08;
+}
+.zhivotina-portrait{
+  width:88px;
+  height:88px;
+  border-radius:16px;
+  align-self:center;
+}
+.chat-creature-portrait{
+  width:72px;
+  height:72px;
+  border-radius:14px;
+  flex:0 0 auto;
+}
+.zhivotina-portrait img,
+.chat-creature-portrait img{
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  transform:scale(4.35);
+  transform-origin:50% 62%;
+  filter:drop-shadow(0 7px 7px rgba(0,0,0,.32));
+}
+.chat-creature-identity{
+  display:flex;
+  align-items:center;
+  gap:14px;
+}
+.chat-creature-identity h2{
+  margin:3px 0 0;
+}
+@media(max-width:430px){
+  .zhivotina-portal{
+    grid-template-columns:72px minmax(0,1fr);
+  }
+  .zhivotina-portrait{
+    width:72px;
+    height:72px;
+  }
+  .zhivotina-portal .btn{
+    grid-column:1/-1;
+  }
+}
