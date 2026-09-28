@@ -123,7 +123,7 @@ function Home(){
 }
 
 function NextAction({data,onOpen,onBuy,buyBusy=false}:{data:DemoState;onOpen:()=>void;onBuy:()=>void;buyBusy?:boolean}){
-  const s=data.event.status;const salesOpen=s==='SALES_OPEN';const canCheckout=salesOpen&&data.event.paymentsAvailable
+  const s=data.event.status;const salesOpen=s==='SALES_OPEN'
   if(data.registration==='none')return <Card className="next-card"><div className="eyebrow">следующий шаг</div><h3>{salesOpen?(data.event.paymentsAvailable?'сначала билет':'продажа скоро откроется'):'продажа закрыта'}</h3><p>{salesOpen?(data.event.paymentsAvailable?'откроется, когда вы купите билет':'оплата ещё настраивается. здесь появится кнопка, как только касса будет готова'):'новый билет сейчас оформить нельзя'}</p><p className="muted">игровая механика события доступна только участникам этого вечера</p></Card>
   if(data.registration==='waitlist')return <Card className="next-card"><div className="eyebrow">сейчас</div><h3>ждём место</h3><p>если место освободится, статус обновится здесь</p></Card>
   if(data.registration==='refunded'||data.registration==='cancelled')return <Card className="next-card"><div className="eyebrow">{data.registration==='refunded'?'билет возвращён':'бронь отменена'}</div><h3>доступ к событию закрыт</h3><p>{salesOpen?'если хотите снова участвовать, билет можно оформить заново':'продажа билетов сейчас закрыта'}</p>{salesOpen&&<Button disabled={buyBusy||!data.event.paymentsAvailable} onClick={onBuy}>{!data.event.paymentsAvailable?'оплата временно недоступна':buyBusy?'открываем оплату…':'оформить билет'}</Button>}</Card>
