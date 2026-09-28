@@ -20,7 +20,7 @@ function moscowIso(value:string){const d=new Date(`${value}:00+03:00`);return Nu
 function useStateData(enabled=true){
   const [data,setData]=useState<DemoState|null>(null)
   const [error,setError]=useState('')
-  const reload=()=>enabled?callApi<DemoState>('bootstrap').then(d=>{setData(d);setError('')}).catch(e=>setError(e.message)):Promise.resolve()
+  const reload=(fresh=false)=>enabled?callApi<DemoState>('bootstrap',fresh?{fresh:true}:{}).then(d=>{setData(d);setError('');return d}).catch(e=>{setError(e.message);return undefined}):Promise.resolve(undefined)
   useEffect(()=>{if(!enabled)return;initTelegram();reload();const h=()=>reload();window.addEventListener('nasypateli-demo-change',h);window.addEventListener('storage',h);const timer=demoMode?undefined:window.setInterval(()=>{if(document.visibilityState==='visible')reload()},30000);return()=>{window.removeEventListener('nasypateli-demo-change',h);window.removeEventListener('storage',h);if(timer)window.clearInterval(timer)}},[enabled])
   return {data,error,reload}
 }
@@ -87,9 +87,9 @@ function ProfilePreview({profile}:{profile:CinemaProfile}){return <Card classNam
 function RequireProfile({children}:{children:ReactNode}){const {data,error}=useStateData();if(!data)return <Loading error={error}/>;if(!data.onboardingComplete)return <Navigate to="/onboarding" replace/>;if(data.creature&&!data.creature.born)return <Navigate to="/birth" replace/>;return <>{children}</>}
 
 function Home(){
-  const {data,error,reload}=useStateData();const nav=useNavigate();const [buyError,setBuyError]=useState('');const [buyBusy,setBuyBusy]=useState(false);const [encounterMsg,setEncounterMsg]=useState('');useEffect(()=>{if(!data?.creature?.born)return;const u=new URL(location.href);const token=u.searchParams.get('encounter');if(!token)return;u.searchParams.delete('encounter');history.replaceState({},'',u.toString());callApi<any>('encounter',{token}).then(r=>{setEncounterMsg(r.kind==='event_checkin'?'вы внутри. животина запомнила, что вы пришли':'Животины встретились');reload()}).catch(e=>setEncounterMsg(e.message))},[data?.creature?.born]);if(!data)return <Loading error={error}/>
+  const {data,error,reload}=useStateData();const nav=useNavigate();const [buyError,setBuyError]=useState('');const [buyNotice,setBuyNotice]=useState('');const [buyBusy,setBuyBusy]=useState(false);const [encounterMsg,setEncounterMsg]=useState('');useEffect(()=>{if(!data?.creature?.born)return;const u=new URL(location.href);const token=u.searchParams.get('encounter');if(!token)return;u.searchParams.delete('encounter');history.replaceState({},'',u.toString());callApi<any>('encounter',{token}).then(r=>{setEncounterMsg(r.kind==='event_checkin'?'вы внутри. животина запомнила, что вы пришли':'Животины встретились');reload()}).catch(e=>setEncounterMsg(e.message))},[data?.creature?.born]);if(!data)return <Loading error={error}/>
   const e=data.event;const held=Number(e.held||0);const left=Math.max(0,e.capacity-e.sold-held);const salesOpen=e.status==='SALES_OPEN';const checkoutAvailable=salesOpen&&e.paymentsAvailable
-  const buy=async()=>{if(buyBusy||!checkoutAvailable)return;try{setBuyBusy(true);setBuyError('');await buyTicket(e.slug);await reload()}catch(err:any){setBuyError(err.message||'не получилось открыть оплату')}finally{setBuyBusy(false)}}
+  const buy=async()=>{if(buyBusy||!checkoutAvailable)return;try{setBuyBusy(true);setBuyError('');setBuyNotice('');const result:any=await buyTicket(e.slug);if(result?.waitlist){setBuyNotice(result.queuePosition?'вы в листе ожидания · позиция '+result.queuePosition:'вы в листе ожидания');await reload(true);return}const status=String(result?.invoiceStatus||'');if(status==='cancelled'){setBuyNotice('оплата отменена. место пока остаётся в резерве, можно продолжить оплату');await reload(true);return}if(status==='failed'){setBuyError('Telegram не завершил оплату. место пока остаётся в резерве, попробуйте ещё раз');await reload(true);return}if(status==='paid'){setBuyNotice('оплата прошла. подтверждаем билет…');for(const delay of [0,700,1400,2500]){if(delay)await new Promise(resolve=>window.setTimeout(resolve,delay));const latest=await reload(true);if(latest&&['paid','attended'].includes(latest.registration)){setBuyNotice('оплата прошла. билет уже внутри');return}}setBuyNotice('оплата прошла в Telegram. билет подтверждается, статус обновится автоматически');return}await reload(true)}catch(err:any){setBuyError(err.message||'не получилось открыть оплату')}finally{setBuyBusy(false)}}
   const rebuyStatus=data.registration==='refunded'?'билет возвращён':data.registration==='cancelled'?'бронь отменена':''
   return <div className="page home-page cinematic-page">
     <section className="home-creature-hero home-creature-static">
@@ -111,7 +111,7 @@ function Home(){
         {data.registration==='waitlist'&&<div className="success">вы в листе ожидания</div>}
         {rebuyStatus&&<><div className="muted">{rebuyStatus}</div>{salesOpen&&<Button disabled={buyBusy||!e.paymentsAvailable} onClick={buy}>{!e.paymentsAvailable?'оплата временно недоступна':buyBusy?'открываем оплату…':'оформить билет заново'}</Button>}</>}
         {data.registration==='no_show'&&<div className="muted">вечер завершён без отметки о посещении</div>}
-        {buyError&&<div className="form-error">{buyError}</div>}
+        {buyNotice&&<div className="success">{buyNotice}</div>}{buyError&&<div className="form-error">{buyError}</div>}
       </div>
     </section>
     <NextAction data={data} onOpen={()=>nav(`/event/${e.slug}`)} onBuy={buy} buyBusy={buyBusy}/>
