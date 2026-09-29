@@ -754,7 +754,8 @@ export async function handleApi(req:Request){
         if(latest.data?.status==='waitlist')return json({ok:true,status:'waitlist',queuePosition:Number(latest.data?.queue_position||0)||undefined})
         return err('не удалось подтвердить билет. попробуйте ещё раз',409)
       }
-      await db.from('notification_queue').upsert({user_id:user.id,kind:'tickets',text:`билет получен. ${new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Moscow'}).format(new Date(event.starts_at))} · ${event.venue_name||'место внутри приложения'}`,send_after:new Date().toISOString(),status:'pending',dedupe_key:`free_ticket:${event.id}`,event_id:event.id,expires_at:event.starts_at},{onConflict:'user_id,dedupe_key'})
+      const notice=await db.from('notification_queue').upsert({user_id:user.id,kind:'tickets',text:`билет получен. ${new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Moscow'}).format(new Date(event.starts_at))} · ${event.venue_name||'место внутри приложения'}`,send_after:new Date().toISOString(),status:'pending',dedupe_key:`free_ticket:${event.id}`,event_id:event.id,expires_at:event.starts_at},{onConflict:'user_id,dedupe_key'})
+      if(notice.error)console.error('free ticket notification enqueue failed',notice.error)
       return json({ok:true,status:'paid'})
     }
 
