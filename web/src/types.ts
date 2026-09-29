@@ -59,7 +59,33 @@ export type EventInfo = {
 }
 
 export type FilmIdea = { id:string; title:string; plot:string; author?:string }
-export type MovieCandidate = { id:string; title:string; year?:number; runtimeMin?:number; reason?:string; score?:number }
+export type MovieCandidate = {
+  id:string
+  title:string
+  originalTitle?:string
+  year?:number
+  runtimeMin?:number
+  genre?:string
+  country?:string
+  reason?:string
+  score?:number
+  enabledForEvent?:boolean
+  trailerStatus?:string
+  clipStatus?:string
+  sourceType?:string
+  sourcePlatform?:string
+  sourceUrl?:string
+  videoId?:string
+  startSec?:number
+  endSec?:number
+  sourceChannel?:string
+  sourceVerified?:boolean
+  verifiedAt?:string
+  usageStatus?:string
+  discussionPrompts?:unknown[]
+  animalComment?:string
+  tags?:string[]
+}
 export type Prediction = { id:string; position:number; text:string; answer?:boolean; actual?:boolean }
 export type LeaderRow = { name:string; points:number; wins:number; events:number }
 export type JipitinaMessage = { id:string; role:'user'|'assistant'; text:string; mode:string; createdAt:string }
@@ -160,6 +186,64 @@ export type NotificationPrefs = {
   quietHours:boolean
 }
 
+export type ProgramBlock = {
+  id:string
+  type:string
+  title:string
+  durationMin:number
+  roundsTarget:number
+  index:number
+}
+
+export type EventProgram = {
+  version:number
+  roundsTarget:number
+  rewards:{join:number;vote:number;round:number;finale:number}
+  blocks:ProgramBlock[]
+}
+
+export type ShowRound = {
+  id:string
+  roundNo:number
+  blockId:string
+  status:'draft'|'active'|'closed'|'skipped'
+  movie?:MovieCandidate
+  question?:any
+  voteState:'closed'|'open'
+  resultsVisible:boolean
+  videoState:Record<string,unknown>
+  startedAt?:string
+  closedAt?:string
+}
+
+export type EventRuntime = {
+  runStatus:'idle'|'running'|'paused'|'finished'
+  currentBlockId:string
+  currentBlockIndex:number
+  currentBlock?:ProgramBlock
+  currentRound:number
+  currentRoundId?:string
+  currentMovie?:MovieCandidate
+  currentQuestion?:any
+  voteState:'closed'|'open'
+  resultsVisible:boolean
+  videoState:Record<string,unknown>
+  revision:number
+  startedAt?:string
+  blockStartedAt?:string
+  pausedAt?:string
+  updatedAt?:string
+}
+
+export type ShowState = {
+  program:EventProgram
+  runtime:EventRuntime
+  currentRound?:ShowRound
+  voteResults:{answer:any;count:number}[]
+  onlineCount:number
+  myVote?:any
+}
+
 export type DemoState = {
   event: EventInfo
   profile: CinemaProfile
@@ -187,6 +271,9 @@ export type DemoState = {
   datingCards:DatingCard[]
   datingMatches:DatingMatch[]
   notificationPrefs:NotificationPrefs
+  show?:ShowState
+  movieCatalog?:MovieCandidate[]
+  showLog?:{id:string;action:string;createdAt:string}[]
   creatureTaskCompletions?:Record<string,string>
   screenMessage?: string
   outputs?: Record<string, unknown>

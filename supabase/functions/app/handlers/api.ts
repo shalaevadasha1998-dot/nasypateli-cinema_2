@@ -7,7 +7,7 @@ import { creatureState, emitStoryTrigger, ensureCreature } from '../_shared/stor
 import { allowedGender, connectionKind, datingState, intentsCompatible } from '../_shared/dating.ts'
 import { JIPITINA, jipitinaInstructions } from '../_shared/jipitina.ts'
 import { validateMovieTitle } from '../_shared/movies.ts'
-import { buildEventState, eventBySlug, nextEvent, nonexistentFilmEnabled } from '../_shared/state.ts'
+import { buildEventState, buildShowState, eventBySlug, nextEvent, nonexistentFilmEnabled } from '../_shared/state.ts'
 
 const manualTransitions:Record<string,string>={
   DRAFT:'SALES_OPEN',SALES_OPEN:'CHECKIN',CHECKIN:'IDEAS_OPEN',IDEAS_OPEN:'IDEAS_LOCKED',
@@ -44,6 +44,7 @@ function normalizeProfile(user:any,row:any,registration:any,tg:any){
 function profileErrors(p:any){
   const e:string[]=[]
   if(String(p.displayName||'').trim().length<2)e.push('имя')
+  if(!['woman','man'].includes(String(p.selfGender||'')))e.push('как к вам обращаться')
   if(!['18-24','25-34','35-44','45+'].includes(String(p.ageRange||'')))e.push('возраст')
   if(String(p.city||'').trim().length<2)e.push('город')
   if(String(p.about||'').trim().length<3)e.push('о себе')
@@ -70,6 +71,47 @@ async function withEventOperation<T>(db:any,eventId:string,operation:string,work
     const release=await db.rpc('release_event_operation',{p_event_id:eventId,p_operation:operation,p_lease_token:lease})
     if(release.error)console.error('event operation release failed',operation,release.error)
   }
+}
+
+
+function sanitizeProgramBlocks(input:any){
+  if(!Array.isArray(input))return null
+  const seen=new Set<string>()
+  const out:any[]=[]
+  for(const raw of input.slice(0,20)){
+    const id=String(raw?.id||'').trim().toLowerCase().replace(/[^a-z0-9_\-]/g,'_').slice(0,60)
+    if(!id||seen.has(id))continue
+    seen.add(id)
+    const type=String(raw?.type||id).trim().toLowerCase().replace(/[^a-z0-9_\-]/g,'_').slice(0,60)
+    const title=String(raw?.title||id).trim().slice(0,120)
+    const duration=Math.max(0,Math.min(240,Math.round(Number(raw?.durationMin??raw?.duration_min??0)||0)))
+    const rounds=Math.max(0,Math.min(20,Math.round(Number(raw?.roundsTarget??raw?.rounds_target??0)||0)))
+    out.push({id,type,title,duration_min:duration,rounds_target:rounds,enabled:raw?.enabled!==false})
+  }
+  return out.filter(x=>x.enabled)
+}
+
+async function writeRuntime(db:any,event:any,actorUserId:string|null,action:string,patch:any){
+  return await withEventOperation(db,event.id,'show-runtime',async()=>{
+    const current=await db.from('event_runtime').select('*').eq('event_id',event.id).single()
+    if(current.error)throw current.error
+    const from=current.data
+    const next={...patch,revision:Number(from.revision||0)+1,updated_at:new Date().toISOString()}
+    const updated=await db.from('event_runtime').update(next).eq('event_id',event.id).eq('revision',from.revision).select('*').maybeSingle()
+    if(updated.error)throw updated.error
+    if(!updated.data)return err('пульт уже изменился в другой вкладке · обновите экран',409)
+    const log=await db.from('event_runtime_log').insert({event_id:event.id,action,actor_user_id:actorUserId,from_state:from,to_state:updated.data})
+    if(log.error)console.error('show runtime log failed',log.error)
+    return json({ok:true,show:await buildShowState(db,event)})
+  })
+}
+
+function normalizeQuestion(body:any){
+  const prompt=String(body?.prompt||'').trim().slice(0,500)
+  const options=(Array.isArray(body?.options)?body.options:[]).map((x:any)=>String(x).trim()).filter(Boolean).slice(0,8)
+  const key=String(body?.key||'question').trim().replace(/[^a-zA-Z0-9_\-]/g,'_').slice(0,80)||'question'
+  if(!prompt)return null
+  return {key,prompt,options}
 }
 
 async function getOrCreateUser(db:any,tg:any){
@@ -402,11 +444,24 @@ export async function handleApi(req:Request){
         }catch{return err('Доступ к пульту запрещён',401)}
       }
       const event=await eventBySlug(db,String(body.slug||'2026-10-03'))
-      const [state,adminParticipants]=await Promise.all([
+      const [state,adminParticipants,movieCatalog,showLog]=await Promise.all([
         buildEventState(db,event,{includeActuals:true,includePrivateOutputs:true}),
-        adminParticipantRows(db,event.id)
+        adminParticipantRows(db,event.id),
+        db.from('movie_candidates').select('*').eq('event_id',event.id).order('title'),
+        db.from('event_runtime_log').select('id,action,created_at').eq('event_id',event.id).order('created_at',{ascending:false}).limit(20)
       ])
-      return json({...state,adminParticipants})
+      if(movieCatalog.error)throw movieCatalog.error
+      if(showLog.error)throw showLog.error
+      return json({...state,adminParticipants,movieCatalog:(movieCatalog.data||[]).map((x:any)=>({
+        id:x.id,title:x.title,originalTitle:x.original_title||undefined,year:x.year||undefined,runtimeMin:x.runtime_min||undefined,
+        genre:x.genre||undefined,country:x.country||undefined,reason:x.reason||undefined,enabledForEvent:x.enabled_for_event!==false,
+        trailerStatus:x.trailer_status||'unchecked',clipStatus:x.clip_status||'unchecked',sourceType:x.source_type||undefined,
+        sourcePlatform:x.source_platform||undefined,sourceUrl:x.source_url||undefined,videoId:x.video_id||undefined,
+        startSec:x.start_sec??undefined,endSec:x.end_sec??undefined,sourceChannel:x.source_channel||undefined,
+        sourceVerified:x.source_verified===true,verifiedAt:x.verified_at||undefined,usageStatus:x.usage_status||'needs_review',
+        discussionPrompts:Array.isArray(x.discussion_prompts)?x.discussion_prompts:[],animalComment:x.animal_comment||undefined,
+        tags:Array.isArray(x.tags)?x.tags:[]
+      })),showLog:(showLog.data||[]).map((x:any)=>({id:String(x.id),action:x.action,createdAt:x.created_at}))})
     }
 
     if(action==='cron-notifications'){
@@ -462,7 +517,13 @@ export async function handleApi(req:Request){
           }
           const webAppUrl=String(Deno.env.get('TELEGRAM_WEBAPP_URL')||'').trim()
           const waitlistPromotion=n.kind==='tickets'&&String(n.dedupe_key||'').startsWith('waitlist_promoted:')
-          const ticketReplyMarkup=n.kind==='tickets'&&webAppUrl?{inline_keyboard:[[{text:waitlistPromotion?'оплатить место':'открыть билет',web_app:{url:webAppUrl}}]]}:undefined
+          let waitlistButton='оплатить место'
+          if(waitlistPromotion&&n.event_id){
+            const price=await db.from('events').select('ticket_price_rub').eq('id',n.event_id).maybeSingle()
+            if(price.error)console.error('waitlist ticket price lookup failed',price.error)
+            else if(Number(price.data?.ticket_price_rub||0)===0)waitlistButton='подтвердить билет'
+          }
+          const ticketReplyMarkup=n.kind==='tickets'&&webAppUrl?{inline_keyboard:[[{text:waitlistPromotion?waitlistButton:'открыть билет',web_app:{url:webAppUrl}}]]}:undefined
           const baseUrl=webAppUrl.split('#')[0]
           const generalReplyMarkup=!ticketReplyMarkup&&webAppUrl&&['events','reminders','matches','stories','creature'].includes(String(n.kind))
             ?{inline_keyboard:[[{text:n.kind==='matches'?'открыть знакомства':n.kind==='stories'||n.kind==='creature'?'открыть животину':'открыть событие',web_app:{url:n.kind==='matches'?baseUrl+'#/dating':n.kind==='stories'||n.kind==='creature'?baseUrl+'#/zhivotina':webAppUrl}}]]}
@@ -568,6 +629,8 @@ export async function handleApi(req:Request){
       const event=await nextEvent(db)
       if(!event)return json({user,profile:null,event:null,onboardingComplete:false})
       if(event.status==='SALES_OPEN'){const promoted=await db.rpc('promote_event_waitlist',{p_event_id:event.id});if(promoted.error)throw promoted.error}
+      const presence=await db.from('event_presence').upsert({event_id:event.id,user_id:user.id,last_seen_at:new Date().toISOString()},{onConflict:'event_id,user_id'})
+      if(presence.error)console.error('presence heartbeat failed',presence.error)
       const [common,profileRow,reg,idea,answers,thought,reaction,review,feedback,extras,creature,datingBundle,notif]=await Promise.all([
         buildEventState(db,event,{includeActuals:false}),
         db.from('cinema_profiles').select('*').eq('user_id',user.id).maybeSingle(),
@@ -586,7 +649,13 @@ export async function handleApi(req:Request){
       for(const r of [profileRow,reg,idea,answers,thought,reaction,review,feedback,notif])if(r.error)throw r.error
       if(!notif.data)await db.from('notification_preferences').insert({user_id:user.id})
       const profile=normalizeProfile(user,profileRow.data,reg.data,tg);const answerMap=new Map((answers.data||[]).map((x:any)=>[x.question_id,x.answer]))
-      return json({...common,user,profile,onboardingComplete:profile.completed,registration:effectiveRegistrationStatus(reg.data),queuePosition:effectiveRegistrationStatus(reg.data)==='waitlist'?Number(reg.data?.queue_position||0)||undefined:undefined,reservationExpiresAt:effectiveRegistrationStatus(reg.data)==='reserved'?reg.data?.reservation_expires_at||undefined:undefined,idea:idea.data||undefined,predictions:(common.predictions||[]).map((p:any)=>({...p,answer:answerMap.get(p.id)})),predictionSubmitted:(answers.data||[]).length>0,thought:thought.data?.text,reaction:reaction.data?{rating:reaction.data.rating,stateWord:reaction.data.state_word,thought:reaction.data.thought,recommendation:reaction.data.recommendation}:undefined,review:review.data?{rating:review.data.rating,sentence:review.data.final_sentence}:undefined,feedback:feedback.data?{returnIntent:feedback.data.return_intent,strongest:feedback.data.strongest_part||'',improve:feedback.data.improve_text||'',willingness:feedback.data.willingness_to_pay||0,durationFeel:feedback.data.duration_feel||'нормально',inviteFriend:feedback.data.invite_friend===null||feedback.data.invite_friend===undefined?8:Number(feedback.data.invite_friend)}:undefined,...extras,creature,...datingBundle,notificationPrefs:{writeAccess:!!notif.data?.write_access,events:notif.data?.events!==false,creature:notif.data?.creature!==false,stories:notif.data?.stories!==false,matches:notif.data?.matches!==false,tickets:notif.data?.tickets!==false,reminders:notif.data?.reminders!==false,quietHours:notif.data?.quiet_hours!==false}})
+      let show=(common as any).show
+      if(show?.currentRound?.id){
+        const mine=await db.from('event_votes').select('answer').eq('event_id',event.id).eq('round_id',show.currentRound.id).eq('user_id',user.id).eq('question_key',String(show.currentRound.question?.key||'question')).maybeSingle()
+        if(mine.error)throw mine.error
+        show={...show,myVote:mine.data?.answer}
+      }
+      return json({...common,show,user,profile,onboardingComplete:profile.completed,registration:effectiveRegistrationStatus(reg.data),queuePosition:effectiveRegistrationStatus(reg.data)==='waitlist'?Number(reg.data?.queue_position||0)||undefined:undefined,reservationExpiresAt:effectiveRegistrationStatus(reg.data)==='reserved'?reg.data?.reservation_expires_at||undefined:undefined,idea:idea.data||undefined,predictions:(common.predictions||[]).map((p:any)=>({...p,answer:answerMap.get(p.id)})),predictionSubmitted:(answers.data||[]).length>0,thought:thought.data?.text,reaction:reaction.data?{rating:reaction.data.rating,stateWord:reaction.data.state_word,thought:reaction.data.thought,recommendation:reaction.data.recommendation}:undefined,review:review.data?{rating:review.data.rating,sentence:review.data.final_sentence}:undefined,feedback:feedback.data?{returnIntent:feedback.data.return_intent,strongest:feedback.data.strongest_part||'',improve:feedback.data.improve_text||'',willingness:feedback.data.willingness_to_pay||0,durationFeel:feedback.data.duration_feel||'нормально',inviteFriend:feedback.data.invite_friend===null||feedback.data.invite_friend===undefined?8:Number(feedback.data.invite_friend)}:undefined,...extras,creature,...datingBundle,notificationPrefs:{writeAccess:!!notif.data?.write_access,events:notif.data?.events!==false,creature:notif.data?.creature!==false,stories:notif.data?.stories!==false,matches:notif.data?.matches!==false,tickets:notif.data?.tickets!==false,reminders:notif.data?.reminders!==false,quietHours:notif.data?.quiet_hours!==false}})
     }
 
     if(action==='save-profile-progress'||action==='save-profile'){
@@ -706,20 +775,30 @@ export async function handleApi(req:Request){
         ])
         if(reg.error)throw reg.error;if(ev.error)throw ev.error
         if(!checkinOpenStatuses.has(String(ev.data.status||'')))return err(ev.data.status==='CLOSED'?'Чек-ин на этот вечер уже закрыт':'Чек-ин ещё не открыт',409)
-        if(reg.data?.status==='attended')return json({ok:true,kind:'event_checkin',alreadyAttended:true,awards:[]})
+        const awardJoin=async()=>{
+          const p=await db.from('event_programs').select('config').eq('event_id',t.data.event_id).maybeSingle()
+          if(p.error){console.error('checkin reward config failed',p.error);return null}
+          const amount=Math.max(0,Math.min(100,Number(p.data?.config?.rewards?.join||0)))
+          if(!amount)return null
+          const a=await db.rpc('award_event_crumbs',{p_user_id:user.id,p_event_id:t.data.event_id,p_amount:amount,p_reason:'event_join',p_source_id:'checkin'})
+          if(a.error){console.error('checkin crumb award failed',a.error);return null}
+          return a.data
+        }
+        if(reg.data?.status==='attended'){const crumbs=await awardJoin();return json({ok:true,kind:'event_checkin',alreadyAttended:true,awards:[],crumbs})}
         if(reg.data?.status!=='paid')return err('Для отметки нужен подтверждённый билет на это событие',403)
         const attended=await db.from('registrations').update({status:'attended'}).eq('event_id',t.data.event_id).eq('user_id',user.id).eq('status','paid').select('user_id').maybeSingle()
         if(attended.error)throw attended.error
         if(!attended.data){
           const latest=await db.from('registrations').select('status').eq('event_id',t.data.event_id).eq('user_id',user.id).maybeSingle();if(latest.error)throw latest.error
-          if(latest.data?.status==='attended')return json({ok:true,kind:'event_checkin',alreadyAttended:true,awards:[]})
+          if(latest.data?.status==='attended'){const crumbs=await awardJoin();return json({ok:true,kind:'event_checkin',alreadyAttended:true,awards:[],crumbs})}
           return err('Не удалось подтвердить чек-ин. Обновите билет и попробуйте ещё раз.',409)
         }
         const memberCount=await db.from('registrations').select('*',{count:'exact',head:true}).eq('event_id',t.data.event_id).eq('status','attended');if(memberCount.error)throw memberCount.error
         const minutesBefore=Math.round((new Date(ev.data.starts_at).getTime()-Date.now())/60000)
         const awards=await emitStoryTrigger(db,user.id,'event_checkin',{event_slug:ev.data.slug,member_number:Number(memberCount.count||0),minutes_before:minutesBefore,...(t.data.metadata||{})},t.data.event_id)
+        const crumbs=await awardJoin()
         await refreshLeaderboard(db,[user.id])
-        return json({ok:true,kind:'event_checkin',alreadyAttended:false,awards})
+        return json({ok:true,kind:'event_checkin',alreadyAttended:false,awards,crumbs})
       }
       if(t.data.kind==='rabbit'){
         const other=String(t.data.owner_user_id||'');if(!other||other===user.id)return err('Это жетон вашей собственной Животины',409);const [a,b]=await Promise.all([db.from('cinema_profiles').select('favorite_films,favorite_genres').eq('user_id',user.id).maybeSingle(),db.from('cinema_profiles').select('favorite_films,favorite_genres').eq('user_id',other).maybeSingle()]);const bf=new Set((b.data?.favorite_films||[]).map((x:string)=>x.toLowerCase()));const bg=new Set((b.data?.favorite_genres||[]).map((x:string)=>x.toLowerCase()));const sharedFavorites=(a.data?.favorite_films||[]).filter((x:string)=>bf.has(x.toLowerCase())).length;const sharedGenres=(a.data?.favorite_genres||[]).filter((x:string)=>bg.has(x.toLowerCase())).length;for(const uid of [user.id,other]){await emitStoryTrigger(db,uid,'encounter',{story_code:'first_rabbit_meet',shared_favorites:sharedFavorites,shared_genres:sharedGenres,other_user_id:uid===user.id?other:user.id},t.data.event_id||null);if(sharedFavorites)await emitStoryTrigger(db,uid,'encounter',{story_code:'same_taste',shared_favorites:sharedFavorites,shared_genres:sharedGenres},t.data.event_id||null);if(!sharedFavorites&&!sharedGenres)await emitStoryTrigger(db,uid,'encounter',{story_code:'nothing_common',shared_favorites:0,shared_genres:0},t.data.event_id||null)}return json({ok:true,kind:'rabbit',sharedFavorites,sharedGenres})
@@ -847,7 +926,354 @@ export async function handleApi(req:Request){
       const f=body.feedback||{};const invite=Math.max(0,Math.min(10,Number(f.inviteFriend)));const r=await db.from('event_feedback').upsert({event_id:event.id,user_id:user.id,return_intent:String(f.returnIntent||''),strongest_part:String(f.strongest||'').slice(0,1000),improve_text:String(f.improve||'').slice(0,1000),willingness_to_pay:Number(f.willingness)||null,duration_feel:String(f.durationFeel||''),invite_friend:Number.isFinite(invite)?String(invite):null});if(r.error)throw r.error;return json({ok:true})
     }
 
+    if(action==='event-vote'){
+      if(!await hasPaidAccess(db,event.id,user.id))return err('нужен подтверждённый билет',403)
+      const show=await buildShowState(db,event)
+      const round=show.currentRound
+      if(!round?.id||round.status!=='active')return err('сейчас нет активного раунда',409)
+      if(round.voteState!=='open')return err('голосование сейчас закрыто',409)
+      const questionKey=String(round.question?.key||'question')
+      const answer=body.answer
+      const encoded=JSON.stringify(answer)
+      if(answer===undefined||encoded.length>1200)return err('некорректный ответ',422)
+      const vote=await db.from('event_votes').upsert({
+        event_id:event.id,
+        round_id:round.id,
+        question_key:questionKey,
+        user_id:user.id,
+        answer,
+        updated_at:new Date().toISOString()
+      },{onConflict:'round_id,question_key,user_id'}).select('answer').single()
+      if(vote.error)throw vote.error
+      const reward=Math.max(0,Math.min(100,Number(show.program?.rewards?.vote||0)))
+      let crumbs:any=null
+      if(reward>0){
+        const award=await db.rpc('award_event_crumbs',{p_user_id:user.id,p_event_id:event.id,p_amount:reward,p_reason:'vote',p_source_id:`${round.id}:${questionKey}`})
+        if(award.error)console.error('vote crumb award failed',award.error)
+        else crumbs=award.data
+      }
+      return json({ok:true,answer:vote.data.answer,crumbs})
+    }
+
     if(!adminTokenOk)await mustAdmin(db,user,tg)
+
+    if(action==='admin-program-save'){
+      const blocks=sanitizeProgramBlocks(body.blocks)
+      if(!blocks||blocks.length<1)return err('добавьте хотя бы один блок программы',422)
+      const roundsTarget=Math.max(1,Math.min(20,Math.round(Number(body.roundsTarget||7)||7)))
+      const rewardInput=body.rewards||{}
+      const rewards={
+        join:Math.max(0,Math.min(100,Math.round(Number(rewardInput.join??1)||0))),
+        vote:Math.max(0,Math.min(100,Math.round(Number(rewardInput.vote??1)||0))),
+        round:Math.max(0,Math.min(100,Math.round(Number(rewardInput.round??2)||0))),
+        finale:Math.max(0,Math.min(100,Math.round(Number(rewardInput.finale??3)||0)))
+      }
+      const config={version:1,rounds_target:roundsTarget,rewards,blocks}
+      const saved=await db.from('event_programs').upsert({event_id:event.id,config,updated_at:new Date().toISOString()},{onConflict:'event_id'})
+      if(saved.error)throw saved.error
+      const runtime=await db.from('event_runtime').select('*').eq('event_id',event.id).single()
+      if(runtime.error)throw runtime.error
+      if(!blocks.some((x:any)=>x.id===runtime.data.current_block_id)){
+        const first=blocks[0]
+        const u=await db.from('event_runtime').update({
+          current_block_id:first.id,current_block_index:0,current_round_id:null,current_movie_id:null,current_question:null,
+          vote_state:'closed',results_visible:false,video_state:{status:'idle'},revision:Number(runtime.data.revision||0)+1,updated_at:new Date().toISOString()
+        }).eq('event_id',event.id).eq('revision',runtime.data.revision).select('event_id').maybeSingle()
+        if(u.error)throw u.error
+        if(!u.data)return err('пульт уже изменился в другой вкладке · обновите экран',409)
+      }
+      return json({ok:true,show:await buildShowState(db,event)})
+    }
+
+    if(action==='admin-show-control'){
+      const op=String(body.op||'').trim()
+      const allowed=new Set(['start','next','back','jump','pause','resume','restart','skip','start_music','end_music','end_event'])
+      if(!allowed.has(op))return err('неизвестная команда пульта',422)
+      return await withEventOperation(db,event.id,'show-control',async()=>{
+        const [programR,runtimeR]=await Promise.all([
+          db.from('event_programs').select('config').eq('event_id',event.id).single(),
+          db.from('event_runtime').select('*').eq('event_id',event.id).single()
+        ])
+        if(programR.error)throw programR.error
+        if(runtimeR.error)throw runtimeR.error
+        const blocks=sanitizeProgramBlocks(programR.data.config?.blocks)||[]
+        if(!blocks.length)return err('программа вечера пустая',409)
+        const from=runtimeR.data
+        let idx=Math.max(0,Math.min(blocks.length-1,Number(from.current_block_index||0)))
+        let runStatus=String(from.run_status||'idle')
+        let blockStartedAt=from.block_started_at
+        let startedAt=from.started_at
+        let pausedAt=from.paused_at
+        let resetRound=false
+        const now=new Date().toISOString()
+
+        if(op==='start'){
+          if(event.status==='DRAFT')return err('сначала откройте регистрацию',409)
+          idx=0;runStatus='running';startedAt=startedAt||now;blockStartedAt=now;pausedAt=null;resetRound=true
+        }else if(op==='next'||op==='skip'){
+          if(idx>=blocks.length-1){idx=blocks.length-1;runStatus='finished'}else{idx+=1;runStatus='running'}
+          blockStartedAt=now;pausedAt=null;resetRound=true
+        }else if(op==='back'){
+          idx=Math.max(0,idx-1);runStatus='running';blockStartedAt=now;pausedAt=null;resetRound=true
+        }else if(op==='jump'){
+          const wanted=String(body.blockId||'')
+          const found=blocks.findIndex((x:any)=>x.id===wanted)
+          if(found<0)return err('блок не найден в программе',404)
+          idx=found;runStatus='running';blockStartedAt=now;pausedAt=null;resetRound=true
+        }else if(op==='start_music'){
+          const found=blocks.findIndex((x:any)=>x.type==='music_live')
+          if(found<0)return err('в программе нет музыкального блока',409)
+          idx=found;runStatus='running';blockStartedAt=now;pausedAt=null;resetRound=true
+        }else if(op==='end_music'){
+          const musicIndex=blocks.findIndex((x:any)=>x.id===from.current_block_id&&x.type==='music_live')
+          if(musicIndex<0)return err('сейчас не музыкальный блок',409)
+          idx=Math.min(blocks.length-1,musicIndex+1);runStatus='running';blockStartedAt=now;pausedAt=null;resetRound=true
+        }else if(op==='pause'){
+          if(runStatus!=='running')return err('шоу сейчас не запущено',409)
+          runStatus='paused';pausedAt=now
+        }else if(op==='resume'){
+          if(runStatus!=='paused')return err('шоу не стоит на паузе',409)
+          runStatus='running';pausedAt=null
+        }else if(op==='restart'){
+          blockStartedAt=now;runStatus='running';pausedAt=null;resetRound=true
+        }else if(op==='end_event'){
+          const post=blocks.findIndex((x:any)=>x.type==='post_event')
+          idx=post>=0?post:blocks.length-1;runStatus='finished';blockStartedAt=now;pausedAt=null;resetRound=true
+        }
+
+        if(resetRound&&from.current_round_id){
+          const close=await db.from('event_rounds').update({status:op==='skip'?'skipped':'closed',closed_at:now,updated_at:now,vote_state:'closed'}).eq('id',from.current_round_id).eq('event_id',event.id).eq('status','active')
+          if(close.error)throw close.error
+        }
+
+        const patch:any={
+          run_status:runStatus,current_block_id:blocks[idx].id,current_block_index:idx,
+          block_started_at:blockStartedAt,started_at:startedAt,paused_at:pausedAt,
+          revision:Number(from.revision||0)+1,updated_at:now
+        }
+        if(resetRound)Object.assign(patch,{current_round_id:null,current_movie_id:null,current_question:null,vote_state:'closed',results_visible:false,video_state:{status:'idle'}})
+        const updated=await db.from('event_runtime').update(patch).eq('event_id',event.id).eq('revision',from.revision).select('*').maybeSingle()
+        if(updated.error)throw updated.error
+        if(!updated.data)return err('пульт уже изменился в другой вкладке · обновите экран',409)
+
+        let lifecycleStatus=event.status
+        if(op==='start'&&event.status==='SALES_OPEN'){
+          const e=await db.from('events').update({status:'CHECKIN'}).eq('id',event.id).eq('status','SALES_OPEN').select('status').maybeSingle()
+          if(e.error)throw e.error
+          if(e.data){
+            lifecycleStatus='CHECKIN'
+            const tr=await db.from('event_transitions').insert({event_id:event.id,from_status:'SALES_OPEN',to_status:'CHECKIN',actor_user_id:user?.id||null,metadata:{source:'show_runtime'}})
+            if(tr.error)console.error('show lifecycle transition log failed',tr.error)
+          }
+        }
+        if(op==='end_event'&&event.status!=='CLOSED'){
+          const absent=await db.from('registrations').update({status:'no_show'}).eq('event_id',event.id).eq('status','paid').select('user_id')
+          if(absent.error)throw absent.error
+          const e=await db.from('events').update({status:'CLOSED'}).eq('id',event.id).neq('status','CLOSED').select('status').maybeSingle()
+          if(e.error)throw e.error
+          lifecycleStatus='CLOSED'
+          if((absent.data||[]).length)await refreshLeaderboard(db,(absent.data||[]).map((x:any)=>x.user_id))
+        }
+
+        const log=await db.from('event_runtime_log').insert({event_id:event.id,action:op,actor_user_id:user?.id||null,from_state:from,to_state:updated.data})
+        if(log.error)console.error('show runtime log failed',log.error)
+        return json({ok:true,eventStatus:lifecycleStatus,show:await buildShowState(db,{...event,status:lifecycleStatus})})
+      })
+    }
+
+    if(action==='admin-round-start'){
+      return await withEventOperation(db,event.id,'show-round',async()=>{
+        const show=await buildShowState(db,event)
+        const block=show.runtime.currentBlock
+        if(!block||!['cinema_rounds','warm_up','final_vote'].includes(String(block.type)))return err('в этом блоке кинораунд не запускается',409)
+        if(show.runtime.runStatus!=='running')return err('сначала запустите шоу',409)
+        const now=new Date().toISOString()
+        if(show.currentRound?.id&&show.currentRound.status==='active'){
+          const c=await db.from('event_rounds').update({status:'closed',closed_at:now,updated_at:now,vote_state:'closed'}).eq('id',show.currentRound.id)
+          if(c.error)throw c.error
+        }
+        const roundNo=Number(show.runtime.currentRound||0)+1
+        const ins=await db.from('event_rounds').insert({event_id:event.id,round_no:roundNo,block_id:block.id,status:'active',started_at:now}).select('id').single()
+        if(ins.error)throw ins.error
+        const rt=await db.from('event_runtime').select('revision').eq('event_id',event.id).single();if(rt.error)throw rt.error
+        const u=await db.from('event_runtime').update({current_round:roundNo,current_round_id:ins.data.id,current_movie_id:null,current_question:null,vote_state:'closed',results_visible:false,video_state:{status:'idle'},revision:Number(rt.data.revision||0)+1,updated_at:now}).eq('event_id',event.id).eq('revision',rt.data.revision).select('event_id').maybeSingle()
+        if(u.error)throw u.error
+        if(!u.data)return err('пульт уже изменился в другой вкладке · обновите экран',409)
+        return json({ok:true,show:await buildShowState(db,event)})
+      })
+    }
+
+    if(action==='admin-round-random-movie'){
+      return await withEventOperation(db,event.id,'show-movie',async()=>{
+        const show=await buildShowState(db,event)
+        if(!show.currentRound?.id||show.currentRound.status!=='active')return err('сначала запустите раунд',409)
+        const [cand,used]=await Promise.all([
+          db.from('movie_candidates').select('*').eq('event_id',event.id).eq('enabled_for_event',true).in('usage_status',['ready','partial','no_video']),
+          db.from('event_rounds').select('movie_candidate_id').eq('event_id',event.id).not('movie_candidate_id','is',null)
+        ])
+        if(cand.error)throw cand.error;if(used.error)throw used.error
+        const usedIds=new Set((used.data||[]).map((x:any)=>String(x.movie_candidate_id)))
+        const pool=(cand.data||[]).filter((x:any)=>!usedIds.has(String(x.id)))
+        if(!pool.length)return err('нет подготовленных неиспользованных фильмов · добавьте материал или выберите фильм вручную',409)
+        const pick=secureIndex(pool.length);const chosen=pool[pick.index]
+        const now=new Date().toISOString()
+        const roundU=await db.from('event_rounds').update({movie_candidate_id:chosen.id,updated_at:now}).eq('id',show.currentRound.id).eq('status','active');if(roundU.error)throw roundU.error
+        const rt=await db.from('event_runtime').select('revision').eq('event_id',event.id).single();if(rt.error)throw rt.error
+        const runU=await db.from('event_runtime').update({current_movie_id:chosen.id,revision:Number(rt.data.revision||0)+1,updated_at:now}).eq('event_id',event.id).eq('revision',rt.data.revision).select('event_id').maybeSingle();if(runU.error)throw runU.error
+        if(!runU.data)return err('пульт уже изменился в другой вкладке · обновите экран',409)
+        const draw=await db.from('random_draws').insert({event_id:event.id,draw_type:'show_movie',candidate_ids:pool.map((x:any)=>x.id),chosen_id:chosen.id,random_bytes_hex:pick.randomBytesHex});if(draw.error)throw draw.error
+        return json({ok:true,movieId:chosen.id,show:await buildShowState(db,event)})
+      })
+    }
+
+    if(action==='admin-round-set-movie'){
+      const movieId=String(body.movieId||'')
+      if(!isUuid(movieId))return err('выберите фильм',422)
+      const movie=await db.from('movie_candidates').select('id').eq('id',movieId).eq('event_id',event.id).maybeSingle();if(movie.error)throw movie.error
+      if(!movie.data)return err('фильм не найден в каталоге события',404)
+      const show=await buildShowState(db,event)
+      if(!show.currentRound?.id||show.currentRound.status!=='active')return err('сначала запустите раунд',409)
+      const now=new Date().toISOString()
+      const a=await db.from('event_rounds').update({movie_candidate_id:movieId,updated_at:now}).eq('id',show.currentRound.id);if(a.error)throw a.error
+      const rt=await db.from('event_runtime').select('revision').eq('event_id',event.id).single();if(rt.error)throw rt.error
+      const b=await db.from('event_runtime').update({current_movie_id:movieId,revision:Number(rt.data.revision||0)+1,updated_at:now}).eq('event_id',event.id).eq('revision',rt.data.revision).select('event_id').maybeSingle();if(b.error)throw b.error
+      if(!b.data)return err('пульт уже изменился в другой вкладке · обновите экран',409)
+      return json({ok:true,show:await buildShowState(db,event)})
+    }
+
+    if(action==='admin-round-question'){
+      const question=normalizeQuestion(body.question)
+      if(!question)return err('напишите вопрос',422)
+      const show=await buildShowState(db,event)
+      if(!show.currentRound?.id||show.currentRound.status!=='active')return err('сначала запустите раунд',409)
+      const now=new Date().toISOString()
+      const a=await db.from('event_rounds').update({question,updated_at:now}).eq('id',show.currentRound.id);if(a.error)throw a.error
+      const rt=await db.from('event_runtime').select('revision').eq('event_id',event.id).single();if(rt.error)throw rt.error
+      const b=await db.from('event_runtime').update({current_question:question,revision:Number(rt.data.revision||0)+1,updated_at:now}).eq('event_id',event.id).eq('revision',rt.data.revision).select('event_id').maybeSingle();if(b.error)throw b.error
+      if(!b.data)return err('пульт уже изменился в другой вкладке · обновите экран',409)
+      return json({ok:true,show:await buildShowState(db,event)})
+    }
+
+    if(action==='admin-vote-control'){
+      const op=String(body.op||'')
+      if(!['open','close','show','hide'].includes(op))return err('неизвестное действие голосования',422)
+      const show=await buildShowState(db,event)
+      if(!show.currentRound?.id||show.currentRound.status!=='active')return err('сначала запустите раунд',409)
+      const voteState=op==='open'?'open':op==='close'?'closed':show.currentRound.voteState
+      const resultsVisible=op==='show'?true:op==='hide'?false:show.currentRound.resultsVisible
+      const now=new Date().toISOString()
+      const a=await db.from('event_rounds').update({vote_state:voteState,results_visible:resultsVisible,updated_at:now}).eq('id',show.currentRound.id);if(a.error)throw a.error
+      const rt=await db.from('event_runtime').select('revision').eq('event_id',event.id).single();if(rt.error)throw rt.error
+      const b=await db.from('event_runtime').update({vote_state:voteState,results_visible:resultsVisible,revision:Number(rt.data.revision||0)+1,updated_at:now}).eq('event_id',event.id).eq('revision',rt.data.revision).select('event_id').maybeSingle();if(b.error)throw b.error
+      if(!b.data)return err('пульт уже изменился в другой вкладке · обновите экран',409)
+      return json({ok:true,show:await buildShowState(db,event)})
+    }
+
+    if(action==='admin-video-control'){
+      const op=String(body.op||'')
+      if(!['play','stop','reset'].includes(op))return err('неизвестное действие видео',422)
+      const show=await buildShowState(db,event)
+      if(!show.currentRound?.id)return err('сначала запустите раунд',409)
+      const movie=show.runtime.currentMovie
+      if(op==='play'&&!movie)return err('сначала выберите фильм',409)
+      if(op==='play'&&!movie?.videoId)return err('для показа сейчас нужен подготовленный youtube video id · иначе используйте fallback животины',409)
+      const now=new Date().toISOString()
+      const videoState=op==='play'
+        ?{status:'playing',startedAt:now,videoId:movie?.videoId||null,sourceUrl:movie?.sourceUrl||null,sourcePlatform:movie?.sourcePlatform||null,startSec:movie?.startSec||0,endSec:movie?.endSec||null}
+        :{status:op==='stop'?'stopped':'idle',updatedAt:now}
+      const a=await db.from('event_rounds').update({video_state:videoState,updated_at:now}).eq('id',show.currentRound.id);if(a.error)throw a.error
+      const rt=await db.from('event_runtime').select('revision').eq('event_id',event.id).single();if(rt.error)throw rt.error
+      const b=await db.from('event_runtime').update({video_state:videoState,revision:Number(rt.data.revision||0)+1,updated_at:now}).eq('event_id',event.id).eq('revision',rt.data.revision).select('event_id').maybeSingle();if(b.error)throw b.error
+      if(!b.data)return err('пульт уже изменился в другой вкладке · обновите экран',409)
+      return json({ok:true,show:await buildShowState(db,event)})
+    }
+
+    if(action==='admin-round-close'){
+      const show=await buildShowState(db,event)
+      if(!show.currentRound?.id)return err('нет активного раунда',409)
+      const now=new Date().toISOString()
+      const a=await db.from('event_rounds').update({status:'closed',vote_state:'closed',closed_at:now,updated_at:now}).eq('id',show.currentRound.id);if(a.error)throw a.error
+      const rt=await db.from('event_runtime').select('revision').eq('event_id',event.id).single();if(rt.error)throw rt.error
+      const b=await db.from('event_runtime').update({vote_state:'closed',revision:Number(rt.data.revision||0)+1,updated_at:now}).eq('event_id',event.id).eq('revision',rt.data.revision).select('event_id').maybeSingle();if(b.error)throw b.error
+      if(!b.data)return err('пульт уже изменился в другой вкладке · обновите экран',409)
+      return json({ok:true,show:await buildShowState(db,event)})
+    }
+
+    if(action==='admin-movie-save'){
+      const movieId=String(body.movieId||'').trim()
+      const title=String(body.title||'').trim().slice(0,180)
+      if(!title)return err('укажите название фильма',422)
+      const usageAllowed=new Set(['ready','partial','no_video','blocked','needs_review'])
+      const trailerAllowed=new Set(['ready','missing','blocked','unchecked'])
+      const clipAllowed=new Set(['ready','missing','blocked','unchecked'])
+      const usageStatus=usageAllowed.has(String(body.usageStatus))?String(body.usageStatus):'needs_review'
+      const trailerStatus=trailerAllowed.has(String(body.trailerStatus))?String(body.trailerStatus):'unchecked'
+      const clipStatus=clipAllowed.has(String(body.clipStatus))?String(body.clipStatus):'unchecked'
+      const startSec=Math.max(0,Math.min(7200,Math.round(Number(body.startSec)||0)))
+      const endSec=body.endSec===null||body.endSec===undefined||body.endSec===''?null:Math.max(0,Math.min(7200,Math.round(Number(body.endSec)||0)))
+      if(endSec!==null&&endSec<=startSec)return err('конец фрагмента должен быть позже начала',422)
+      if(endSec!==null&&endSec-startSec>120)return err('фрагмент для шоу не должен быть длиннее 120 секунд',422)
+      const videoId=String(body.videoId||'').trim().slice(0,200)||null
+      if(usageStatus==='ready'&&!videoId)return err('для статуса ready нужен подготовленный youtube video id',422)
+      const patch:any={
+        event_id:event.id,title,
+        original_title:String(body.originalTitle||'').trim().slice(0,180)||null,
+        year:Number.isInteger(Number(body.year))?Number(body.year):null,
+        genre:String(body.genre||'').trim().slice(0,120)||null,
+        country:String(body.country||'').trim().slice(0,120)||null,
+        enabled_for_event:body.enabledForEvent!==false,
+        trailer_status:trailerStatus,clip_status:clipStatus,
+        source_type:String(body.sourceType||'').trim().slice(0,80)||null,
+        source_platform:String(body.sourcePlatform||'').trim().slice(0,80)||null,
+        source_url:String(body.sourceUrl||'').trim().slice(0,1000)||null,
+        video_id:videoId,
+        start_sec:startSec,
+        end_sec:endSec,
+        source_channel:String(body.sourceChannel||'').trim().slice(0,200)||null,
+        source_verified:body.sourceVerified===true,
+        verified_at:body.sourceVerified===true?new Date().toISOString():null,
+        usage_status:usageStatus,
+        discussion_prompts:Array.isArray(body.discussionPrompts)?body.discussionPrompts.slice(0,12):[],
+        animal_comment:String(body.animalComment||'').trim().slice(0,1000)||null,
+        tags:(Array.isArray(body.tags)?body.tags:[]).map((x:any)=>String(x).trim()).filter(Boolean).slice(0,20)
+      }
+      let saved:any
+      if(movieId){
+        if(!isUuid(movieId))return err('некорректный movie id',422)
+        saved=await db.from('movie_candidates').update(patch).eq('id',movieId).eq('event_id',event.id).select('*').maybeSingle()
+        if(saved.error)throw saved.error
+        if(!saved.data)return err('фильм не найден',404)
+      }else{
+        saved=await db.from('movie_candidates').insert(patch).select('*').single()
+        if(saved.error)throw saved.error
+      }
+      return json({ok:true,movie:saved.data})
+    }
+
+    if(action==='admin-award-crumbs'){
+      const show=await buildShowState(db,event)
+      const amount=Math.max(1,Math.min(100,Math.round(Number(body.amount)||show.program.rewards.round||1)))
+      const scope=String(body.scope||'round_voters')
+      const sourceId=String(body.sourceId||show.currentRound?.id||show.runtime.currentBlockId||'manual').slice(0,160)
+      let ids:string[]=[]
+      if(scope==='round_voters'){
+        if(!show.currentRound?.id)return err('нет текущего раунда',409)
+        const votes=await db.from('event_votes').select('user_id').eq('event_id',event.id).eq('round_id',show.currentRound.id)
+        if(votes.error)throw votes.error
+        ids=[...new Set((votes.data||[]).map((x:any)=>String(x.user_id)))]
+      }else if(scope==='attended'){
+        const regs=await db.from('registrations').select('user_id').eq('event_id',event.id).eq('status','attended')
+        if(regs.error)throw regs.error
+        ids=(regs.data||[]).map((x:any)=>String(x.user_id))
+      }else return err('неизвестная группа для крошек',422)
+      let awarded=0,already=0
+      for(const uid of ids){
+        const a=await db.rpc('award_event_crumbs',{p_user_id:uid,p_event_id:event.id,p_amount:amount,p_reason:'show_reward',p_source_id:sourceId})
+        if(a.error)throw a.error
+        if(a.data?.alreadyAwarded)already++;else awarded++
+      }
+      return json({ok:true,awarded,already,participants:ids.length,amount})
+    }
 
     if(action==='admin-fix-registration'){
       const registrationId=String(body.registrationId||'').trim()
