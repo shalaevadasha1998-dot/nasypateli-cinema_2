@@ -127,6 +127,7 @@ export type DatingCard = {
 }
 export type DatingMatch = {
   id:string
+  userId:string
   kind:'friend'|'cinema'|'romantic'
   displayName:string
   creatureName:string
