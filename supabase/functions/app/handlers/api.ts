@@ -7,7 +7,7 @@ import { creatureState, emitStoryTrigger, ensureCreature } from '../_shared/stor
 import { allowedGender, connectionKind, datingState, intentsCompatible } from '../_shared/dating.ts'
 import { JIPITINA, jipitinaInstructions } from '../_shared/jipitina.ts'
 import { validateMovieTitle } from '../_shared/movies.ts'
-import { buildEventState, eventBySlug, nextEvent, nonexistentFilmEnabled } from '../_shared/state.ts'
+import { buildEventState, buildShowState, eventBySlug, nextEvent, nonexistentFilmEnabled } from '../_shared/state.ts'
 
 const manualTransitions:Record<string,string>={
   DRAFT:'SALES_OPEN',SALES_OPEN:'CHECKIN',CHECKIN:'IDEAS_OPEN',IDEAS_OPEN:'IDEAS_LOCKED',
@@ -70,6 +70,47 @@ async function withEventOperation<T>(db:any,eventId:string,operation:string,work
     const release=await db.rpc('release_event_operation',{p_event_id:eventId,p_operation:operation,p_lease_token:lease})
     if(release.error)console.error('event operation release failed',operation,release.error)
   }
+}
+
+
+function sanitizeProgramBlocks(input:any){
+  if(!Array.isArray(input))return null
+  const seen=new Set<string>()
+  const out:any[]=[]
+  for(const raw of input.slice(0,20)){
+    const id=String(raw?.id||'').trim().toLowerCase().replace(/[^a-z0-9_\-]/g,'_').slice(0,60)
+    if(!id||seen.has(id))continue
+    seen.add(id)
+    const type=String(raw?.type||id).trim().toLowerCase().replace(/[^a-z0-9_\-]/g,'_').slice(0,60)
+    const title=String(raw?.title||id).trim().slice(0,120)
+    const duration=Math.max(0,Math.min(240,Math.round(Number(raw?.durationMin??raw?.duration_min??0)||0)))
+    const rounds=Math.max(0,Math.min(20,Math.round(Number(raw?.roundsTarget??raw?.rounds_target??0)||0)))
+    out.push({id,type,title,duration_min:duration,rounds_target:rounds,enabled:raw?.enabled!==false})
+  }
+  return out.filter(x=>x.enabled)
+}
+
+async function writeRuntime(db:any,event:any,actorUserId:string|null,action:string,patch:any){
+  return await withEventOperation(db,event.id,'show-runtime',async()=>{
+    const current=await db.from('event_runtime').select('*').eq('event_id',event.id).single()
+    if(current.error)throw current.error
+    const from=current.data
+    const next={...patch,revision:Number(from.revision||0)+1,updated_at:new Date().toISOString()}
+    const updated=await db.from('event_runtime').update(next).eq('event_id',event.id).eq('revision',from.revision).select('*').maybeSingle()
+    if(updated.error)throw updated.error
+    if(!updated.data)return err('пульт уже изменился в другой вкладке · обновите экран',409)
+    const log=await db.from('event_runtime_log').insert({event_id:event.id,action,actor_user_id:actorUserId,from_state:from,to_state:updated.data})
+    if(log.error)console.error('show runtime log failed',log.error)
+    return json({ok:true,show:await buildShowState(db,event)})
+  })
+}
+
+function normalizeQuestion(body:any){
+  const prompt=String(body?.prompt||'').trim().slice(0,500)
+  const options=(Array.isArray(body?.options)?body.options:[]).map((x:any)=>String(x).trim()).filter(Boolean).slice(0,8)
+  const key=String(body?.key||'question').trim().replace(/[^a-zA-Z0-9_\-]/g,'_').slice(0,80)||'question'
+  if(!prompt)return null
+  return {key,prompt,options}
 }
 
 async function getOrCreateUser(db:any,tg:any){
