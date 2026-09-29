@@ -127,10 +127,20 @@ function tokenMatches(req:Request,header:string,envName:string){
   let diff=0;for(let i=0;i<expected.length;i++)diff|=expected.charCodeAt(i)^got.charCodeAt(i);return diff===0
 }
 function isUuid(value:string){return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)}
-function notificationsQuietNow(pref:any){
-  if(pref?.quiet_hours!==true)return false
+function notificationQuietUntil(pref:any){
+  if(pref?.quiet_hours!==true)return null
   const zone=Deno.env.get('NOTIFICATION_TIMEZONE')||'Europe/Moscow'
-  try{const hour=Number(new Intl.DateTimeFormat('en-GB',{timeZone:zone,hour:'2-digit',hour12:false}).format(new Date()))%24;return hour>=22||hour<9}catch{return false}
+  try{
+    const parts=new Intl.DateTimeFormat('en-GB',{timeZone:zone,hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(new Date())
+    const hour=Number(parts.find(x=>x.type==='hour')?.value||0)%24
+    const minute=Number(parts.find(x=>x.type==='minute')?.value||0)
+    if(hour<9||hour>=22){
+      const localMinutes=hour*60+minute
+      const waitMinutes=hour>=22?(24*60-localMinutes)+9*60:9*60-localMinutes
+      return new Date(Date.now()+Math.max(1,waitMinutes)*60_000).toISOString()
+    }
+  }catch{}
+  return null
 }
 function notificationRetryAt(attempt:number){
   const minutes=Math.min(30,Math.max(5,attempt*5))
@@ -139,6 +149,40 @@ function notificationRetryAt(attempt:number){
 function notificationErrorIsPermanent(error:unknown){
   const message=String(error||'').toLowerCase()
   return ['blocked by the user','chat not found','user is deactivated','bot was blocked'].some(x=>message.includes(x))
+}
+async function notificationRelevance(db:any,n:any){
+  const now=Date.now()
+  if(n.expires_at&&new Date(n.expires_at).getTime()<=now)return {ok:false,reason:'notification expired'}
+  if(n.kind==='reminders'){
+    if(!n.event_id)return {ok:false,reason:'reminder event missing'}
+    const [event,registration]=await Promise.all([
+      db.from('events').select('status,starts_at').eq('id',n.event_id).maybeSingle(),
+      db.from('registrations').select('status').eq('event_id',n.event_id).eq('user_id',n.user_id).maybeSingle()
+    ])
+    if(event.error)throw event.error;if(registration.error)throw registration.error
+    if(!event.data||event.data.status==='CLOSED'||new Date(event.data.starts_at).getTime()<=now)return {ok:false,reason:'event already finished'}
+    if(!['paid','attended'].includes(String(registration.data?.status||'')))return {ok:false,reason:'registration no longer eligible'}
+    const code=String(n.dedupe_key||'').split(':').pop()
+    const offset=code==='24h'?24*60*60_000:code==='2h'?2*60*60_000:0
+    if(offset){
+      const expected=new Date(event.data.starts_at).getTime()-offset
+      const queued=new Date(n.send_after).getTime()
+      if(!Number.isFinite(queued)||Math.abs(queued-expected)>60_000)return {ok:false,reason:'event schedule changed'}
+    }
+  }
+  if(n.kind==='events'&&n.event_id){
+    const event=await db.from('events').select('status,starts_at').eq('id',n.event_id).maybeSingle();if(event.error)throw event.error
+    if(!event.data||['DRAFT','CLOSED'].includes(String(event.data.status||''))||new Date(event.data.starts_at).getTime()<=now)return {ok:false,reason:'event announcement no longer current'}
+  }
+  if(n.kind==='matches'&&String(n.dedupe_key||'').startsWith('match:')){
+    const id=String(n.dedupe_key).slice(6)
+    if(isUuid(id)){
+      const connection=await db.from('social_connections').select('status,metadata').eq('id',id).maybeSingle();if(connection.error)throw connection.error
+      const hidden=Array.isArray(connection.data?.metadata?.hidden_by)?connection.data.metadata.hidden_by:[]
+      if(!connection.data||connection.data.status!=='active'||hidden.includes(n.user_id))return {ok:false,reason:'match no longer active'}
+    }
+  }
+  return {ok:true,reason:''}
 }
 
 async function telegramRuntimeReady(){
@@ -300,13 +344,22 @@ export async function handleApi(req:Request){
       const saleEvents=await db.from('events').select('id').eq('status','SALES_OPEN');if(saleEvents.error)throw saleEvents.error
       let promoted=0
       for(const ev of saleEvents.data||[]){const p=await db.rpc('promote_event_waitlist',{p_event_id:ev.id});if(p.error)throw p.error;promoted+=Number(p.data||0)}
-      const due=await db.from('notification_queue').select('id,user_id,kind,text,dedupe_key,attempts,users(telegram_id)').eq('status','pending').lte('send_after',new Date().toISOString()).order('send_after').limit(50)
+      const reminderSchedule=await db.rpc('schedule_event_reminders');if(reminderSchedule.error)throw reminderSchedule.error
+      const scheduledReminders=Number(reminderSchedule.data||0)
+      const due=await db.from('notification_queue').select('id,user_id,kind,text,dedupe_key,event_id,expires_at,send_after,attempts,users(telegram_id)').eq('status','pending').lte('send_after',new Date().toISOString()).order('send_after').limit(50)
       if(due.error)throw due.error
-      let sent=0,retried=0,failed=0,cancelled=0
+      let sent=0,retried=0,failed=0,cancelled=0,deferred=0
       for(const n of due.data||[]){
         const attempt=Math.max(0,Number(n.attempts||0))+1
         const attemptedAt=new Date().toISOString()
         try{
+          const relevant=await notificationRelevance(db,n)
+          if(!relevant.ok){
+            const r=await db.from('notification_queue').update({status:'cancelled',error:relevant.reason}).eq('id',n.id)
+            if(r.error)throw r.error
+            cancelled++
+            continue
+          }
           const prefR=await db.from('notification_preferences').select('*').eq('user_id',n.user_id).maybeSingle()
           if(prefR.error)throw prefR.error
           const pref=prefR.data
@@ -317,7 +370,19 @@ export async function handleApi(req:Request){
             cancelled++
             continue
           }
-          if(notificationsQuietNow(pref))continue
+          const quietUntil=notificationQuietUntil(pref)
+          if(quietUntil){
+            if(n.expires_at&&new Date(quietUntil).getTime()>=new Date(n.expires_at).getTime()){
+              const r=await db.from('notification_queue').update({status:'cancelled',error:'expired during quiet hours'}).eq('id',n.id)
+              if(r.error)throw r.error
+              cancelled++
+            }else{
+              const r=await db.from('notification_queue').update({send_after:quietUntil,error:'deferred by quiet hours'}).eq('id',n.id)
+              if(r.error)throw r.error
+              deferred++
+            }
+            continue
+          }
           const chatId=(n as any).users?.telegram_id
           if(!chatId){
             const r=await db.from('notification_queue').update({status:'failed',error:'telegram id missing',attempts:attempt,last_attempt_at:attemptedAt}).eq('id',n.id)
@@ -325,7 +390,14 @@ export async function handleApi(req:Request){
             failed++
             continue
           }
-          const webAppUrl=String(Deno.env.get('TELEGRAM_WEBAPP_URL')||'').trim();const waitlistPromotion=n.kind==='tickets'&&String(n.dedupe_key||'').startsWith('waitlist_promoted:');const replyMarkup=n.kind==='tickets'&&webAppUrl?{inline_keyboard:[[{text:waitlistPromotion?'оплатить место':'открыть билет',web_app:{url:webAppUrl}}]]}:undefined
+          const webAppUrl=String(Deno.env.get('TELEGRAM_WEBAPP_URL')||'').trim()
+          const waitlistPromotion=n.kind==='tickets'&&String(n.dedupe_key||'').startsWith('waitlist_promoted:')
+          const ticketReplyMarkup=n.kind==='tickets'&&webAppUrl?{inline_keyboard:[[{text:waitlistPromotion?'оплатить место':'открыть билет',web_app:{url:webAppUrl}}]]}:undefined
+          const baseUrl=webAppUrl.split('#')[0]
+          const generalReplyMarkup=!ticketReplyMarkup&&webAppUrl&&['events','reminders','matches','stories','creature'].includes(String(n.kind))
+            ?{inline_keyboard:[[{text:n.kind==='matches'?'открыть знакомства':n.kind==='stories'||n.kind==='creature'?'открыть Животину':'открыть событие',web_app:{url:n.kind==='matches'?baseUrl+'#/dating':n.kind==='stories'||n.kind==='creature'?baseUrl+'#/zhivotina':webAppUrl}}]]}
+            :undefined
+          const replyMarkup=ticketReplyMarkup||generalReplyMarkup
           await telegramBot('sendMessage',{chat_id:chatId,text:n.text,...(replyMarkup?{reply_markup:replyMarkup}:{})})
           const r=await db.from('notification_queue').update({status:'sent',sent_at:new Date().toISOString(),error:null,attempts:attempt,last_attempt_at:attemptedAt}).eq('id',n.id)
           if(r.error)throw r.error
@@ -342,7 +414,7 @@ export async function handleApi(req:Request){
           if(permanent||exhausted)failed++;else retried++
         }
       }
-      return json({ok:true,promoted,sent,retried,failed,cancelled,checked:(due.data||[]).length})
+      return json({ok:true,promoted,scheduledReminders,sent,retried,failed,cancelled,deferred,checked:(due.data||[]).length})
     }
 
     const isAdminAction=action.startsWith('admin-')||action.startsWith('ai-')||action.startsWith('draw-')
@@ -670,8 +742,14 @@ export async function handleApi(req:Request){
       if(!r.data)return err('Этап события уже изменился в другой вкладке. Обновите пульт.',409)
       let noShows=0
       if(to==='CLOSED'){const absent=await db.from('registrations').update({status:'no_show'}).eq('event_id',event.id).eq('status','paid').select('user_id');if(absent.error)throw absent.error;noShows=(absent.data||[]).length;if(noShows)await refreshLeaderboard(db,(absent.data||[]).map((x:any)=>x.user_id))}
-      const transition=await db.from('event_transitions').insert({event_id:event.id,from_status:event.status,to_status:to,actor_user_id:user?.id||null,metadata:{forced:false,no_shows:noShows}});if(transition.error)throw transition.error
-      return json({ok:true,status:to,noShows})
+      let announcements=0
+      if(to==='SALES_OPEN'){
+        const recipients=await db.from('notification_preferences').select('user_id').eq('write_access',true).eq('events',true);if(recipients.error)throw recipients.error
+        const rows=(recipients.data||[]).map((x:any)=>({user_id:x.user_id,kind:'events',text:'открыли новый вечер НАСЫПАТЕЛИ В КИНО. дата и детали уже внутри.',send_after:new Date().toISOString(),status:'pending',dedupe_key:`event_open:${event.id}`,event_id:event.id,expires_at:event.starts_at}))
+        if(rows.length){const q=await db.from('notification_queue').upsert(rows,{onConflict:'user_id,dedupe_key'});if(q.error)throw q.error;announcements=rows.length}
+      }
+      const transition=await db.from('event_transitions').insert({event_id:event.id,from_status:event.status,to_status:to,actor_user_id:user?.id||null,metadata:{forced:false,no_shows:noShows,announcements}});if(transition.error)throw transition.error
+      return json({ok:true,status:to,noShows,announcements})
     }
     if(action==='admin-event-config'){
       const patch:any={}
@@ -681,7 +759,9 @@ export async function handleApi(req:Request){
       if(body.venueAddress!==undefined)patch.venue_address=String(body.venueAddress||'').trim().slice(0,300)||null
       if(body.ticketPriceRub!==undefined){const n=Number(body.ticketPriceRub);if(!Number.isInteger(n)||n<0||n>100000)return err('Некорректная цена билета',422);if(n!==Number(event.ticket_price_rub||0)){const active=await activeSeatCount(db,event.id);if(active>0)return err('Цену нельзя менять после появления активных резервов или оплаченных билетов',409)}patch.ticket_price_rub=n}
       if(!Object.keys(patch).length)return json({ok:true,event})
-      const r=await db.from('events').update(patch).eq('id',event.id).select('id,slug,title,starts_at,capacity,ticket_price_rub,max_movie_runtime_min,venue_name,venue_address').single();if(r.error)throw r.error;return json({ok:true,event:r.data})
+      const r=await db.from('events').update(patch).eq('id',event.id).select('id,slug,title,starts_at,capacity,ticket_price_rub,max_movie_runtime_min,venue_name,venue_address').single();if(r.error)throw r.error
+      if(patch.starts_at){const q=await db.from('notification_queue').update({expires_at:r.data.starts_at}).eq('event_id',event.id).eq('status','pending');if(q.error)throw q.error}
+      return json({ok:true,event:r.data})
     }
     if(action==='admin-capacity'){
       const capacity=Math.max(1,Math.min(500,Number(body.capacity)||30));const r=await db.rpc('set_event_capacity',{p_event_id:event.id,p_capacity:capacity});if(r.error){const message=String(r.error.message||'');if(message.includes('capacity below occupied seats')){const occupied=await activeSeatCount(db,event.id);return err(`Вместимость не может быть меньше уже занятых мест: ${occupied}`,409)}throw r.error}const result=r.data?.[0]||{};return json({ok:true,capacity:Number(result.capacity||capacity),promoted:Number(result.promoted||0)})
