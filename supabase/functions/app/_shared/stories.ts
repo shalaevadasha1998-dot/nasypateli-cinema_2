@@ -29,7 +29,21 @@ export async function creatureState(db:any,userId:string){
   if(cosmetics.error)throw cosmetics.error;if(stories.error)throw stories.error;if(config.error)throw config.error
   if(!config.data)throw new Error('creature_game_config_missing')
   const cs=(cosmetics.data||[]).map((x:any)=>({...(x.creature_cosmetics||{}),equipped:!!x.equipped}))
-  const timeline=(stories.data||[]).map((x:any)=>({id:x.id,code:x.story_definitions?.code||'',title:x.story_definitions?.title||'',description:x.story_definitions?.description||'',category:x.story_definitions?.category||'',rarity:x.story_definitions?.rarity||'common',secret:x.story_definitions?.visibility==='secret',happenedAt:x.happened_at,eventTitle:x.events?.title||undefined,rewardName:cs.find((c:any)=>c.code===x.story_definitions?.reward?.cosmetic)?.name}))
+  const timeline=(stories.data||[]).map((x:any)=>{
+    const secret=x.story_definitions?.visibility==='secret'
+    return {
+      id:x.id,
+      code:secret?'':x.story_definitions?.code||'',
+      title:secret?'???':x.story_definitions?.title||'',
+      description:secret?'секретная история':x.story_definitions?.description||'',
+      category:secret?'secret':x.story_definitions?.category||'',
+      rarity:secret?'secret':x.story_definitions?.rarity||'common',
+      secret,
+      happenedAt:x.happened_at,
+      eventTitle:x.events?.title||undefined,
+      rewardName:secret?undefined:cs.find((c:any)=>c.code===x.story_definitions?.reward?.cosmetic)?.name
+    }
+  })
   const feedingCost=Math.max(1,Number(config.data?.feeding_cost||1))
   const rawThresholds=config.data?.stage_thresholds||{}
   const stageThresholds={
