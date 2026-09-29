@@ -44,6 +44,7 @@ function normalizeProfile(user:any,row:any,registration:any,tg:any){
 function profileErrors(p:any){
   const e:string[]=[]
   if(String(p.displayName||'').trim().length<2)e.push('имя')
+  if(!['woman','man'].includes(String(p.selfGender||'')))e.push('как к вам обращаться')
   if(!['18-24','25-34','35-44','45+'].includes(String(p.ageRange||'')))e.push('возраст')
   if(String(p.city||'').trim().length<2)e.push('город')
   if(String(p.about||'').trim().length<3)e.push('о себе')
@@ -1169,7 +1170,7 @@ export async function handleApi(req:Request){
       if(!show.currentRound?.id)return err('сначала запустите раунд',409)
       const movie=show.runtime.currentMovie
       if(op==='play'&&!movie)return err('сначала выберите фильм',409)
-      if(op==='play'&&!movie?.videoId&&!movie?.sourceUrl)return err('у фильма нет подготовленного видео · используйте fallback животины',409)
+      if(op==='play'&&!movie?.videoId)return err('для показа сейчас нужен подготовленный youtube video id · иначе используйте fallback животины',409)
       const now=new Date().toISOString()
       const videoState=op==='play'
         ?{status:'playing',startedAt:now,videoId:movie?.videoId||null,sourceUrl:movie?.sourceUrl||null,sourcePlatform:movie?.sourcePlatform||null,startSec:movie?.startSec||0,endSec:movie?.endSec||null}
@@ -1202,6 +1203,12 @@ export async function handleApi(req:Request){
       const usageStatus=usageAllowed.has(String(body.usageStatus))?String(body.usageStatus):'needs_review'
       const trailerStatus=trailerAllowed.has(String(body.trailerStatus))?String(body.trailerStatus):'unchecked'
       const clipStatus=clipAllowed.has(String(body.clipStatus))?String(body.clipStatus):'unchecked'
+      const startSec=Math.max(0,Math.min(7200,Math.round(Number(body.startSec)||0)))
+      const endSec=body.endSec===null||body.endSec===undefined||body.endSec===''?null:Math.max(0,Math.min(7200,Math.round(Number(body.endSec)||0)))
+      if(endSec!==null&&endSec<=startSec)return err('конец фрагмента должен быть позже начала',422)
+      if(endSec!==null&&endSec-startSec>120)return err('фрагмент для шоу не должен быть длиннее 120 секунд',422)
+      const videoId=String(body.videoId||'').trim().slice(0,200)||null
+      if(usageStatus==='ready'&&!videoId)return err('для статуса ready нужен подготовленный youtube video id',422)
       const patch:any={
         event_id:event.id,title,
         original_title:String(body.originalTitle||'').trim().slice(0,180)||null,
@@ -1213,9 +1220,9 @@ export async function handleApi(req:Request){
         source_type:String(body.sourceType||'').trim().slice(0,80)||null,
         source_platform:String(body.sourcePlatform||'').trim().slice(0,80)||null,
         source_url:String(body.sourceUrl||'').trim().slice(0,1000)||null,
-        video_id:String(body.videoId||'').trim().slice(0,200)||null,
-        start_sec:Math.max(0,Math.min(7200,Math.round(Number(body.startSec)||0))),
-        end_sec:body.endSec===null||body.endSec===undefined||body.endSec===''?null:Math.max(0,Math.min(7200,Math.round(Number(body.endSec)||0))),
+        video_id:videoId,
+        start_sec:startSec,
+        end_sec:endSec,
         source_channel:String(body.sourceChannel||'').trim().slice(0,200)||null,
         source_verified:body.sourceVerified===true,
         verified_at:body.sourceVerified===true?new Date().toISOString():null,
