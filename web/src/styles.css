@@ -1019,3 +1019,20 @@ button:active,.btn:active{transform:scale(.985)}
   .event-page-head{display:block}
   .event-page-head .pill{display:inline-block;margin-top:10px}
 }
+
+
+/* v0.9.1 — iphone smoke polish */
+body{text-transform:lowercase}
+.onboarding-atmosphere i:nth-child(3),
+.onboarding-intro:after,
+.birth-atmosphere i:nth-child(3){display:none!important}
+.app-shell{min-height:100dvh;padding-bottom:calc(108px + env(safe-area-inset-bottom))}
+.page{padding-bottom:calc(118px + env(safe-area-inset-bottom))}
+.bottom-nav{grid-template-columns:repeat(5,minmax(0,1fr))}
+.bottom-nav a{min-width:0;overflow:hidden}
+.dating-page>h1{margin:10px 0 20px;overflow-wrap:anywhere}
+@media(max-width:600px){
+  .page{padding-top:20px}
+  .dating-page>h1{font-size:clamp(42px,12.5vw,60px)}
+  .chat-page{padding-bottom:calc(188px + env(safe-area-inset-bottom))}
+}
