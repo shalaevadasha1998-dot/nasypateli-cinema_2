@@ -198,6 +198,7 @@ export type ProgramBlock = {
 export type EventProgram = {
   version:number
   roundsTarget:number
+  rewards:{join:number;vote:number;round:number;finale:number}
   blocks:ProgramBlock[]
 }
 
