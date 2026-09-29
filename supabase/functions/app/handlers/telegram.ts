@@ -79,7 +79,8 @@ export async function handleTelegram(req:Request){
               status:'paid',
               paid_at:new Date().toISOString(),
               reservation_expires_at:null,
-              provider_payment_id:p.provider_payment_charge_id||p.telegram_payment_charge_id,
+              provider_payment_id:p.provider_payment_charge_id||null,
+              telegram_payment_charge_id:p.telegram_payment_charge_id||null,
               payment_provider:'telegram'
             }).eq('event_id',parsed.eventId).eq('user_id',parsed.userId)
             if(paid.error)throw paid.error
