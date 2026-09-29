@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "supabase/functions/**"
+      - "supabase/migrations/**"
       - "supabase/config.toml"
       - ".github/workflows/supabase-functions.yml"
   workflow_dispatch:
@@ -62,6 +63,47 @@ jobs:
 
       - name: Deploy app Edge Function
         run: supabase functions deploy app --project-ref "$PROJECT_ID" --use-api
+
+      - name: Verify production migration history matches git
+        run: |
+          node <<'NODE'
+          const fs=require('fs')
+          const path=require('path')
+          const files=fs.readdirSync(path.join(process.cwd(),'supabase','migrations'))
+            .filter(name=>/^\d{14}_.+\.sql$/.test(name))
+            .sort()
+          const local=files.map(name=>({version:name.slice(0,14),name:name.slice(15,-4)}))
+          const response=await fetch(`https://api.supabase.com/v1/projects/${process.env.PROJECT_ID}/database/query`,{
+            method:'POST',
+            headers:{
+              authorization:`Bearer ${process.env.SUPABASE_ACCESS_TOKEN}`,
+              'content-type':'application/json'
+            },
+            body:JSON.stringify({
+              query:'select version, name from supabase_migrations.schema_migrations order by version',
+              read_only:true
+            })
+          })
+          const raw=await response.text()
+          if(!response.ok)throw new Error(`Could not read production migration history: HTTP ${response.status} ${raw.slice(0,500)}`)
+          let payload
+          try{payload=JSON.parse(raw)}catch{throw new Error('Production migration history returned invalid JSON')}
+          const rows=Array.isArray(payload)?payload:Array.isArray(payload?.result)?payload.result:Array.isArray(payload?.data)?payload.data:[]
+          if(!rows.length&&local.length)throw new Error('Production migration history returned no rows')
+          const remote=new Map(rows.map(row=>[String(row.version),String(row.name||'')]))
+          const localMap=new Map(local.map(row=>[row.version,row.name]))
+          const missingRemote=local.filter(row=>!remote.has(row.version))
+          const missingLocal=[...remote.entries()].filter(([version])=>!localMap.has(version))
+          const renamed=local.filter(row=>remote.has(row.version)&&remote.get(row.version)!==row.name)
+          if(missingRemote.length||missingLocal.length||renamed.length){
+            throw new Error([
+              missingRemote.length?`not applied in production: ${missingRemote.map(x=>x.version+'_'+x.name).join(', ')}`:'',
+              missingLocal.length?`production-only migrations: ${missingLocal.map(([v,n])=>v+'_'+n).join(', ')}`:'',
+              renamed.length?`name mismatch: ${renamed.map(x=>x.version+' local='+x.name+' production='+remote.get(x.version)).join(', ')}`:''
+            ].filter(Boolean).join(' | '))
+          }
+          console.log(`Migration history synchronized: ${local.length} migrations`)
+          NODE
 
       - name: Verify core production readiness
         run: |
