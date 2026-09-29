@@ -21,7 +21,8 @@ function useStateData(enabled=true){
   const [data,setData]=useState<DemoState|null>(null)
   const [error,setError]=useState('')
   const reload=(fresh=false)=>enabled?callApi<DemoState>('bootstrap',fresh?{fresh:true}:{}).then(d=>{setData(d);setError('');return d}).catch(e=>{setError(e.message);return undefined}):Promise.resolve(undefined)
-  useEffect(()=>{if(!enabled)return;initTelegram();reload();const h=()=>reload();window.addEventListener('nasypateli-demo-change',h);window.addEventListener('storage',h);const timer=demoMode?undefined:window.setInterval(()=>{if(document.visibilityState==='visible')reload()},30000);return()=>{window.removeEventListener('nasypateli-demo-change',h);window.removeEventListener('storage',h);if(timer)window.clearInterval(timer)}},[enabled])
+  const showLive=['running','paused'].includes(data?.show?.runtime.runStatus||'')
+  useEffect(()=>{if(!enabled)return;initTelegram();reload();const h=()=>reload();window.addEventListener('nasypateli-demo-change',h);window.addEventListener('storage',h);const timer=demoMode?undefined:window.setInterval(()=>{if(document.visibilityState==='visible')reload()},showLive?1500:30000);return()=>{window.removeEventListener('nasypateli-demo-change',h);window.removeEventListener('storage',h);if(timer)window.clearInterval(timer)}},[enabled,showLive])
   return {data,error,reload}
 }
 
@@ -31,7 +32,7 @@ function usePrivilegedState(kind:'admin'|'screen',slug:string|undefined){
   const token=queryToken||(typeof sessionStorage!=='undefined'?sessionStorage.getItem(storageKey)||'':'')
   useEffect(()=>{if(!queryToken)return;sessionStorage.setItem(storageKey,queryToken);const next=new URLSearchParams(search);next.delete('token');setSearch(next,{replace:true})},[queryToken,storageKey])
   const reload=()=>{if(!slug){setError('не указано событие');return Promise.resolve()}if(kind==='screen'&&!token&&!demoMode){setError('нужен закрытый ключ экрана');return Promise.resolve()}const action=kind==='admin'?'admin-bootstrap':'screen-bootstrap';const fn=kind==='admin'?callAdminApi:callScreenApi;return fn<DemoState>(action,{slug},token).then(d=>{setData(d);setError('')}).catch(e=>setError(e.message))}
-  useEffect(()=>{reload();const timer=window.setInterval(reload,kind==='screen'?2500:5000);return()=>window.clearInterval(timer)},[kind,slug,token])
+  useEffect(()=>{reload();const timer=window.setInterval(reload,kind==='screen'?1000:1500);return()=>window.clearInterval(timer)},[kind,slug,token])
   return {data,error,reload,token}
 }
 
