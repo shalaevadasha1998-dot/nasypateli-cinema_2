@@ -465,7 +465,7 @@ export async function handleApi(req:Request){
           const ticketReplyMarkup=n.kind==='tickets'&&webAppUrl?{inline_keyboard:[[{text:waitlistPromotion?'оплатить место':'открыть билет',web_app:{url:webAppUrl}}]]}:undefined
           const baseUrl=webAppUrl.split('#')[0]
           const generalReplyMarkup=!ticketReplyMarkup&&webAppUrl&&['events','reminders','matches','stories','creature'].includes(String(n.kind))
-            ?{inline_keyboard:[[{text:n.kind==='matches'?'открыть знакомства':n.kind==='stories'||n.kind==='creature'?'открыть Животину':'открыть событие',web_app:{url:n.kind==='matches'?baseUrl+'#/dating':n.kind==='stories'||n.kind==='creature'?baseUrl+'#/zhivotina':webAppUrl}}]]}
+            ?{inline_keyboard:[[{text:n.kind==='matches'?'открыть знакомства':n.kind==='stories'||n.kind==='creature'?'открыть животину':'открыть событие',web_app:{url:n.kind==='matches'?baseUrl+'#/dating':n.kind==='stories'||n.kind==='creature'?baseUrl+'#/zhivotina':webAppUrl}}]]}
             :undefined
           const replyMarkup=ticketReplyMarkup||generalReplyMarkup
           await telegramBot('sendMessage',{chat_id:chatId,text:n.text,...(replyMarkup?{reply_markup:replyMarkup}:{})})
@@ -668,7 +668,7 @@ export async function handleApi(req:Request){
           await emitStoryTrigger(db,uid,'dating_match',{story_code:kind==='romantic'?'romantic_match':kind==='cinema'?'cinema_match':'friend_match',kind,shared_favorites:shared.length},null)
           if(shared.length)await emitStoryTrigger(db,uid,'dating_match',{story_code:'same_favorite_match',kind,shared_favorites:shared.length},null)
         }
-        for(const uid of [user.id,targetId])await db.from('notification_queue').upsert({user_id:uid,kind:'matches',text:'ваши Животины совпали. откройте знакомства',send_after:new Date().toISOString(),status:'pending',dedupe_key:'match:'+connection.connection_id},{onConflict:'user_id,dedupe_key'})
+        for(const uid of [user.id,targetId])await db.from('notification_queue').upsert({user_id:uid,kind:'matches',text:'ваши животины совпали · откройте знакомства',send_after:new Date().toISOString(),status:'pending',dedupe_key:'match:'+connection.connection_id},{onConflict:'user_id,dedupe_key'})
       }
       return json({ok:true,matched:true,connectionId:connection.connection_id,kind:connection.connection_kind})
     }
@@ -757,6 +757,32 @@ export async function handleApi(req:Request){
       const notice=await db.from('notification_queue').upsert({user_id:user.id,kind:'tickets',text:`билет получен. ${new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Moscow'}).format(new Date(event.starts_at))} · ${event.venue_name||'место внутри приложения'}`,send_after:new Date().toISOString(),status:'pending',dedupe_key:`free_ticket:${event.id}`,event_id:event.id,expires_at:event.starts_at},{onConflict:'user_id,dedupe_key'})
       if(notice.error)console.error('free ticket notification enqueue failed',notice.error)
       return json({ok:true,status:'paid'})
+    }
+
+    if(action==='cancel-event-ticket'){
+      if(Number(event.ticket_price_rub)!==0)return err('самостоятельная отмена доступна только для бесплатной регистрации',409)
+      if(String(event.status||'')!=='SALES_OPEN')return err('отменить билет можно до начала сбора гостей',409)
+      const current=await db.from('registrations').select('status,payment_provider,amount_rub').eq('event_id',event.id).eq('user_id',user.id).maybeSingle()
+      if(current.error)throw current.error
+      if(!current.data||current.data.status==='cancelled')return json({ok:true,status:'cancelled'})
+      if(current.data.status==='attended')return err('вход уже отмечен · отменить билет нельзя',409)
+      if(current.data.status!=='paid'||current.data.payment_provider!=='registration'||Number(current.data.amount_rub)!==0)return err('этот билет нельзя отменить этой кнопкой',409)
+      const cancelled=await db.from('registrations').update({
+        status:'cancelled',
+        queue_position:null,
+        reservation_expires_at:null,
+        paid_at:null
+      }).eq('event_id',event.id).eq('user_id',user.id).eq('status','paid').eq('payment_provider','registration').select('status').maybeSingle()
+      if(cancelled.error)throw cancelled.error
+      if(!cancelled.data){
+        const latest=await db.from('registrations').select('status').eq('event_id',event.id).eq('user_id',user.id).maybeSingle()
+        if(latest.error)throw latest.error
+        if(latest.data?.status==='cancelled')return json({ok:true,status:'cancelled'})
+        return err('не удалось отменить билет · обновите экран и попробуйте ещё раз',409)
+      }
+      const notices=await db.from('notification_queue').update({status:'cancelled',error:'ticket cancelled by user'}).eq('user_id',user.id).eq('event_id',event.id).eq('status','pending').in('kind',['tickets','reminders'])
+      if(notices.error)console.error('ticket cancellation notification cleanup failed',notices.error)
+      return json({ok:true,status:'cancelled'})
     }
 
     if(action==='jipitina-chat'){
