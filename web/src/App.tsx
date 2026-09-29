@@ -88,6 +88,43 @@ function ProfilePreview({profile}:{profile:CinemaProfile}){return <Card classNam
 
 function RequireProfile({children}:{children:ReactNode}){const {data,error}=useStateData();if(!data)return <Loading error={error}/>;if(!data.onboardingComplete)return <Navigate to="/onboarding" replace/>;if(data.creature&&!data.creature.born)return <Navigate to="/birth" replace/>;return <>{children}</>}
 
+function answerText(value:any){if(value===null||value===undefined)return '';if(typeof value==='string'||typeof value==='number'||typeof value==='boolean')return String(value);if(typeof value==='object'&&'label' in value)return String(value.label);try{return JSON.stringify(value)}catch{return String(value)}}
+
+function ParticipantShow({data,reload}:{data:DemoState;reload:(fresh?:boolean)=>Promise<DemoState|undefined>}){
+  const show=data.show
+  const [busy,setBusy]=useState(false)
+  const [message,setMessage]=useState('')
+  if(!show||show.runtime.runStatus==='idle'||!['paid','attended'].includes(data.registration))return null
+  const block=show.runtime.currentBlock
+  if(!block)return null
+  const round=show.currentRound
+  const question=round?.question
+  const myVote=show.myVote
+  const vote=async(answer:any)=>{
+    if(busy||round?.voteState!=='open')return
+    try{
+      setBusy(true);setMessage('')
+      const result:any=await callApi('event-vote',{slug:data.event.slug,answer})
+      if(result?.crumbs&&!result.crumbs.alreadyAwarded&&result.crumbs.rewardCrumbs)setMessage(`принято · +${result.crumbs.rewardCrumbs} крошка${Number(result.crumbs.rewardCrumbs)===1?'':'и'}`)
+      else setMessage('принято')
+      await reload(true)
+    }catch(e:any){setMessage(e.message||'не получилось отправить ответ')}
+    finally{setBusy(false)}
+  }
+  if(block.type==='music_live')return <section className="participant-show music"><div className="eyebrow">сейчас</div><h2>{block.title}</h2><p>убери телефон · там люди играют музыку</p></section>
+  if(block.type==='post_event')return <section className="participant-show"><div className="eyebrow">вечер закончился</div><h2>животина остаётся с вами</h2><p>крошки, история и всё, что случилось сегодня, никуда не исчезнут</p></section>
+  const intro=block.type==='arrival'?'ты внутри · животина тоже':block.type==='onboarding'?'знакомимся с животиной':block.type==='warm_up'?'первый общий интерактив':block.type==='final_vote'?'финальный выбор':block.type==='finale'?'итог вечера':block.title
+  return <section className="participant-show">
+    <div className="row spread participant-show-head"><div><div className="eyebrow">сейчас</div><h2>{intro}</h2></div>{round&&<Pill>раунд {round.roundNo}</Pill>}</div>
+    {show.runtime.runStatus==='paused'&&<div className="participant-show-pause">пауза · ведущий скоро продолжит</div>}
+    {round?.movie&&<div className="participant-show-movie"><span>фильм</span><b>{round.movie.title}</b>{round.movie.year&&<small>{round.movie.year}</small>}</div>}
+    {question&&<div className="participant-question"><div className="section-title">животина спрашивает</div><h3>{question.prompt}</h3>{round?.voteState==='open'&&Array.isArray(question.options)&&question.options.length>0&&<div className="participant-votes">{question.options.map((option:any)=>{const selected=JSON.stringify(myVote)===JSON.stringify(option);return <button type="button" className={selected?'selected':''} disabled={busy} key={String(option)} onClick={()=>vote(option)}>{answerText(option)}</button>})}</div>}{round?.voteState==='closed'&&myVote!==undefined&&<p className="muted">ваш ответ · {answerText(myVote)}</p>}</div>}
+    {message&&<div className={message.startsWith('принято')?'success':'form-error'}>{message}</div>}
+    {round?.resultsVisible&&show.voteResults.length>0&&<div className="participant-results">{show.voteResults.map((x,i)=><div key={i}><span>{answerText(x.answer)}</span><b>{x.count}</b></div>)}</div>}
+    {!round&&block.type==='arrival'&&<p className="muted">пока можно убрать телефон · приложение само синхронизируется, когда начнётся следующий блок</p>}
+  </section>
+}
+
 function Home(){
   const {data,error,reload}=useStateData();const nav=useNavigate();const [buyError,setBuyError]=useState('');const [buyNotice,setBuyNotice]=useState('');const [buyBusy,setBuyBusy]=useState(false);const [claimBusy,setClaimBusy]=useState(false);const [claimError,setClaimError]=useState('');const [cancelBusy,setCancelBusy]=useState(false);const [cancelError,setCancelError]=useState('');const [ticketOpen,setTicketOpen]=useState(false);const [encounterMsg,setEncounterMsg]=useState('');const [now,setNow]=useState(()=>Date.now());useEffect(()=>{if(!data?.creature?.born)return;const u=new URL(location.href);const token=u.searchParams.get('encounter');if(!token)return;u.searchParams.delete('encounter');history.replaceState({},'',u.toString());callApi<any>('encounter',{token}).then(r=>{setEncounterMsg(r.kind==='event_checkin'?'вы внутри. животина запомнила, что вы пришли':'животины встретились');reload()}).catch(e=>setEncounterMsg(e.message))},[data?.creature?.born]);useEffect(()=>{if(!['reserved','waitlist'].includes(data?.registration||''))return;const timer=window.setInterval(()=>{if(document.visibilityState==='visible')void reload(true)},10000);return()=>window.clearInterval(timer)},[data?.registration]);useEffect(()=>{if(data?.registration!=='reserved'||!data.reservationExpiresAt)return;setNow(Date.now());const tick=window.setInterval(()=>setNow(Date.now()),1000);const remaining=Math.max(0,new Date(data.reservationExpiresAt).getTime()-Date.now());const expiry=window.setTimeout(()=>void reload(true),remaining+250);return()=>{window.clearInterval(tick);window.clearTimeout(expiry)}},[data?.registration,data?.reservationExpiresAt]);useEffect(()=>{if(!data)return;if(['paid','attended'].includes(data.registration)){setBuyNotice('');setBuyError('');return}if(data.registration==='reserved'){setBuyNotice(prev=>prev.includes('листе ожидания')?'':prev)}if(data.registration==='none'){setBuyNotice(prev=>prev.includes('место пока')||prev.includes('резерв')?'резерв истёк. можно оформить билет заново':prev);setBuyError(prev=>prev.includes('место пока')?'резерв истёк. попробуйте оформить билет заново':prev)}},[data?.registration]);if(!data)return <Loading error={error}/>
   const e=data.event;const held=Number(e.held||0);const left=Math.max(0,e.capacity-e.sold-held);const salesOpen=e.status==='SALES_OPEN';const freeEntry=Number(e.ticketPriceRub)===0;const freeClaimOpen=freeEntry&&['SALES_OPEN','CHECKIN'].includes(e.status);const checkoutAvailable=salesOpen&&e.paymentsAvailable;const reserveSeconds=data.registration==='reserved'&&data.reservationExpiresAt?Math.max(0,Math.ceil((new Date(data.reservationExpiresAt).getTime()-now)/1000)):0;const reserveCountdown=data.registration==='reserved'&&data.reservationExpiresAt?`${Math.floor(reserveSeconds/60)}:${String(reserveSeconds%60).padStart(2,'0')}`:''
@@ -119,6 +156,7 @@ function Home(){
         {buyNotice&&<div className="success">{buyNotice}</div>}{buyError&&<div className="form-error">{buyError}</div>}{claimError&&<div className="form-error">{claimError}</div>}{cancelError&&<div className="form-error">{cancelError}</div>}
       </div>
     </section>
+    <ParticipantShow data={data} reload={reload}/>
     {!['DRAFT','SALES_OPEN','CHECKIN'].includes(e.status)&&<NextAction data={data} onOpen={()=>nav(`/event/${e.slug}`)} onBuy={buy} onClaim={claimTicket} buyBusy={buyBusy} claimBusy={claimBusy} reserveCountdown={reserveCountdown}/>} 
     <section className="zhivotina-portal">
       <div className="zhivotina-portrait" aria-hidden><img src={`${import.meta.env.BASE_URL}assets/rabbit-baby.png`} alt="" draggable={false}/></div><div><div className="eyebrow">чат с животиной</div><div className="zhivotina-portal-name">{data.creature.name||'животина'}</div><p>спросите про свой вкус, попросите рекомендацию или обсудите фильм</p></div><Button kind="secondary" onClick={()=>nav('/zhivotina')}>поговорить с {data.creature.name||'животиной'}</Button>
