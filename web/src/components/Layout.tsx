@@ -9,9 +9,29 @@ export default function Layout(){
     document.documentElement.scrollTop=0
     document.body.scrollTop=0
   },[location.pathname,location.search])
+  useEffect(()=>{
+    const root=document.getElementById('root')
+    if(!root)return
+    const clean=()=>{
+      const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT)
+      let node:Node|null
+      while((node=walker.nextNode())){
+        const text=node as Text
+        const parent=text.parentElement
+        if(!parent||parent.closest('script,style,code,pre,textarea,input'))continue
+        const next=text.data.replace(/\.(?=\s|$)/g,'')
+        if(next!==text.data)text.data=next
+      }
+    }
+    clean()
+    let frame=0
+    const observer=new MutationObserver(()=>{if(frame)return;frame=requestAnimationFrame(()=>{frame=0;clean()})})
+    observer.observe(root,{subtree:true,childList:true,characterData:true})
+    return()=>{observer.disconnect();if(frame)cancelAnimationFrame(frame)}
+  },[])
   return <div className="app-shell">
     <header className="topbar">
-      <NavLink className="brand" to="/">НАСЫПАТЕЛИ <span>В КИНО</span></NavLink>
+      <NavLink className="brand" to="/">насыпатели <span>в кино</span></NavLink>
       <div className="topbar-actions">{demoMode && <span className="demo-badge">demo</span>}</div>
     </header>
     <main><Outlet/></main>
