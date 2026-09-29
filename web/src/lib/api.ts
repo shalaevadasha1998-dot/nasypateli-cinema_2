@@ -56,7 +56,7 @@ function normalizeBootstrap(raw:any):DemoState{
     event:{...base.event,...re},
     profile:{...emptyProfile,...rp,taste:{...emptyProfile.taste,...(rp.taste||{})},favoriteFilms:Array.isArray(rp.favoriteFilms)?rp.favoriteFilms:[],favoriteGenres:Array.isArray(rp.favoriteGenres)?rp.favoriteGenres:[],avoid:Array.isArray(rp.avoid)?rp.avoid:[],watchReasons:Array.isArray(rp.watchReasons)?rp.watchReasons:[],clubWants:Array.isArray(rp.clubWants)?rp.clubWants:[]},
     onboardingComplete:r.onboardingComplete===true,
-    registration:['none','reserved','paid','attended','waitlist','refunded'].includes(r.registration)?r.registration:'none',
+    registration:['none','reserved','paid','attended','waitlist','refunded','cancelled','no_show'].includes(r.registration)?r.registration:'none',
     ideaFinalists:Array.isArray(r.ideaFinalists)?r.ideaFinalists:[],movieFinalists:Array.isArray(r.movieFinalists)?r.movieFinalists:[],predictions:Array.isArray(r.predictions)?r.predictions:[],leaderboard:Array.isArray(r.leaderboard)?r.leaderboard:[],pastEvents:Array.isArray(r.pastEvents)?r.pastEvents:[],jipitinaMessages:Array.isArray(r.jipitinaMessages)?r.jipitinaMessages:[],
     profileStats:{...base.profileStats,...(r.profileStats||{})},
     creature:{...base.creature,...rc,stage:normalizeCreatureStage(rc.stage),feedingCost:Math.max(1,Number(rc.feedingCost||base.creature.feedingCost||1)),canFeedToday:rc.canFeedToday!==false,traits:{...base.creature.traits,...(rc.traits||{})},cosmetics:Array.isArray(rc.cosmetics)?rc.cosmetics:[],timeline:Array.isArray(rc.timeline)?rc.timeline:[]},
@@ -109,7 +109,7 @@ type growthStage=DemoState['creature']['stage']
 function demoAction(action:string,payload:Record<string,unknown>){
   switch(action){
     case 'bootstrap': return loadDemo()
-    case 'admin-bootstrap': return loadDemo()
+    case 'admin-bootstrap': {const s=loadDemo();return {...s,adminParticipants:s.registration==='none'?[]:[{registrationId:'00000000-0000-4000-8000-000000000001',displayName:s.profile.displayName||'демо участник',telegramUsername:'@demo',profileComplete:s.onboardingComplete,onboardingStep:s.profile.onboardingStep,status:s.registration,queuePosition:s.queuePosition,reservationExpiresAt:s.reservationExpiresAt,photoVideoConsent:s.profile.photoVideoConsent===true,paidAt:['paid','attended','no_show'].includes(s.registration)?new Date().toISOString():undefined,registeredAt:new Date().toISOString()}]}}
     case 'screen-bootstrap': return loadDemo()
     case 'save-profile-progress': return mutate(s=>({...s,profile:{...s.profile,...(payload.profile as Partial<CinemaProfile>),onboardingStep:Number(payload.step)||s.profile.onboardingStep}}))
     case 'save-profile': return mutate(s=>({...s,profile:{...(payload.profile as CinemaProfile),completed:true,completedAt:new Date().toISOString()},onboardingComplete:true}))
@@ -164,6 +164,7 @@ function demoAction(action:string,payload:Record<string,unknown>){
       const assistant:JipitinaMessage={id:`a-${Date.now()}`,role:'assistant',text:demoReply(text,mode),mode,createdAt:new Date().toISOString()}
       return {...s,jipitinaMessages:[...(s.jipitinaMessages||[]),userMsg,assistant].slice(-30)}
     })
+    case 'admin-fix-registration': return mutate(s=>{const fix=String(payload.fix||'');if(fix==='mark_attended'&&['paid','no_show'].includes(s.registration))return {...s,registration:'attended'};if(fix==='undo_attended'&&s.registration==='attended')return {...s,registration:s.event.status==='CLOSED'?'no_show':'paid'};if(fix==='release_hold'&&s.registration==='reserved')return {...s,registration:'cancelled',reservationExpiresAt:undefined,queuePosition:undefined};throw new Error('это действие не подходит текущему статусу')})
     case 'admin-stage': return mutate(s=>applyStageData(s,payload.status as EventStatus))
     case 'admin-set-mechanic': return mutate(s=>({...s,event:{...s.event,nonexistentFilmEnabled:!!payload.enabled}}))
     case 'admin-event-config': return mutate(s=>({...s,event:{...s.event,startsAt:String(payload.startsAt||s.event.startsAt),ticketPriceRub:Number(payload.ticketPriceRub??s.event.ticketPriceRub),maxMovieRuntimeMin:Number(payload.maxMovieRuntimeMin??s.event.maxMovieRuntimeMin),venueName:String(payload.venueName||''),venueAddress:String(payload.venueAddress||'')}}))
@@ -186,7 +187,7 @@ function demoAction(action:string,payload:Record<string,unknown>){
     case 'admin-score-predictions': return mutate(s=>({...s,event:{...s.event,status:'PREDICTIONS_SCORED'},outputs:{...(s.outputs||{}),score_summary:{tie:true,winners:[{userId:'demo-1',name:'аня',correct:8,total:10,points:8,rank:1},{userId:'demo-2',name:'ваня',correct:8,total:10,points:8,rank:1}],scores:[{userId:'demo-1',name:'аня',correct:8,total:10,points:8,rank:1},{userId:'demo-2',name:'ваня',correct:8,total:10,points:8,rank:1},{userId:'demo-3',name:'саша',correct:6,total:10,points:6,rank:3}]}}}))
     case 'ai-tiebreaker': return mutate(s=>({...s,outputs:{...(s.outputs||{}),tiebreaker:{clue:'мужик очень долго пытается вернуть украшение владельцу, но все вокруг почему-то считают, что проще было бы его выбросить в вулкан'}}}))
     case 'admin-set-winner': return mutate(s=>{const score:any=s.outputs?.score_summary||{};const winner=(score.winners||[]).find((x:any)=>x.userId===payload.userId)||{userId:String(payload.userId||''),name:'победитель'};return {...s,outputs:{...(s.outputs||{}),score_summary:{...score,tie:false,tieResolved:true,winner}}}})
-    case 'reset-demo': localStorage.clear(); notifyDemo(); return structuredClone(initialDemoState)
+    case 'reset-demo': resetDemo(); try{localStorage.removeItem('nasypateli-pending-creature-name')}catch{} notifyDemo(); return structuredClone(initialDemoState)
     default: throw new Error(`Unknown demo action: ${action}`)
   }
 }
