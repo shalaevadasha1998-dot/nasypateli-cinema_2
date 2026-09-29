@@ -143,8 +143,9 @@ function demoAction(action:string,payload:Record<string,unknown>){
     }
     case 'equip-cosmetic': return mutate(s=>({...s,creature:{...s.creature,cosmetics:s.creature.cosmetics.map(x=>x.code===payload.code?{...x,equipped:payload.equipped===true}:x)}}))
     case 'save-dating-profile': return mutate(s=>({...s,dating:{...s.dating,...(payload.dating as any)}}))
-    case 'dating-swipe': return mutate(s=>({...s,datingCards:s.datingCards.filter(x=>x.userId!==payload.targetUserId),datingMatches:payload.direction==='like'?[...s.datingMatches,{id:`m-${Date.now()}`,kind:'cinema',displayName:'маша',creatureName:'Кишка',createdAt:new Date().toISOString()}]:s.datingMatches}))
+    case 'dating-swipe': return mutate(s=>({...s,datingCards:s.datingCards.filter(x=>x.userId!==payload.targetUserId),datingMatches:payload.direction==='like'?[...s.datingMatches,{id:`m-${Date.now()}`,userId:String(payload.targetUserId||'demo-match-user'),kind:'cinema',displayName:'маша',creatureName:'Кишка',createdAt:new Date().toISOString()}]:s.datingMatches}))
     case 'dating-hide-connection': return mutate(s=>({...s,datingMatches:s.datingMatches.filter(x=>x.id!==payload.connectionId)}))
+    case 'dating-block': return mutate(s=>({...s,datingCards:s.datingCards.filter(x=>x.userId!==payload.targetUserId),datingMatches:s.datingMatches.filter(x=>x.userId!==payload.targetUserId)}))
     case 'save-notification-prefs': return mutate(s=>({...s,notificationPrefs:{...s.notificationPrefs,...(payload.prefs as any)}}))
     case 'my-encounter-token': return {ok:true,token:'demo-encounter-token',deepLink:'https://t.me/nasipateli_v_kinobot?start=encounter_demo-encounter-token'}
     case 'encounter': return {ok:true,kind:'rabbit',sharedFavorites:1,sharedGenres:1}

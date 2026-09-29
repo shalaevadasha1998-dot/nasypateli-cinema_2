@@ -4,7 +4,7 @@ import { telegramUserFromRequest, isConfiguredAdmin } from '../_shared/telegram.
 import { secureIndex } from '../_shared/random.ts'
 import { structuredResponse, textResponse, transcribeAudio } from '../_shared/openai.ts'
 import { creatureState, emitStoryTrigger, ensureCreature } from '../_shared/stories.ts'
-import { allowedGender, connectionKind, datingState } from '../_shared/dating.ts'
+import { allowedGender, connectionKind, datingState, intentsCompatible } from '../_shared/dating.ts'
 import { JIPITINA, jipitinaInstructions } from '../_shared/jipitina.ts'
 import { validateMovieTitle } from '../_shared/movies.ts'
 import { buildEventState, eventBySlug, nextEvent, nonexistentFilmEnabled } from '../_shared/state.ts'
@@ -573,31 +573,70 @@ export async function handleApi(req:Request){
       return json({ok:true})
     }
     if(action==='dating-swipe'){
-      const targetId=String(body.targetUserId||'');const direction=String(body.direction||'');if(!isUuid(targetId)||targetId===user.id||!['like','pass'].includes(direction))return err('Некорректный свайп',422)
-      const [target,mine,blocks]=await Promise.all([
+      const targetId=String(body.targetUserId||'')
+      const direction=String(body.direction||'')
+      if(!isUuid(targetId)||targetId===user.id||!['like','pass'].includes(direction))return err('Некорректный свайп',422)
+      const [target,mine,blocks,existingSwipe]=await Promise.all([
         db.from('dating_profiles').select('enabled,paused,intents,self_gender,show_gender').eq('user_id',targetId).maybeSingle(),
         db.from('dating_profiles').select('enabled,paused,intents,self_gender,show_gender').eq('user_id',user.id).maybeSingle(),
-        db.from('user_blocks').select('blocker_id,blocked_id').or(`and(blocker_id.eq.${user.id},blocked_id.eq.${targetId}),and(blocker_id.eq.${targetId},blocked_id.eq.${user.id})`).limit(1)
-      ]);for(const r of [target,mine,blocks])if(r.error)throw r.error
+        db.from('user_blocks').select('blocker_id,blocked_id').or(`and(blocker_id.eq.${user.id},blocked_id.eq.${targetId}),and(blocker_id.eq.${targetId},blocked_id.eq.${user.id})`).limit(1),
+        db.from('dating_swipes').select('direction').eq('swiper_id',user.id).eq('target_id',targetId).maybeSingle()
+      ])
+      for(const r of [target,mine,blocks,existingSwipe])if(r.error)throw r.error
       if(!mine.data?.enabled||mine.data?.paused)return err('Сначала включите знакомства',409)
       if(!target.data?.enabled||target.data?.paused)return err('Этот профиль сейчас недоступен',409)
       if((blocks.data||[]).length)return err('Этот профиль недоступен',403)
       if(!allowedGender(mine.data.show_gender,target.data.self_gender)||!allowedGender(target.data.show_gender,mine.data.self_gender))return err('Этот профиль не входит в ваши взаимные фильтры',403)
-      const sw=await db.from('dating_swipes').upsert({swiper_id:user.id,target_id:targetId,direction,created_at:new Date().toISOString()},{onConflict:'swiper_id,target_id'});if(sw.error)throw sw.error
-      if(direction==='pass')return json({ok:true,matched:false})
-      const reverse=await db.from('dating_swipes').select('direction').eq('swiper_id',targetId).eq('target_id',user.id).maybeSingle();if(reverse.error)throw reverse.error;if(reverse.data?.direction!=='like')return json({ok:true,matched:false})
-      const existing=await db.from('social_connections').select('*').or(`and(user_a.eq.${user.id},user_b.eq.${targetId}),and(user_a.eq.${targetId},user_b.eq.${user.id})`).maybeSingle();if(existing.error)throw existing.error
-      let connection=existing.data
-      if(!connection){const kind=connectionKind(mine.data?.intents||[],target.data?.intents||[]);const [pa,pb]=await Promise.all([db.from('cinema_profiles').select('favorite_films').eq('user_id',user.id).maybeSingle(),db.from('cinema_profiles').select('favorite_films').eq('user_id',targetId).maybeSingle()]);const bset=new Set((pb.data?.favorite_films||[]).map((x:string)=>x.toLowerCase()));const shared=(pa.data?.favorite_films||[]).filter((x:string)=>bset.has(x.toLowerCase()));const ins=await db.from('social_connections').insert({user_a:user.id,user_b:targetId,kind,status:'active',metadata:{shared_films:shared}}).select('*').single();if(ins.error)throw ins.error;connection=ins.data
-        for(const uid of [user.id,targetId]){await emitStoryTrigger(db,uid,'dating_match',{story_code:'first_match',kind,shared_favorites:shared.length},null);await emitStoryTrigger(db,uid,'dating_match',{story_code:kind==='romantic'?'romantic_match':kind==='cinema'?'cinema_match':'friend_match',kind,shared_favorites:shared.length},null);if(shared.length)await emitStoryTrigger(db,uid,'dating_match',{story_code:'same_favorite_match',kind,shared_favorites:shared.length},null)};for(const uid of [user.id,targetId])await db.from('notification_queue').upsert({user_id:uid,kind:'matches',text:'ваши Животины совпали. откройте знакомства',send_after:new Date().toISOString(),status:'pending',dedupe_key:'match:'+connection.id},{onConflict:'user_id,dedupe_key'})
+      if(!intentsCompatible(mine.data.intents||[],target.data.intents||[]))return err('У вас сейчас нет совместимого формата знакомства',403)
+      if(existingSwipe.data&&existingSwipe.data.direction!==direction)return err('Решение по этой карточке уже сохранено',409)
+      if(!existingSwipe.data){
+        const sw=await db.from('dating_swipes').insert({swiper_id:user.id,target_id:targetId,direction,created_at:new Date().toISOString()})
+        if(sw.error)throw sw.error
       }
-      return json({ok:true,matched:true,connectionId:connection.id,kind:connection.kind})
+      if(direction==='pass')return json({ok:true,matched:false})
+      const reverse=await db.from('dating_swipes').select('direction').eq('swiper_id',targetId).eq('target_id',user.id).maybeSingle()
+      if(reverse.error)throw reverse.error
+      if(reverse.data?.direction!=='like')return json({ok:true,matched:false})
+      const kind=connectionKind(mine.data?.intents||[],target.data?.intents||[])
+      const [pa,pb]=await Promise.all([
+        db.from('cinema_profiles').select('favorite_films').eq('user_id',user.id).maybeSingle(),
+        db.from('cinema_profiles').select('favorite_films').eq('user_id',targetId).maybeSingle()
+      ])
+      if(pa.error)throw pa.error;if(pb.error)throw pb.error
+      const bset=new Set((pb.data?.favorite_films||[]).map((x:string)=>x.toLowerCase()))
+      const shared=(pa.data?.favorite_films||[]).filter((x:string)=>bset.has(x.toLowerCase()))
+      const made=await db.rpc('create_dating_connection',{p_user_a:user.id,p_user_b:targetId,p_kind:kind,p_shared_films:shared})
+      if(made.error){
+        if(String(made.error.message||'').includes('dating pair blocked'))return err('Этот профиль недоступен',403)
+        throw made.error
+      }
+      const connection=made.data?.[0]
+      if(!connection)return err('Не удалось создать связь',500)
+      if(connection.connection_status!=='active')return err('Эта связь сейчас недоступна',409)
+      if(connection.created){
+        for(const uid of [user.id,targetId]){
+          await emitStoryTrigger(db,uid,'dating_match',{story_code:'first_match',kind,shared_favorites:shared.length},null)
+          await emitStoryTrigger(db,uid,'dating_match',{story_code:kind==='romantic'?'romantic_match':kind==='cinema'?'cinema_match':'friend_match',kind,shared_favorites:shared.length},null)
+          if(shared.length)await emitStoryTrigger(db,uid,'dating_match',{story_code:'same_favorite_match',kind,shared_favorites:shared.length},null)
+        }
+        for(const uid of [user.id,targetId])await db.from('notification_queue').upsert({user_id:uid,kind:'matches',text:'ваши Животины совпали. откройте знакомства',send_after:new Date().toISOString(),status:'pending',dedupe_key:'match:'+connection.connection_id},{onConflict:'user_id,dedupe_key'})
+      }
+      return json({ok:true,matched:true,connectionId:connection.connection_id,kind:connection.connection_kind})
     }
     if(action==='dating-hide-connection'){
-      const id=String(body.connectionId||'');if(!isUuid(id))return err('Связь не найдена',404);const c=await db.from('social_connections').select('user_a,user_b,metadata').eq('id',id).maybeSingle();if(c.error)throw c.error;if(!c.data||![c.data.user_a,c.data.user_b].includes(user.id))return err('Связь не найдена',404);const hiddenBy=Array.from(new Set([...(Array.isArray(c.data.metadata?.hidden_by)?c.data.metadata.hidden_by:[]),user.id]));const r=await db.from('social_connections').update({metadata:{...(c.data.metadata||{}),hidden_by:hiddenBy}}).eq('id',id);if(r.error)throw r.error;return json({ok:true})
+      const id=String(body.connectionId||'')
+      if(!isUuid(id))return err('Связь не найдена',404)
+      const r=await db.rpc('hide_dating_connection',{p_user_id:user.id,p_connection_id:id})
+      if(r.error)throw r.error
+      if(r.data!==true)return err('Связь не найдена',404)
+      return json({ok:true})
     }
     if(action==='dating-block'){
-      const targetId=String(body.targetUserId||'');if(!isUuid(targetId)||targetId===user.id)return err('Некорректный профиль',422);const r=await db.from('user_blocks').upsert({blocker_id:user.id,blocked_id:targetId},{onConflict:'blocker_id,blocked_id'});if(r.error)throw r.error;await db.from('social_connections').update({status:'blocked'}).or(`and(user_a.eq.${user.id},user_b.eq.${targetId}),and(user_a.eq.${targetId},user_b.eq.${user.id})`);return json({ok:true})
+      const targetId=String(body.targetUserId||'')
+      if(!isUuid(targetId)||targetId===user.id)return err('Некорректный профиль',422)
+      const r=await db.rpc('block_dating_user',{p_blocker_id:user.id,p_blocked_id:targetId})
+      if(r.error)throw r.error
+      return json({ok:true})
     }
     if(action==='audio-transcribe'){
       const b64=String(body.audioBase64||'');if(!b64||b64.length>6_500_000)return err('Голосовое слишком большое',413);const raw=Uint8Array.from(atob(b64),c=>c.charCodeAt(0));if(raw.byteLength>4_500_000)return err('Голосовое слишком большое',413);const text=await transcribeAudio(raw,String(body.mimeType||'audio/webm'));return json({ok:true,text})
