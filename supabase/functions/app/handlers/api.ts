@@ -451,7 +451,16 @@ export async function handleApi(req:Request){
       ])
       if(movieCatalog.error)throw movieCatalog.error
       if(showLog.error)throw showLog.error
-      return json({...state,adminParticipants,movieCatalog:movieCatalog.data||[],showLog:showLog.data||[]})
+      return json({...state,adminParticipants,movieCatalog:(movieCatalog.data||[]).map((x:any)=>({
+        id:x.id,title:x.title,originalTitle:x.original_title||undefined,year:x.year||undefined,runtimeMin:x.runtime_min||undefined,
+        genre:x.genre||undefined,country:x.country||undefined,reason:x.reason||undefined,enabledForEvent:x.enabled_for_event!==false,
+        trailerStatus:x.trailer_status||'unchecked',clipStatus:x.clip_status||'unchecked',sourceType:x.source_type||undefined,
+        sourcePlatform:x.source_platform||undefined,sourceUrl:x.source_url||undefined,videoId:x.video_id||undefined,
+        startSec:x.start_sec??undefined,endSec:x.end_sec??undefined,sourceChannel:x.source_channel||undefined,
+        sourceVerified:x.source_verified===true,verifiedAt:x.verified_at||undefined,usageStatus:x.usage_status||'needs_review',
+        discussionPrompts:Array.isArray(x.discussion_prompts)?x.discussion_prompts:[],animalComment:x.animal_comment||undefined,
+        tags:Array.isArray(x.tags)?x.tags:[]
+      })),showLog:(showLog.data||[]).map((x:any)=>({id:String(x.id),action:x.action,createdAt:x.created_at}))})
     }
 
     if(action==='cron-notifications'){
