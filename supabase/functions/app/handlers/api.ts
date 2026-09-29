@@ -928,7 +928,14 @@ export async function handleApi(req:Request){
         updated_at:new Date().toISOString()
       },{onConflict:'round_id,question_key,user_id'}).select('answer').single()
       if(vote.error)throw vote.error
-      return json({ok:true,answer:vote.data.answer})
+      const reward=Math.max(0,Math.min(100,Number(show.program?.rewards?.vote||0)))
+      let crumbs:any=null
+      if(reward>0){
+        const award=await db.rpc('award_event_crumbs',{p_user_id:user.id,p_event_id:event.id,p_amount:reward,p_reason:'vote',p_source_id:`${round.id}:${questionKey}`})
+        if(award.error)console.error('vote crumb award failed',award.error)
+        else crumbs=award.data
+      }
+      return json({ok:true,answer:vote.data.answer,crumbs})
     }
 
     if(!adminTokenOk)await mustAdmin(db,user,tg)
@@ -937,7 +944,14 @@ export async function handleApi(req:Request){
       const blocks=sanitizeProgramBlocks(body.blocks)
       if(!blocks||blocks.length<1)return err('добавьте хотя бы один блок программы',422)
       const roundsTarget=Math.max(1,Math.min(20,Math.round(Number(body.roundsTarget||7)||7)))
-      const config={version:1,rounds_target:roundsTarget,blocks}
+      const rewardInput=body.rewards||{}
+      const rewards={
+        join:Math.max(0,Math.min(100,Math.round(Number(rewardInput.join??1)||0))),
+        vote:Math.max(0,Math.min(100,Math.round(Number(rewardInput.vote??1)||0))),
+        round:Math.max(0,Math.min(100,Math.round(Number(rewardInput.round??2)||0))),
+        finale:Math.max(0,Math.min(100,Math.round(Number(rewardInput.finale??3)||0)))
+      }
+      const config={version:1,rounds_target:roundsTarget,rewards,blocks}
       const saved=await db.from('event_programs').upsert({event_id:event.id,config,updated_at:new Date().toISOString()},{onConflict:'event_id'})
       if(saved.error)throw saved.error
       const runtime=await db.from('event_runtime').select('*').eq('event_id',event.id).single()
@@ -1211,6 +1225,31 @@ export async function handleApi(req:Request){
         if(saved.error)throw saved.error
       }
       return json({ok:true,movie:saved.data})
+    }
+
+    if(action==='admin-award-crumbs'){
+      const show=await buildShowState(db,event)
+      const amount=Math.max(1,Math.min(100,Math.round(Number(body.amount)||show.program.rewards.round||1)))
+      const scope=String(body.scope||'round_voters')
+      const sourceId=String(body.sourceId||show.currentRound?.id||show.runtime.currentBlockId||'manual').slice(0,160)
+      let ids:string[]=[]
+      if(scope==='round_voters'){
+        if(!show.currentRound?.id)return err('нет текущего раунда',409)
+        const votes=await db.from('event_votes').select('user_id').eq('event_id',event.id).eq('round_id',show.currentRound.id)
+        if(votes.error)throw votes.error
+        ids=[...new Set((votes.data||[]).map((x:any)=>String(x.user_id)))]
+      }else if(scope==='attended'){
+        const regs=await db.from('registrations').select('user_id').eq('event_id',event.id).eq('status','attended')
+        if(regs.error)throw regs.error
+        ids=(regs.data||[]).map((x:any)=>String(x.user_id))
+      }else return err('неизвестная группа для крошек',422)
+      let awarded=0,already=0
+      for(const uid of ids){
+        const a=await db.rpc('award_event_crumbs',{p_user_id:uid,p_event_id:event.id,p_amount:amount,p_reason:'show_reward',p_source_id:sourceId})
+        if(a.error)throw a.error
+        if(a.data?.alreadyAwarded)already++;else awarded++
+      }
+      return json({ok:true,awarded,already,participants:ids.length,amount})
     }
 
     if(action==='admin-fix-registration'){
