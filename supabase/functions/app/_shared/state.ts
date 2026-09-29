@@ -26,9 +26,16 @@ function normalizeProgram(config:any){
       roundsTarget:Math.max(0,Math.min(20,Number(x.rounds_target??x.roundsTarget??0)||0)),
       index
     }))
+  const rewards=config?.rewards||{}
   return {
     version:Number(config?.version||1),
     roundsTarget:Math.max(1,Math.min(20,Number(config?.rounds_target??config?.roundsTarget??7)||7)),
+    rewards:{
+      join:Math.max(0,Math.min(100,Number(rewards.join??1)||0)),
+      vote:Math.max(0,Math.min(100,Number(rewards.vote??1)||0)),
+      round:Math.max(0,Math.min(100,Number(rewards.round??2)||0)),
+      finale:Math.max(0,Math.min(100,Number(rewards.finale??3)||0))
+    },
     blocks
   }
 }
