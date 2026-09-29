@@ -8,7 +8,14 @@ function feedDayKey(v:any){
 export async function ensureCreature(db:any,userId:string){
   const existing=await db.from('creatures').select('*').eq('user_id',userId).maybeSingle();if(existing.error)throw existing.error
   if(existing.data)return existing.data
-  const made=await db.from('creatures').insert({user_id:userId,name:'Животина'}).select('*').single();if(made.error)throw made.error
+  const made=await db.from('creatures').insert({user_id:userId,name:'Животина'}).select('*').single()
+  if(made.error){
+    if(String(made.error.code||'')==='23505'){
+      const raced=await db.from('creatures').select('*').eq('user_id',userId).single();if(raced.error)throw raced.error
+      return raced.data
+    }
+    throw made.error
+  }
   return made.data
 }
 
@@ -48,7 +55,11 @@ async function conditionPasses(db:any,userId:string,trigger:string,condition:any
 }
 
 export async function emitStoryTrigger(db:any,userId:string,trigger:string,context:Record<string,unknown>={},eventId?:string|null){
-  const log=await db.from('story_trigger_log').insert({user_id:userId,trigger_key:trigger,event_id:eventId||null,context});if(log.error)throw log.error
+  const occurrenceKey=String((context as any)?.occurrenceKey||eventId||'').trim()||null
+  const log=await db.from('story_trigger_log').upsert(
+    {user_id:userId,trigger_key:trigger,event_id:eventId||null,occurrence_key:occurrenceKey,context},
+    {onConflict:'user_id,trigger_key,occurrence_key',ignoreDuplicates:true}
+  );if(log.error)throw log.error
   const defs=await db.from('story_definitions').select('code,title,visibility,condition,repeatable').eq('trigger_key',trigger).eq('active',true);if(defs.error)throw defs.error
   const awards:any[]=[]
   for(const d of defs.data||[]){
