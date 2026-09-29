@@ -271,6 +271,8 @@ export type DemoState = {
   datingMatches:DatingMatch[]
   notificationPrefs:NotificationPrefs
   show?:ShowState
+  movieCatalog?:MovieCandidate[]
+  showLog?:{id:string;action:string;createdAt:string}[]
   creatureTaskCompletions?:Record<string,string>
   screenMessage?: string
   outputs?: Record<string, unknown>
