@@ -403,7 +403,7 @@ function screenContent(d:DemoState){
     const round=show.currentRound
     if(show.runtime.runStatus==='paused')return <><div className="eyebrow">пауза</div><h1>никуда не уходим</h1><p>ведущий сейчас продолжит</p></>
     if(block?.type==='music_live')return <><div className="eyebrow">живой блок</div><h1>{block.title}</h1><p>живой звук · животина временно молчит</p></>
-    if(show.runtime.videoState?.status==='playing'&&show.runtime.currentMovie)return <><ScreenVideo data={d}/></>
+    if(show.runtime.videoState?.status==='playing'&&show.runtime.currentMovie?.videoId)return <><ScreenVideo data={d}/></>
     if(round?.resultsVisible&&show.voteResults.length)return <><div className="eyebrow">как проголосовал зал</div><h1>{round.question?.prompt||'результаты'}</h1><ShowVoteResults data={d}/></>
     if(round?.question&&round.voteState==='open')return <><div className="eyebrow">раунд {round.roundNo}</div><h1>{round.question.prompt}</h1><p>голосование открыто · отвечайте в телефоне</p></>
     if(round?.movie){
