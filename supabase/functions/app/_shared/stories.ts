@@ -8,7 +8,14 @@ function feedDayKey(v:any){
 export async function ensureCreature(db:any,userId:string){
   const existing=await db.from('creatures').select('*').eq('user_id',userId).maybeSingle();if(existing.error)throw existing.error
   if(existing.data)return existing.data
-  const made=await db.from('creatures').insert({user_id:userId,name:'Животина'}).select('*').single();if(made.error)throw made.error
+  const made=await db.from('creatures').insert({user_id:userId,name:'Животина'}).select('*').single()
+  if(made.error){
+    if(String(made.error.code||'')==='23505'){
+      const raced=await db.from('creatures').select('*').eq('user_id',userId).single();if(raced.error)throw raced.error
+      return raced.data
+    }
+    throw made.error
+  }
   return made.data
 }
 
@@ -22,7 +29,21 @@ export async function creatureState(db:any,userId:string){
   if(cosmetics.error)throw cosmetics.error;if(stories.error)throw stories.error;if(config.error)throw config.error
   if(!config.data)throw new Error('creature_game_config_missing')
   const cs=(cosmetics.data||[]).map((x:any)=>({...(x.creature_cosmetics||{}),equipped:!!x.equipped}))
-  const timeline=(stories.data||[]).map((x:any)=>({id:x.id,code:x.story_definitions?.code||'',title:x.story_definitions?.title||'',description:x.story_definitions?.description||'',category:x.story_definitions?.category||'',rarity:x.story_definitions?.rarity||'common',secret:x.story_definitions?.visibility==='secret',happenedAt:x.happened_at,eventTitle:x.events?.title||undefined,rewardName:cs.find((c:any)=>c.code===x.story_definitions?.reward?.cosmetic)?.name}))
+  const timeline=(stories.data||[]).map((x:any)=>{
+    const secret=x.story_definitions?.visibility==='secret'
+    return {
+      id:x.id,
+      code:secret?'':x.story_definitions?.code||'',
+      title:secret?'???':x.story_definitions?.title||'',
+      description:secret?'секретная история':x.story_definitions?.description||'',
+      category:secret?'secret':x.story_definitions?.category||'',
+      rarity:secret?'secret':x.story_definitions?.rarity||'common',
+      secret,
+      happenedAt:x.happened_at,
+      eventTitle:x.events?.title||undefined,
+      rewardName:secret?undefined:cs.find((c:any)=>c.code===x.story_definitions?.reward?.cosmetic)?.name
+    }
+  })
   const feedingCost=Math.max(1,Number(config.data?.feeding_cost||1))
   const rawThresholds=config.data?.stage_thresholds||{}
   const stageThresholds={
@@ -48,7 +69,11 @@ async function conditionPasses(db:any,userId:string,trigger:string,condition:any
 }
 
 export async function emitStoryTrigger(db:any,userId:string,trigger:string,context:Record<string,unknown>={},eventId?:string|null){
-  const log=await db.from('story_trigger_log').insert({user_id:userId,trigger_key:trigger,event_id:eventId||null,context});if(log.error)throw log.error
+  const occurrenceKey=String((context as any)?.occurrenceKey||eventId||'').trim()||null
+  const log=await db.from('story_trigger_log').upsert(
+    {user_id:userId,trigger_key:trigger,event_id:eventId||null,occurrence_key:occurrenceKey,context},
+    {onConflict:'user_id,trigger_key,occurrence_key',ignoreDuplicates:true}
+  );if(log.error)throw log.error
   const defs=await db.from('story_definitions').select('code,title,visibility,condition,repeatable').eq('trigger_key',trigger).eq('active',true);if(defs.error)throw defs.error
   const awards:any[]=[]
   for(const d of defs.data||[]){

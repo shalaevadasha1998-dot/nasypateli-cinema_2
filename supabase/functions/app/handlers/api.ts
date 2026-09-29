@@ -327,13 +327,14 @@ async function chatContext(db:any,event:any,user:any,profile:any){
   const creature=await creatureState(db,user.id);return {profile,creature:{name:creature.name,stage:creature.stage,traits:creature.traits,storyCount:creature.storyCount,recentStories:creature.timeline.slice(0,8)},userMemory:memories.data||[],clubMemory:clubMem.data||[],event:{id:event.id,title:event.title,status:event.status,mechanicEnabled:nonexistentFilmEnabled(event),registration:effectiveRegistrationStatus(registration.data)},selectedMovie:(movie.data as any)?.movie_candidates||null,predictions:answers.data||[],reaction:reaction.data||null,finalReview:review.data||null}
 }
 
-async function processChatAftermath(db:any,userId:string,message:string,reply:string,eventId?:string){
+async function processChatAftermath(db:any,userId:string,message:string,reply:string,occurrenceKey:string,eventId?:string){
   if(message.trim().length<12)return
-  const storyCodes=['rabbit_wrong','we_agreed','rabbit_knows_me','rabbit_doesnt_know','first_argument','changed_rabbit_mind','rabbit_changed_mine','asked_for_surprise','trusted_choice','rejected_three','taste_calibrated','rabbit_predicted_rating','rabbit_missed_rating','late_night_chat','ten_real_conversations','rabbit_secret']
+  const storyCodes=['rabbit_wrong','we_agreed','rabbit_knows_me','rabbit_doesnt_know','first_argument','changed_rabbit_mind','rabbit_changed_mine','asked_for_surprise','trusted_choice','rejected_three','taste_calibrated','rabbit_predicted_rating','rabbit_missed_rating','late_night_chat','rabbit_secret']
   const schema={type:'object',additionalProperties:false,properties:{updates:{type:'array',maxItems:3,items:{type:'object',additionalProperties:false,properties:{key:{type:'string'},text:{type:'string'},confidence:{type:'number',minimum:0,maximum:1}},required:['key','text','confidence']}},storyCodes:{type:'array',maxItems:2,items:{type:'string',enum:storyCodes}}},required:['updates','storyCodes']}
   const out=await structuredResponse<any>({name:'chat_aftermath',schema,instructions:JIPITINA,input:`Из пары реплик извлеки только устойчивые факты о кинопредпочтениях и, если реально произошла одна из перечисленных историй Животины, верни её code. Не выдавай историю просто за упоминание условия: она должна действительно произойти в разговоре. Не сохраняй здоровье, политику, интимную жизнь, финансы, адреса и случайные эмоции. Пользователь: ${JSON.stringify(message)}\nЖивотина: ${JSON.stringify(reply)}`,maxOutputTokens:350,reasoningEffort:'none'})
   for(const u of out.updates||[]){if(Number(u.confidence)<0.78)continue;const key=String(u.key||'preference').toLowerCase().replace(/[^a-z0-9а-яё_-]+/gi,'_').slice(0,70)||'preference';await db.from('jipitina_memory').upsert({scope:'user',scope_id:userId,memory_key:key,memory_text:String(u.text||'').slice(0,500),source:'jipitina_chat'},{onConflict:'scope,scope_id,memory_key'})}
-  for(const code of out.storyCodes||[]){if(storyCodes.includes(code))await emitStoryTrigger(db,userId,'jipitina_chat',{story_code:code},eventId||null)}
+  await emitStoryTrigger(db,userId,'jipitina_chat',{occurrenceKey},eventId||null)
+  for(const code of out.storyCodes||[]){if(storyCodes.includes(code))await emitStoryTrigger(db,userId,'jipitina_chat',{story_code:code,occurrenceKey},eventId||null)}
 }
 
 export async function handleApi(req:Request){
@@ -717,10 +718,10 @@ export async function handleApi(req:Request){
         matchmaker={enabled:social.dating.enabled,paused:social.dating.paused,intents:social.dating.intents,candidates:(social.datingCards||[]).slice(0,6).map((c:any)=>({displayName:c.displayName,creatureName:c.creatureName,favoriteFilms:c.favoriteFilms,favoriteGenres:c.favoriteGenres,matchNote:c.matchNote,compatibility:c.compatibility}))}
       }
       const input=`КОНТЕКСТ JSON:\n${JSON.stringify({...context,draft,matchmaker,recent:(recent.data||[]).reverse()})}\n\nСООБЩЕНИЕ ПОЛЬЗОВАТЕЛЯ:\n${message}`
-      const userInsert=await db.from('jipitina_messages').insert({user_id:user.id,event_id:event.id,role:'user',mode,text:message,created_at:new Date().toISOString()});if(userInsert.error)throw userInsert.error
+      const userInsert=await db.from('jipitina_messages').insert({user_id:user.id,event_id:event.id,role:'user',mode,text:message,created_at:new Date().toISOString()}).select('id').single();if(userInsert.error)throw userInsert.error
       const reply=await textResponse({instructions:jipitinaInstructions(mode),input,maxOutputTokens:420,reasoningEffort:'none'})
       const assistantInsert=await db.from('jipitina_messages').insert({user_id:user.id,event_id:event.id,role:'assistant',mode,text:reply,created_at:new Date().toISOString()});if(assistantInsert.error)throw assistantInsert.error
-      const task=processChatAftermath(db,user.id,message,reply,event.id).catch((e:any)=>console.error('chat aftermath failed',e));const edge=(globalThis as any).EdgeRuntime;if(edge?.waitUntil)edge.waitUntil(task)
+      const task=processChatAftermath(db,user.id,message,reply,String(userInsert.data.id),event.id).catch((e:any)=>console.error('chat aftermath failed',e));const edge=(globalThis as any).EdgeRuntime;if(edge?.waitUntil)edge.waitUntil(task)
       return json({ok:true,reply,mode})
     }
 
