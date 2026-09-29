@@ -114,6 +114,39 @@ async function activeSeatCount(db:any,eventId:string){
   if(reserved.error)throw reserved.error
   return Number(paid.count||0)+Number(reserved.count||0)
 }
+async function adminParticipantRows(db:any,eventId:string){
+  const regs=await db.from('registrations').select('id,user_id,status,queue_position,photo_video_consent,paid_at,reservation_expires_at,created_at').eq('event_id',eventId).order('created_at')
+  if(regs.error)throw regs.error
+  const ids=(regs.data||[]).map((x:any)=>x.user_id)
+  if(!ids.length)return []
+  const [users,profiles]=await Promise.all([
+    db.from('users').select('id,display_name,telegram_username,deleted_at').in('id',ids),
+    db.from('cinema_profiles').select('user_id,profile_json').in('user_id',ids)
+  ])
+  if(users.error)throw users.error
+  if(profiles.error)throw profiles.error
+  const userMap=new Map((users.data||[]).map((x:any)=>[x.id,x]))
+  const profileMap=new Map((profiles.data||[]).map((x:any)=>[x.user_id,x.profile_json||{}]))
+  return (regs.data||[]).map((r:any)=>{
+    const u:any=userMap.get(r.user_id)||{}
+    const p:any=profileMap.get(r.user_id)||{}
+    const deleted=!!u.deleted_at
+    return {
+      registrationId:r.id,
+      displayName:deleted?'удалённый участник':u.display_name||u.telegram_username||'участник',
+      telegramUsername:deleted?'':u.telegram_username?('@'+u.telegram_username):'',
+      deleted,
+      profileComplete:!deleted&&p.completed===true,
+      onboardingStep:deleted?0:Number(p.onboarding_step||0),
+      status:String(r.status||''),
+      queuePosition:r.queue_position??undefined,
+      reservationExpiresAt:r.reservation_expires_at||undefined,
+      photoVideoConsent:r.photo_video_consent===true,
+      paidAt:r.paid_at||undefined,
+      registeredAt:r.created_at
+    }
+  })
+}
 async function chatRateLimit(db:any,userId:string){
   const minuteAgo=new Date(Date.now()-60_000).toISOString()
   const dayAgo=new Date(Date.now()-86_400_000).toISOString()
@@ -365,7 +398,12 @@ export async function handleApi(req:Request){
           await mustAdmin(db,adminUser,adminTg)
         }catch{return err('Доступ к пульту запрещён',401)}
       }
-      const event=await eventBySlug(db,String(body.slug||'2026-10-03'));return json(await buildEventState(db,event,{includeActuals:true,includePrivateOutputs:true}))
+      const event=await eventBySlug(db,String(body.slug||'2026-10-03'))
+      const [state,adminParticipants]=await Promise.all([
+        buildEventState(db,event,{includeActuals:true,includePrivateOutputs:true}),
+        adminParticipantRows(db,event.id)
+      ])
+      return json({...state,adminParticipants})
     }
 
     if(action==='cron-notifications'){
@@ -754,6 +792,26 @@ export async function handleApi(req:Request){
 
     if(!adminTokenOk)await mustAdmin(db,user,tg)
 
+    if(action==='admin-fix-registration'){
+      const registrationId=String(body.registrationId||'').trim()
+      const fix=String(body.fix||'').trim()
+      if(!isUuid(registrationId))return err('Некорректная регистрация',422)
+      if(!['mark_attended','undo_attended','release_hold'].includes(fix))return err('Неизвестное ручное действие',422)
+      const r=await db.rpc('admin_fix_event_registration',{p_event_id:event.id,p_registration_id:registrationId,p_action:fix})
+      if(r.error){
+        const message=String(r.error.message||'')
+        if(message.includes('registration not found'))return err('Регистрация не найдена',404)
+        if(message.includes('mark_attended requires'))return err('Отметить посещение можно только для оплаченного билета или no-show',409)
+        if(message.includes('undo_attended requires'))return err('Отменить чек-ин можно только у уже отмеченного участника',409)
+        if(message.includes('release_hold requires'))return err('Сбросить можно только активный резерв',409)
+        throw r.error
+      }
+      const result=r.data?.[0]
+      if(!result)return err('Не удалось изменить регистрацию',500)
+      const targetUserId=String(result.user_id||'')
+      if(targetUserId&&['mark_attended','undo_attended'].includes(fix))await refreshLeaderboard(db,[targetUserId])
+      return json({ok:true,registrationId:String(result.registration_id||registrationId),status:String(result.status||''),promoted:Number(result.promoted||0)})
+    }
     if(action==='admin-create-checkin-token'){
       const now=new Date().toISOString();const existing=await db.from('encounter_tokens').select('token,expires_at').eq('event_id',event.id).eq('kind','event_checkin').gt('expires_at',now).order('created_at',{ascending:false}).limit(1).maybeSingle();if(existing.error)throw existing.error
       let token=String(existing.data?.token||'');let expiresAt=existing.data?.expires_at||null
