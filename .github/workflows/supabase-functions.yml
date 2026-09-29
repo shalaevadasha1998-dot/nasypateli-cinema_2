@@ -67,6 +67,7 @@ jobs:
       - name: Verify production migration history matches git
         run: |
           node <<'NODE'
+          ;(async()=>{
           const fs=require('fs')
           const path=require('path')
           const files=fs.readdirSync(path.join(process.cwd(),'supabase','migrations'))
@@ -103,6 +104,7 @@ jobs:
             ].filter(Boolean).join(' | '))
           }
           console.log(`Migration history synchronized: ${local.length} migrations`)
+          })().catch(error=>{console.error(error);process.exit(1)})
           NODE
 
       - name: Verify core production readiness
