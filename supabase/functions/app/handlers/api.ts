@@ -924,6 +924,286 @@ export async function handleApi(req:Request){
 
     if(!adminTokenOk)await mustAdmin(db,user,tg)
 
+    if(action==='admin-program-save'){
+      const blocks=sanitizeProgramBlocks(body.blocks)
+      if(!blocks||blocks.length<1)return err('добавьте хотя бы один блок программы',422)
+      const roundsTarget=Math.max(1,Math.min(20,Math.round(Number(body.roundsTarget||7)||7)))
+      const config={version:1,rounds_target:roundsTarget,blocks}
+      const saved=await db.from('event_programs').upsert({event_id:event.id,config,updated_at:new Date().toISOString()},{onConflict:'event_id'})
+      if(saved.error)throw saved.error
+      const runtime=await db.from('event_runtime').select('*').eq('event_id',event.id).single()
+      if(runtime.error)throw runtime.error
+      if(!blocks.some((x:any)=>x.id===runtime.data.current_block_id)){
+        const first=blocks[0]
+        const u=await db.from('event_runtime').update({
+          current_block_id:first.id,current_block_index:0,current_round_id:null,current_movie_id:null,current_question:null,
+          vote_state:'closed',results_visible:false,video_state:{status:'idle'},revision:Number(runtime.data.revision||0)+1,updated_at:new Date().toISOString()
+        }).eq('event_id',event.id).eq('revision',runtime.data.revision).select('event_id').maybeSingle()
+        if(u.error)throw u.error
+        if(!u.data)return err('пульт уже изменился в другой вкладке · обновите экран',409)
+      }
+      return json({ok:true,show:await buildShowState(db,event)})
+    }
+
+    if(action==='admin-show-control'){
+      const op=String(body.op||'').trim()
+      const allowed=new Set(['start','next','back','jump','pause','resume','restart','skip','start_music','end_music','end_event'])
+      if(!allowed.has(op))return err('неизвестная команда пульта',422)
+      return await withEventOperation(db,event.id,'show-control',async()=>{
+        const [programR,runtimeR]=await Promise.all([
+          db.from('event_programs').select('config').eq('event_id',event.id).single(),
+          db.from('event_runtime').select('*').eq('event_id',event.id).single()
+        ])
+        if(programR.error)throw programR.error
+        if(runtimeR.error)throw runtimeR.error
+        const blocks=sanitizeProgramBlocks(programR.data.config?.blocks)||[]
+        if(!blocks.length)return err('программа вечера пустая',409)
+        const from=runtimeR.data
+        let idx=Math.max(0,Math.min(blocks.length-1,Number(from.current_block_index||0)))
+        let runStatus=String(from.run_status||'idle')
+        let blockStartedAt=from.block_started_at
+        let startedAt=from.started_at
+        let pausedAt=from.paused_at
+        let resetRound=false
+        const now=new Date().toISOString()
+
+        if(op==='start'){
+          if(event.status==='DRAFT')return err('сначала откройте регистрацию',409)
+          idx=0;runStatus='running';startedAt=startedAt||now;blockStartedAt=now;pausedAt=null;resetRound=true
+        }else if(op==='next'||op==='skip'){
+          if(idx>=blocks.length-1){idx=blocks.length-1;runStatus='finished'}else{idx+=1;runStatus='running'}
+          blockStartedAt=now;pausedAt=null;resetRound=true
+        }else if(op==='back'){
+          idx=Math.max(0,idx-1);runStatus='running';blockStartedAt=now;pausedAt=null;resetRound=true
+        }else if(op==='jump'){
+          const wanted=String(body.blockId||'')
+          const found=blocks.findIndex((x:any)=>x.id===wanted)
+          if(found<0)return err('блок не найден в программе',404)
+          idx=found;runStatus='running';blockStartedAt=now;pausedAt=null;resetRound=true
+        }else if(op==='start_music'){
+          const found=blocks.findIndex((x:any)=>x.type==='music_live')
+          if(found<0)return err('в программе нет музыкального блока',409)
+          idx=found;runStatus='running';blockStartedAt=now;pausedAt=null;resetRound=true
+        }else if(op==='end_music'){
+          const musicIndex=blocks.findIndex((x:any)=>x.id===from.current_block_id&&x.type==='music_live')
+          if(musicIndex<0)return err('сейчас не музыкальный блок',409)
+          idx=Math.min(blocks.length-1,musicIndex+1);runStatus='running';blockStartedAt=now;pausedAt=null;resetRound=true
+        }else if(op==='pause'){
+          if(runStatus!=='running')return err('шоу сейчас не запущено',409)
+          runStatus='paused';pausedAt=now
+        }else if(op==='resume'){
+          if(runStatus!=='paused')return err('шоу не стоит на паузе',409)
+          runStatus='running';pausedAt=null
+        }else if(op==='restart'){
+          blockStartedAt=now;runStatus='running';pausedAt=null;resetRound=true
+        }else if(op==='end_event'){
+          const post=blocks.findIndex((x:any)=>x.type==='post_event')
+          idx=post>=0?post:blocks.length-1;runStatus='finished';blockStartedAt=now;pausedAt=null;resetRound=true
+        }
+
+        if(resetRound&&from.current_round_id){
+          const close=await db.from('event_rounds').update({status:op==='skip'?'skipped':'closed',closed_at:now,updated_at:now,vote_state:'closed'}).eq('id',from.current_round_id).eq('event_id',event.id).eq('status','active')
+          if(close.error)throw close.error
+        }
+
+        const patch:any={
+          run_status:runStatus,current_block_id:blocks[idx].id,current_block_index:idx,
+          block_started_at:blockStartedAt,started_at:startedAt,paused_at:pausedAt,
+          revision:Number(from.revision||0)+1,updated_at:now
+        }
+        if(resetRound)Object.assign(patch,{current_round_id:null,current_movie_id:null,current_question:null,vote_state:'closed',results_visible:false,video_state:{status:'idle'}})
+        const updated=await db.from('event_runtime').update(patch).eq('event_id',event.id).eq('revision',from.revision).select('*').maybeSingle()
+        if(updated.error)throw updated.error
+        if(!updated.data)return err('пульт уже изменился в другой вкладке · обновите экран',409)
+
+        let lifecycleStatus=event.status
+        if(op==='start'&&event.status==='SALES_OPEN'){
+          const e=await db.from('events').update({status:'CHECKIN'}).eq('id',event.id).eq('status','SALES_OPEN').select('status').maybeSingle()
+          if(e.error)throw e.error
+          if(e.data){
+            lifecycleStatus='CHECKIN'
+            const tr=await db.from('event_transitions').insert({event_id:event.id,from_status:'SALES_OPEN',to_status:'CHECKIN',actor_user_id:user?.id||null,metadata:{source:'show_runtime'}})
+            if(tr.error)console.error('show lifecycle transition log failed',tr.error)
+          }
+        }
+        if(op==='end_event'&&event.status!=='CLOSED'){
+          const absent=await db.from('registrations').update({status:'no_show'}).eq('event_id',event.id).eq('status','paid').select('user_id')
+          if(absent.error)throw absent.error
+          const e=await db.from('events').update({status:'CLOSED'}).eq('id',event.id).neq('status','CLOSED').select('status').maybeSingle()
+          if(e.error)throw e.error
+          lifecycleStatus='CLOSED'
+          if((absent.data||[]).length)await refreshLeaderboard(db,(absent.data||[]).map((x:any)=>x.user_id))
+        }
+
+        const log=await db.from('event_runtime_log').insert({event_id:event.id,action:op,actor_user_id:user?.id||null,from_state:from,to_state:updated.data})
+        if(log.error)console.error('show runtime log failed',log.error)
+        return json({ok:true,eventStatus:lifecycleStatus,show:await buildShowState(db,{...event,status:lifecycleStatus})})
+      })
+    }
+
+    if(action==='admin-round-start'){
+      return await withEventOperation(db,event.id,'show-round',async()=>{
+        const show=await buildShowState(db,event)
+        const block=show.runtime.currentBlock
+        if(!block||!['cinema_rounds','warm_up','final_vote'].includes(String(block.type)))return err('в этом блоке кинораунд не запускается',409)
+        if(show.runtime.runStatus!=='running')return err('сначала запустите шоу',409)
+        const now=new Date().toISOString()
+        if(show.currentRound?.id&&show.currentRound.status==='active'){
+          const c=await db.from('event_rounds').update({status:'closed',closed_at:now,updated_at:now,vote_state:'closed'}).eq('id',show.currentRound.id)
+          if(c.error)throw c.error
+        }
+        const roundNo=Number(show.runtime.currentRound||0)+1
+        const ins=await db.from('event_rounds').insert({event_id:event.id,round_no:roundNo,block_id:block.id,status:'active',started_at:now}).select('id').single()
+        if(ins.error)throw ins.error
+        const rt=await db.from('event_runtime').select('revision').eq('event_id',event.id).single();if(rt.error)throw rt.error
+        const u=await db.from('event_runtime').update({current_round:roundNo,current_round_id:ins.data.id,current_movie_id:null,current_question:null,vote_state:'closed',results_visible:false,video_state:{status:'idle'},revision:Number(rt.data.revision||0)+1,updated_at:now}).eq('event_id',event.id).eq('revision',rt.data.revision).select('event_id').maybeSingle()
+        if(u.error)throw u.error
+        if(!u.data)return err('пульт уже изменился в другой вкладке · обновите экран',409)
+        return json({ok:true,show:await buildShowState(db,event)})
+      })
+    }
+
+    if(action==='admin-round-random-movie'){
+      return await withEventOperation(db,event.id,'show-movie',async()=>{
+        const show=await buildShowState(db,event)
+        if(!show.currentRound?.id||show.currentRound.status!=='active')return err('сначала запустите раунд',409)
+        const [cand,used]=await Promise.all([
+          db.from('movie_candidates').select('*').eq('event_id',event.id).eq('enabled_for_event',true).in('usage_status',['ready','partial','no_video']),
+          db.from('event_rounds').select('movie_candidate_id').eq('event_id',event.id).not('movie_candidate_id','is',null)
+        ])
+        if(cand.error)throw cand.error;if(used.error)throw used.error
+        const usedIds=new Set((used.data||[]).map((x:any)=>String(x.movie_candidate_id)))
+        const pool=(cand.data||[]).filter((x:any)=>!usedIds.has(String(x.id)))
+        if(!pool.length)return err('нет подготовленных неиспользованных фильмов · добавьте материал или выберите фильм вручную',409)
+        const pick=secureIndex(pool.length);const chosen=pool[pick.index]
+        const now=new Date().toISOString()
+        const roundU=await db.from('event_rounds').update({movie_candidate_id:chosen.id,updated_at:now}).eq('id',show.currentRound.id).eq('status','active');if(roundU.error)throw roundU.error
+        const rt=await db.from('event_runtime').select('revision').eq('event_id',event.id).single();if(rt.error)throw rt.error
+        const runU=await db.from('event_runtime').update({current_movie_id:chosen.id,revision:Number(rt.data.revision||0)+1,updated_at:now}).eq('event_id',event.id).eq('revision',rt.data.revision).select('event_id').maybeSingle();if(runU.error)throw runU.error
+        if(!runU.data)return err('пульт уже изменился в другой вкладке · обновите экран',409)
+        const draw=await db.from('random_draws').insert({event_id:event.id,draw_type:'show_movie',candidate_ids:pool.map((x:any)=>x.id),chosen_id:chosen.id,random_bytes_hex:pick.randomBytesHex});if(draw.error)throw draw.error
+        return json({ok:true,movieId:chosen.id,show:await buildShowState(db,event)})
+      })
+    }
+
+    if(action==='admin-round-set-movie'){
+      const movieId=String(body.movieId||'')
+      if(!isUuid(movieId))return err('выберите фильм',422)
+      const movie=await db.from('movie_candidates').select('id').eq('id',movieId).eq('event_id',event.id).maybeSingle();if(movie.error)throw movie.error
+      if(!movie.data)return err('фильм не найден в каталоге события',404)
+      const show=await buildShowState(db,event)
+      if(!show.currentRound?.id||show.currentRound.status!=='active')return err('сначала запустите раунд',409)
+      const now=new Date().toISOString()
+      const a=await db.from('event_rounds').update({movie_candidate_id:movieId,updated_at:now}).eq('id',show.currentRound.id);if(a.error)throw a.error
+      const rt=await db.from('event_runtime').select('revision').eq('event_id',event.id).single();if(rt.error)throw rt.error
+      const b=await db.from('event_runtime').update({current_movie_id:movieId,revision:Number(rt.data.revision||0)+1,updated_at:now}).eq('event_id',event.id).eq('revision',rt.data.revision).select('event_id').maybeSingle();if(b.error)throw b.error
+      if(!b.data)return err('пульт уже изменился в другой вкладке · обновите экран',409)
+      return json({ok:true,show:await buildShowState(db,event)})
+    }
+
+    if(action==='admin-round-question'){
+      const question=normalizeQuestion(body.question)
+      if(!question)return err('напишите вопрос',422)
+      const show=await buildShowState(db,event)
+      if(!show.currentRound?.id||show.currentRound.status!=='active')return err('сначала запустите раунд',409)
+      const now=new Date().toISOString()
+      const a=await db.from('event_rounds').update({question,updated_at:now}).eq('id',show.currentRound.id);if(a.error)throw a.error
+      const rt=await db.from('event_runtime').select('revision').eq('event_id',event.id).single();if(rt.error)throw rt.error
+      const b=await db.from('event_runtime').update({current_question:question,revision:Number(rt.data.revision||0)+1,updated_at:now}).eq('event_id',event.id).eq('revision',rt.data.revision).select('event_id').maybeSingle();if(b.error)throw b.error
+      if(!b.data)return err('пульт уже изменился в другой вкладке · обновите экран',409)
+      return json({ok:true,show:await buildShowState(db,event)})
+    }
+
+    if(action==='admin-vote-control'){
+      const op=String(body.op||'')
+      if(!['open','close','show','hide'].includes(op))return err('неизвестное действие голосования',422)
+      const show=await buildShowState(db,event)
+      if(!show.currentRound?.id||show.currentRound.status!=='active')return err('сначала запустите раунд',409)
+      const voteState=op==='open'?'open':op==='close'?'closed':show.currentRound.voteState
+      const resultsVisible=op==='show'?true:op==='hide'?false:show.currentRound.resultsVisible
+      const now=new Date().toISOString()
+      const a=await db.from('event_rounds').update({vote_state:voteState,results_visible:resultsVisible,updated_at:now}).eq('id',show.currentRound.id);if(a.error)throw a.error
+      const rt=await db.from('event_runtime').select('revision').eq('event_id',event.id).single();if(rt.error)throw rt.error
+      const b=await db.from('event_runtime').update({vote_state:voteState,results_visible:resultsVisible,revision:Number(rt.data.revision||0)+1,updated_at:now}).eq('event_id',event.id).eq('revision',rt.data.revision).select('event_id').maybeSingle();if(b.error)throw b.error
+      if(!b.data)return err('пульт уже изменился в другой вкладке · обновите экран',409)
+      return json({ok:true,show:await buildShowState(db,event)})
+    }
+
+    if(action==='admin-video-control'){
+      const op=String(body.op||'')
+      if(!['play','stop','reset'].includes(op))return err('неизвестное действие видео',422)
+      const show=await buildShowState(db,event)
+      if(!show.currentRound?.id)return err('сначала запустите раунд',409)
+      const movie=show.runtime.currentMovie
+      if(op==='play'&&!movie)return err('сначала выберите фильм',409)
+      if(op==='play'&&!movie?.videoId&&!movie?.sourceUrl)return err('у фильма нет подготовленного видео · используйте fallback животины',409)
+      const now=new Date().toISOString()
+      const videoState=op==='play'
+        ?{status:'playing',startedAt:now,videoId:movie?.videoId||null,sourceUrl:movie?.sourceUrl||null,sourcePlatform:movie?.sourcePlatform||null,startSec:movie?.startSec||0,endSec:movie?.endSec||null}
+        :{status:op==='stop'?'stopped':'idle',updatedAt:now}
+      const a=await db.from('event_rounds').update({video_state:videoState,updated_at:now}).eq('id',show.currentRound.id);if(a.error)throw a.error
+      const rt=await db.from('event_runtime').select('revision').eq('event_id',event.id).single();if(rt.error)throw rt.error
+      const b=await db.from('event_runtime').update({video_state:videoState,revision:Number(rt.data.revision||0)+1,updated_at:now}).eq('event_id',event.id).eq('revision',rt.data.revision).select('event_id').maybeSingle();if(b.error)throw b.error
+      if(!b.data)return err('пульт уже изменился в другой вкладке · обновите экран',409)
+      return json({ok:true,show:await buildShowState(db,event)})
+    }
+
+    if(action==='admin-round-close'){
+      const show=await buildShowState(db,event)
+      if(!show.currentRound?.id)return err('нет активного раунда',409)
+      const now=new Date().toISOString()
+      const a=await db.from('event_rounds').update({status:'closed',vote_state:'closed',closed_at:now,updated_at:now}).eq('id',show.currentRound.id);if(a.error)throw a.error
+      const rt=await db.from('event_runtime').select('revision').eq('event_id',event.id).single();if(rt.error)throw rt.error
+      const b=await db.from('event_runtime').update({vote_state:'closed',revision:Number(rt.data.revision||0)+1,updated_at:now}).eq('event_id',event.id).eq('revision',rt.data.revision).select('event_id').maybeSingle();if(b.error)throw b.error
+      if(!b.data)return err('пульт уже изменился в другой вкладке · обновите экран',409)
+      return json({ok:true,show:await buildShowState(db,event)})
+    }
+
+    if(action==='admin-movie-save'){
+      const movieId=String(body.movieId||'').trim()
+      const title=String(body.title||'').trim().slice(0,180)
+      if(!title)return err('укажите название фильма',422)
+      const usageAllowed=new Set(['ready','partial','no_video','blocked','needs_review'])
+      const trailerAllowed=new Set(['ready','missing','blocked','unchecked'])
+      const clipAllowed=new Set(['ready','missing','blocked','unchecked'])
+      const usageStatus=usageAllowed.has(String(body.usageStatus))?String(body.usageStatus):'needs_review'
+      const trailerStatus=trailerAllowed.has(String(body.trailerStatus))?String(body.trailerStatus):'unchecked'
+      const clipStatus=clipAllowed.has(String(body.clipStatus))?String(body.clipStatus):'unchecked'
+      const patch:any={
+        event_id:event.id,title,
+        original_title:String(body.originalTitle||'').trim().slice(0,180)||null,
+        year:Number.isInteger(Number(body.year))?Number(body.year):null,
+        genre:String(body.genre||'').trim().slice(0,120)||null,
+        country:String(body.country||'').trim().slice(0,120)||null,
+        enabled_for_event:body.enabledForEvent!==false,
+        trailer_status:trailerStatus,clip_status:clipStatus,
+        source_type:String(body.sourceType||'').trim().slice(0,80)||null,
+        source_platform:String(body.sourcePlatform||'').trim().slice(0,80)||null,
+        source_url:String(body.sourceUrl||'').trim().slice(0,1000)||null,
+        video_id:String(body.videoId||'').trim().slice(0,200)||null,
+        start_sec:Math.max(0,Math.min(7200,Math.round(Number(body.startSec)||0))),
+        end_sec:body.endSec===null||body.endSec===undefined||body.endSec===''?null:Math.max(0,Math.min(7200,Math.round(Number(body.endSec)||0))),
+        source_channel:String(body.sourceChannel||'').trim().slice(0,200)||null,
+        source_verified:body.sourceVerified===true,
+        verified_at:body.sourceVerified===true?new Date().toISOString():null,
+        usage_status:usageStatus,
+        discussion_prompts:Array.isArray(body.discussionPrompts)?body.discussionPrompts.slice(0,12):[],
+        animal_comment:String(body.animalComment||'').trim().slice(0,1000)||null,
+        tags:(Array.isArray(body.tags)?body.tags:[]).map((x:any)=>String(x).trim()).filter(Boolean).slice(0,20)
+      }
+      let saved:any
+      if(movieId){
+        if(!isUuid(movieId))return err('некорректный movie id',422)
+        saved=await db.from('movie_candidates').update(patch).eq('id',movieId).eq('event_id',event.id).select('*').maybeSingle()
+        if(saved.error)throw saved.error
+        if(!saved.data)return err('фильм не найден',404)
+      }else{
+        saved=await db.from('movie_candidates').insert(patch).select('*').single()
+        if(saved.error)throw saved.error
+      }
+      return json({ok:true,movie:saved.data})
+    }
+
     if(action==='admin-fix-registration'){
       const registrationId=String(body.registrationId||'').trim()
       const fix=String(body.fix||'').trim()
