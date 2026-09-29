@@ -689,7 +689,7 @@ export async function handleApi(req:Request){
       if(String(body.confirm)!=='DELETE_PROFILE')return err('Нужно подтверждение удаления',422)
       const r=await db.rpc('delete_user_profile',{p_user_id:user.id})
       if(r.error)throw r.error
-      return json(r.data||{ok:true})
+      return json({ok:true,alreadyDeleted:!!r.data?.alreadyDeleted})
     }
 
     const slug=String(body.slug||'2026-10-03');const event=await eventBySlug(db,slug)
