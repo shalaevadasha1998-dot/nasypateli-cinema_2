@@ -246,13 +246,13 @@ async function runtimeHealth(db:any){
   const requiredTables=['users','cinema_profiles','events','registrations','payment_refunds','event_operation_locks','creatures','creature_tasks','user_creature_tasks','creature_game_config','crumb_ledger','story_definitions','dating_profiles','notification_preferences','notification_queue','encounter_tokens']
   const [tableChecks,pilot,telegram,gameConfig,testTask]=await Promise.all([
     Promise.all(requiredTables.map(async table=>{const r=await db.from(table).select('*',{head:true}).limit(1);return !r.error})),
-    db.from('events').select('slug,capacity,ticket_price_rub').eq('slug','2026-10-03').maybeSingle(),
+    db.from('events').select('slug,capacity,ticket_price_rub,starts_at,venue_name').eq('slug','2026-10-03').maybeSingle(),
     telegramRuntimeReady(),
     db.from('creature_game_config').select('feeding_cost,feeding_growth,stage_thresholds').eq('id','default').maybeSingle(),
     db.from('creature_tasks').select('id,status,active,reward_crumbs,completion_type').eq('id','first_test_task').maybeSingle()
   ])
   const env=(name:string)=>!!String(Deno.env.get(name)||'').trim()
-  const pilotOk=!pilot.error&&pilot.data?.slug==='2026-10-03'&&Number(pilot.data?.capacity)===30&&Number(pilot.data?.ticket_price_rub)===500
+  const pilotOk=!pilot.error&&pilot.data?.slug==='2026-10-03'&&Number(pilot.data?.capacity)===30&&Number(pilot.data?.ticket_price_rub)===0&&new Date(pilot.data?.starts_at||0).toISOString()==='2026-10-03T13:00:00.000Z'&&String(pilot.data?.venue_name||'').toLowerCase()==='хлебозавод №9'
   const thresholds=gameConfig.data?.stage_thresholds||{}
   const thresholdValues=['stage_0','stage_1','stage_2','stage_3','stage_4'].map(stage=>Number(thresholds?.[stage]))
   const thresholdsOk=
@@ -734,6 +734,30 @@ export async function handleApi(req:Request){
     }
 
     const slug=String(body.slug||'2026-10-03');const event=await eventBySlug(db,slug)
+
+    if(action==='claim-event-ticket'){
+      if(Number(event.ticket_price_rub)!==0)return err('этот билет нельзя получить без оплаты',409)
+      if(!['SALES_OPEN','CHECKIN'].includes(String(event.status||'')))return err('регистрация на этот вечер сейчас закрыта',409)
+      const profileRow=await db.from('cinema_profiles').select('profile_json').eq('user_id',user.id).maybeSingle();if(profileRow.error)throw profileRow.error
+      if(profileRow.data?.profile_json?.completed!==true)return err('сначала завершите кинопрофиль',409)
+      const reserve=await db.rpc('reserve_event_spot',{p_event_id:event.id,p_user_id:user.id,p_amount_rub:0,p_photo_video_consent:profileRow.data?.profile_json?.photo_video_consent===true})
+      if(reserve.error)throw reserve.error
+      const slot=reserve.data?.[0];if(!slot)return err('не удалось закрепить место',500)
+      if(['paid','attended'].includes(String(slot.reservation_status||'')))return json({ok:true,status:String(slot.reservation_status)})
+      if(slot.reservation_status==='waitlist')return json({ok:true,status:'waitlist',queuePosition:Number(slot.queue_position||0)||undefined})
+      if(slot.reservation_status!=='reserved')return err('не удалось получить билет',409)
+      const confirmed=await db.from('registrations').update({status:'paid',queue_position:null,payment_provider:'registration',provider_payment_id:null,telegram_payment_charge_id:null,amount_rub:0,paid_at:new Date().toISOString(),reservation_expires_at:null}).eq('event_id',event.id).eq('user_id',user.id).eq('status','reserved').select('status').maybeSingle()
+      if(confirmed.error)throw confirmed.error
+      if(!confirmed.data){
+        const latest=await db.from('registrations').select('status,queue_position').eq('event_id',event.id).eq('user_id',user.id).maybeSingle();if(latest.error)throw latest.error
+        if(['paid','attended'].includes(String(latest.data?.status||'')))return json({ok:true,status:String(latest.data?.status)})
+        if(latest.data?.status==='waitlist')return json({ok:true,status:'waitlist',queuePosition:Number(latest.data?.queue_position||0)||undefined})
+        return err('не удалось подтвердить билет. попробуйте ещё раз',409)
+      }
+      const notice=await db.from('notification_queue').upsert({user_id:user.id,kind:'tickets',text:`билет получен. ${new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Moscow'}).format(new Date(event.starts_at))} · ${event.venue_name||'место внутри приложения'}`,send_after:new Date().toISOString(),status:'pending',dedupe_key:`free_ticket:${event.id}`,event_id:event.id,expires_at:event.starts_at},{onConflict:'user_id,dedupe_key'})
+      if(notice.error)console.error('free ticket notification enqueue failed',notice.error)
+      return json({ok:true,status:'paid'})
+    }
 
     if(action==='jipitina-chat'){
       const profileRow=await db.from('cinema_profiles').select('*').eq('user_id',user.id).maybeSingle();if(profileRow.error)throw profileRow.error

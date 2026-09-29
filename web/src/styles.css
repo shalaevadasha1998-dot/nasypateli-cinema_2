@@ -1036,3 +1036,19 @@ body{text-transform:lowercase}
   .dating-page>h1{font-size:clamp(42px,12.5vw,60px)}
   .chat-page{padding-bottom:calc(188px + env(safe-area-inset-bottom))}
 }
+
+
+/* v0.9.2 — free pilot ticket */
+.ticket-invite{font-size:15px;line-height:1.5;color:#b8b5ad;margin:20px 0 2px}
+.event-pass{position:relative;margin-top:14px;border:1px solid rgba(234,229,220,.3);border-radius:22px;padding:20px;overflow:hidden;background:linear-gradient(145deg,rgba(234,229,220,.08),rgba(131,154,105,.09) 52%,rgba(13,14,11,.92));box-shadow:0 24px 70px rgba(0,0,0,.34);animation:ticket-reveal .42s cubic-bezier(.2,.8,.2,1) both}
+.event-pass:before,.event-pass:after{content:"";position:absolute;top:58%;width:24px;height:24px;border-radius:50%;background:var(--bg);border:1px solid rgba(234,229,220,.16)}
+.event-pass:before{left:-13px}.event-pass:after{right:-13px}
+.event-pass-top{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;font-size:9px;letter-spacing:.12em;text-transform:lowercase;color:#85847d}
+.event-pass-top b{color:var(--rabbit);text-align:right}
+.event-pass-date{font-size:clamp(68px,20vw,104px);line-height:.88;letter-spacing:-.085em;font-weight:900;margin:22px 0 26px}
+.event-pass-grid{display:grid;grid-template-columns:.7fr 1.3fr;gap:12px;padding:18px 0;border-top:1px dashed rgba(234,229,220,.2);border-bottom:1px dashed rgba(234,229,220,.2)}
+.event-pass-grid small,.event-pass-grid strong{display:block}.event-pass-grid small{font-size:9px;letter-spacing:.12em;color:#77766f;margin-bottom:7px}.event-pass-grid strong{font-size:18px;line-height:1.1;overflow-wrap:anywhere}
+.event-pass-address{font-size:11px;color:#85847d;margin-top:10px}
+.event-pass-stub{display:grid;gap:5px;padding-top:18px;font-size:10px;color:#777a70}.event-pass-stub span:first-child{color:#b8b7af}
+@keyframes ticket-reveal{from{opacity:0;transform:translateY(14px) rotateX(-4deg);filter:blur(3px)}to{opacity:1;transform:none;filter:none}}
+@media(max-width:380px){.event-pass{padding:17px}.event-pass-grid{grid-template-columns:1fr}.event-pass-date{font-size:64px}}
