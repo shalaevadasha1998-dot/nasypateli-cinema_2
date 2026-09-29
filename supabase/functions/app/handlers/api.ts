@@ -768,20 +768,30 @@ export async function handleApi(req:Request){
         ])
         if(reg.error)throw reg.error;if(ev.error)throw ev.error
         if(!checkinOpenStatuses.has(String(ev.data.status||'')))return err(ev.data.status==='CLOSED'?'Чек-ин на этот вечер уже закрыт':'Чек-ин ещё не открыт',409)
-        if(reg.data?.status==='attended')return json({ok:true,kind:'event_checkin',alreadyAttended:true,awards:[]})
+        const awardJoin=async()=>{
+          const p=await db.from('event_programs').select('config').eq('event_id',t.data.event_id).maybeSingle()
+          if(p.error){console.error('checkin reward config failed',p.error);return null}
+          const amount=Math.max(0,Math.min(100,Number(p.data?.config?.rewards?.join||0)))
+          if(!amount)return null
+          const a=await db.rpc('award_event_crumbs',{p_user_id:user.id,p_event_id:t.data.event_id,p_amount:amount,p_reason:'event_join',p_source_id:'checkin'})
+          if(a.error){console.error('checkin crumb award failed',a.error);return null}
+          return a.data
+        }
+        if(reg.data?.status==='attended'){const crumbs=await awardJoin();return json({ok:true,kind:'event_checkin',alreadyAttended:true,awards:[],crumbs})}
         if(reg.data?.status!=='paid')return err('Для отметки нужен подтверждённый билет на это событие',403)
         const attended=await db.from('registrations').update({status:'attended'}).eq('event_id',t.data.event_id).eq('user_id',user.id).eq('status','paid').select('user_id').maybeSingle()
         if(attended.error)throw attended.error
         if(!attended.data){
           const latest=await db.from('registrations').select('status').eq('event_id',t.data.event_id).eq('user_id',user.id).maybeSingle();if(latest.error)throw latest.error
-          if(latest.data?.status==='attended')return json({ok:true,kind:'event_checkin',alreadyAttended:true,awards:[]})
+          if(latest.data?.status==='attended'){const crumbs=await awardJoin();return json({ok:true,kind:'event_checkin',alreadyAttended:true,awards:[],crumbs})}
           return err('Не удалось подтвердить чек-ин. Обновите билет и попробуйте ещё раз.',409)
         }
         const memberCount=await db.from('registrations').select('*',{count:'exact',head:true}).eq('event_id',t.data.event_id).eq('status','attended');if(memberCount.error)throw memberCount.error
         const minutesBefore=Math.round((new Date(ev.data.starts_at).getTime()-Date.now())/60000)
         const awards=await emitStoryTrigger(db,user.id,'event_checkin',{event_slug:ev.data.slug,member_number:Number(memberCount.count||0),minutes_before:minutesBefore,...(t.data.metadata||{})},t.data.event_id)
+        const crumbs=await awardJoin()
         await refreshLeaderboard(db,[user.id])
-        return json({ok:true,kind:'event_checkin',alreadyAttended:false,awards})
+        return json({ok:true,kind:'event_checkin',alreadyAttended:false,awards,crumbs})
       }
       if(t.data.kind==='rabbit'){
         const other=String(t.data.owner_user_id||'');if(!other||other===user.id)return err('Это жетон вашей собственной Животины',409);const [a,b]=await Promise.all([db.from('cinema_profiles').select('favorite_films,favorite_genres').eq('user_id',user.id).maybeSingle(),db.from('cinema_profiles').select('favorite_films,favorite_genres').eq('user_id',other).maybeSingle()]);const bf=new Set((b.data?.favorite_films||[]).map((x:string)=>x.toLowerCase()));const bg=new Set((b.data?.favorite_genres||[]).map((x:string)=>x.toLowerCase()));const sharedFavorites=(a.data?.favorite_films||[]).filter((x:string)=>bf.has(x.toLowerCase())).length;const sharedGenres=(a.data?.favorite_genres||[]).filter((x:string)=>bg.has(x.toLowerCase())).length;for(const uid of [user.id,other]){await emitStoryTrigger(db,uid,'encounter',{story_code:'first_rabbit_meet',shared_favorites:sharedFavorites,shared_genres:sharedGenres,other_user_id:uid===user.id?other:user.id},t.data.event_id||null);if(sharedFavorites)await emitStoryTrigger(db,uid,'encounter',{story_code:'same_taste',shared_favorites:sharedFavorites,shared_genres:sharedGenres},t.data.event_id||null);if(!sharedFavorites&&!sharedGenres)await emitStoryTrigger(db,uid,'encounter',{story_code:'nothing_common',shared_favorites:0,shared_genres:0},t.data.event_id||null)}return json({ok:true,kind:'rabbit',sharedFavorites,sharedGenres})
