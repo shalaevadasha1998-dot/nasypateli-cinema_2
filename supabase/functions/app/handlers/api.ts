@@ -145,7 +145,7 @@ async function telegramRuntimeReady(){
 }
 
 async function runtimeHealth(db:any){
-  const requiredTables=['users','cinema_profiles','events','registrations','creatures','creature_tasks','user_creature_tasks','creature_game_config','crumb_ledger','story_definitions','dating_profiles','notification_preferences','notification_queue','encounter_tokens']
+  const requiredTables=['users','cinema_profiles','events','registrations','payment_refunds','creatures','creature_tasks','user_creature_tasks','creature_game_config','crumb_ledger','story_definitions','dating_profiles','notification_preferences','notification_queue','encounter_tokens']
   const [tableChecks,pilot,telegram,gameConfig,testTask]=await Promise.all([
     Promise.all(requiredTables.map(async table=>{const r=await db.from(table).select('*',{head:true}).limit(1);return !r.error})),
     db.from('events').select('slug,capacity,ticket_price_rub').eq('slug','2026-10-03').maybeSingle(),
@@ -632,6 +632,22 @@ export async function handleApi(req:Request){
       const r=await db.rpc('grant_test_ticket',{p_event_id:event.id,p_user_id:target.data.id});if(r.error){const message=String(r.error.message||'');if(message.includes('active waitlist'))return err('Тестовый билет нельзя выдать в обход активного листа ожидания',409);if(message.includes('event is full'))return err('Свободных мест нет',409);throw r.error}
       return json({ok:true,status:String(r.data||'paid'),user:{username:target.data.telegram_username,name:target.data.display_name}})
     }
+    if(action==='admin-request-refund'){
+      const raw=String(body.username||'').trim().replace(/^@/,'');if(!raw)return err('Укажите имя пользователя в Telegram')
+      const target=await db.from('users').select('id,telegram_username,display_name').ilike('telegram_username',raw).maybeSingle();if(target.error)throw target.error;if(!target.data)return err('Пользователь не найден',404)
+      const r=await db.rpc('request_ticket_refund',{p_event_id:event.id,p_user_id:target.data.id});if(r.error){const message=String(r.error.message||'');if(message.includes('only paid tickets'))return err('Возврат можно подготовить только для оплаченного билета',409);if(message.includes('provider payment id missing'))return err('У платежа нет provider charge id. Нужна ручная проверка платежа у провайдера',409);throw r.error}
+      const refund=r.data?.[0];if(!refund)return err('Не удалось подготовить возврат',500)
+      return json({ok:true,refundId:refund.refund_id,status:refund.refund_status,providerChargeId:refund.provider_charge_id,amountRub:Number(refund.amount_rub||0),user:{username:target.data.telegram_username,name:target.data.display_name}})
+    }
+    if(action==='admin-confirm-refund'){
+      const refundId=String(body.refundId||'').trim();const providerReference=String(body.providerReference||'').trim()
+      if(!refundId)return err('Не указан refund id',422);if(providerReference.length<3)return err('Укажите reference/номер подтверждения возврата у провайдера',422)
+      const before=await db.from('payment_refunds').select('user_id,status').eq('id',refundId).maybeSingle();if(before.error)throw before.error;if(!before.data)return err('Заявка на возврат не найдена',404)
+      const r=await db.rpc('confirm_ticket_refund',{p_refund_id:refundId,p_provider_reference:providerReference});if(r.error)throw r.error
+      const result=r.data?.[0]||{}
+      await db.from('notification_queue').upsert({user_id:before.data.user_id,kind:'tickets',text:'возврат подтверждён. билет возвращён, место больше не закреплено за вами.',send_after:new Date().toISOString(),status:'pending',dedupe_key:`refund_confirmed:${refundId}`},{onConflict:'user_id,dedupe_key'})
+      return json({ok:true,refundId:result.refund_id||refundId,status:result.refund_status||'confirmed',registration:result.registration_status||'refunded'})
+    }
     if(action==='admin-screen-message'){
       const settings={...(event.settings||{}),screen_message:String(body.message||'').slice(0,180)};const r=await db.from('events').update({settings}).eq('id',event.id);if(r.error)throw r.error;return json({ok:true})
     }
@@ -649,15 +665,17 @@ export async function handleApi(req:Request){
     }
     if(action==='admin-export-event'){
       const regs=await db.from('registrations').select('user_id,status,amount_rub,photo_video_consent,paid_at,created_at').eq('event_id',event.id).order('created_at');if(regs.error)throw regs.error
-      const ids=(regs.data||[]).map((x:any)=>x.user_id);const [users,profiles,feedback,scores,ideas]=await Promise.all([
+      const ids=(regs.data||[]).map((x:any)=>x.user_id);const [users,profiles,feedback,scores,ideas,refunds]=await Promise.all([
         ids.length?db.from('users').select('id,display_name,telegram_username').in('id',ids):{data:[],error:null},
         ids.length?db.from('cinema_profiles').select('user_id,favorite_films,favorite_genres,profile_json').in('user_id',ids):{data:[],error:null},
         db.from('event_feedback').select('user_id,return_intent,strongest_part,improve_text,willingness_to_pay,duration_feel,invite_friend').eq('event_id',event.id),
         db.from('event_scores').select('user_id,correct,total,points,rank').eq('event_id',event.id),
-        db.from('film_ideas').select('user_id,id').eq('event_id',event.id)
-      ]);for(const r of [users,profiles,feedback,scores,ideas])if(r.error)throw r.error
+        db.from('film_ideas').select('user_id,id').eq('event_id',event.id),
+        db.from('payment_refunds').select('user_id,status,requested_at,confirmed_at,provider_reference').eq('event_id',event.id).order('requested_at',{ascending:false})
+      ]);for(const r of [users,profiles,feedback,scores,ideas,refunds])if(r.error)throw r.error
+      const refundMap=new Map<string,any>();for(const x of refunds.data||[])if(!refundMap.has(x.user_id))refundMap.set(x.user_id,x)
       const by=(rows:any[],key='user_id')=>new Map((rows||[]).map((x:any)=>[x[key],x]));const um=by(users.data||[],'id'),pm=by(profiles.data||[]),fm=by(feedback.data||[]),sm=by(scores.data||[]);const ideaCounts=new Map<string,number>();for(const x of ideas.data||[])ideaCounts.set(x.user_id,(ideaCounts.get(x.user_id)||0)+1)
-      const rows=(regs.data||[]).map((r:any)=>{const u:any=um.get(r.user_id)||{},p:any=pm.get(r.user_id)||{},f:any=fm.get(r.user_id)||{},sc:any=sm.get(r.user_id)||{},j=p.profile_json||{};return {userId:r.user_id,displayName:u.display_name||'',telegramUsername:u.telegram_username?`@${u.telegram_username}`:'',status:r.status,amountRub:r.amount_rub??null,paidAt:r.paid_at||'',registeredAt:r.created_at||'',photoVideoConsent:r.photo_video_consent===true,ageRange:j.age_range||'',city:j.city||'',favoriteFilms:p.favorite_films||[],favoriteGenres:p.favorite_genres||[],ideasSubmitted:ideaCounts.get(r.user_id)||0,predictionCorrect:sc.correct??null,predictionTotal:sc.total??null,predictionPoints:sc.points??null,predictionRank:sc.rank??null,returnIntent:f.return_intent||'',willingnessToPayRub:f.willingness_to_pay??null,durationFeel:f.duration_feel||'',inviteFriend:f.invite_friend??null,strongestPart:f.strongest_part||'',improveText:f.improve_text||''}})
+      const rows=(regs.data||[]).map((r:any)=>{const u:any=um.get(r.user_id)||{},p:any=pm.get(r.user_id)||{},f:any=fm.get(r.user_id)||{},sc:any=sm.get(r.user_id)||{},j=p.profile_json||{};const refund:any=refundMap.get(r.user_id)||{};return {userId:r.user_id,displayName:u.display_name||'',telegramUsername:u.telegram_username?`@${u.telegram_username}`:'',status:r.status,amountRub:r.amount_rub??null,paidAt:r.paid_at||'',refundStatus:refund.status||'',refundRequestedAt:refund.requested_at||'',refundConfirmedAt:refund.confirmed_at||'',refundProviderReference:refund.provider_reference||'',registeredAt:r.created_at||'',photoVideoConsent:r.photo_video_consent===true,ageRange:j.age_range||'',city:j.city||'',favoriteFilms:p.favorite_films||[],favoriteGenres:p.favorite_genres||[],ideasSubmitted:ideaCounts.get(r.user_id)||0,predictionCorrect:sc.correct??null,predictionTotal:sc.total??null,predictionPoints:sc.points??null,predictionRank:sc.rank??null,returnIntent:f.return_intent||'',willingnessToPayRub:f.willingness_to_pay??null,durationFeel:f.duration_feel||'',inviteFriend:f.invite_friend??null,strongestPart:f.strongest_part||'',improveText:f.improve_text||''}})
       return json({ok:true,event:{id:event.id,slug:event.slug,title:event.title,startsAt:event.starts_at,status:event.status,capacity:event.capacity,ticketPriceRub:event.ticket_price_rub},exportedAt:new Date().toISOString(),rows})
     }
     if(action==='admin-configure-telegram'){
