@@ -7,11 +7,15 @@
 - серверная функция: `supabase/functions/app/`
 - проект Supabase: `vwteokawtqnoiyzmsldj`
 - Telegram-бот: `@nasipateli_v_kinobot`
+- гостевая точка входа: `https://t.me/nasipateli_v_kinobot`
+- канонический production URL Mini App: `https://shalaevadasha1998-dot.github.io/nasypateli-cinema_2/`
 - пилот: `2026-10-03`, 30 мест, 500 ₽
 
 ZIP-снимки версий не являются исходным кодом и не должны возвращаться в репозиторий.
 
 ## Выпуск
+`TELEGRAM_WEBAPP_URL` в production должен указывать только на канонический URL Mini App выше. Другие production URL Mini App не поддерживаются.
+
 - Mini App: `.github/workflows/pages.yml` → GitHub Pages
 - сервер: `.github/workflows/supabase-functions.yml` → Supabase Edge Function `app`
 - обязательная проверка: `.github/workflows/blank.yml`
