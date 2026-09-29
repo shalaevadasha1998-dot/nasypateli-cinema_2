@@ -91,7 +91,14 @@ async function getOrCreateUser(db:any,tg:any){
     return existing.data
   }
   const created=await db.from('users').insert({telegram_id:tg.id,telegram_username:tg.username||null,display_name:[tg.first_name,tg.last_name].filter(Boolean).join(' ')||null}).select('*').single()
-  if(created.error) throw created.error
+  if(created.error){
+    if(String(created.error.code||'')==='23505'){
+      const raced=await db.from('users').select('*').eq('telegram_id',tg.id).single()
+      if(raced.error)throw raced.error
+      return raced.data
+    }
+    throw created.error
+  }
   return created.data
 }
 async function mustAdmin(db:any,user:any,tg:any){if(isConfiguredAdmin(tg))return;const r=await db.from('admins').select('role').eq('user_id',user.id).maybeSingle();if(r.error)throw r.error;if(!r.data)throw new Error('Admin access required')}
@@ -680,24 +687,9 @@ export async function handleApi(req:Request){
     }
     if(action==='delete-profile'){
       if(String(body.confirm)!=='DELETE_PROFILE')return err('Нужно подтверждение удаления',422)
-      const failures:string[]=[]
-      const tables=['jipitina_messages','jipitina_memory','dating_swipes','dating_profiles','user_blocks','notification_preferences','notification_queue','encounter_tokens','user_creature_tasks','user_creature_cosmetics','user_collectibles','crumb_ledger','user_stories','story_trigger_log','creatures','film_ideas','prediction_answers','discussion_thoughts','post_film_reactions','final_reviews','event_feedback','event_scores','leaderboard','cinema_profiles']
-      for(const t of tables){
-        let q=db.from(t).delete()
-        if(t==='jipitina_memory')q=q.eq('scope','user').eq('scope_id',user.id)
-        else if(t==='dating_swipes')q=q.or(`swiper_id.eq.${user.id},target_id.eq.${user.id}`)
-        else if(t==='user_blocks')q=q.or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`)
-        else if(t==='encounter_tokens')q=q.eq('owner_user_id',user.id)
-        else q=q.eq('user_id',user.id)
-        const r=await q
-        if(r.error){console.error('profile delete',t,r.error);failures.push(t)}
-      }
-      const social=await db.from('social_connections').delete().or(`user_a.eq.${user.id},user_b.eq.${user.id}`)
-      if(social.error){console.error('profile delete social_connections',social.error);failures.push('social_connections')}
-      const resetUser=await db.from('users').update({display_name:'участник',telegram_username:null,updated_at:new Date().toISOString()}).eq('id',user.id)
-      if(resetUser.error){console.error('profile delete users',resetUser.error);failures.push('users')}
-      if(failures.length)return err('Не удалось полностью удалить профиль. Попробуйте ещё раз.',500)
-      return json({ok:true})
+      const r=await db.rpc('delete_user_profile',{p_user_id:user.id})
+      if(r.error)throw r.error
+      return json(r.data||{ok:true})
     }
 
     const slug=String(body.slug||'2026-10-03');const event=await eventBySlug(db,slug)
