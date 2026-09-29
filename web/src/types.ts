@@ -67,6 +67,20 @@ export type PostFilmReaction = {rating:number;stateWord:string;thought:string;re
 export type CollectiveReview = {intro?:string;caption?:string;averageRating?:number;sentences?:string[]}
 export type ClubEvent = {id:string;slug:string;title:string;startsAt:string;movie?:{title:string;year?:number};review?:CollectiveReview;prediction?:{correct:number;total:number;points:number;rank:number};myReview?:{rating:number;sentence:string}}
 export type ProfileStats = {eventsAttended:number;predictionPoints:number;wins:number;ideasSubmitted:number}
+export type AdminParticipant = {
+  registrationId:string
+  displayName:string
+  telegramUsername?:string
+  deleted?:boolean
+  profileComplete:boolean
+  onboardingStep:number
+  status:'reserved'|'paid'|'attended'|'waitlist'|'refunded'|'cancelled'|'no_show'
+  queuePosition?:number
+  reservationExpiresAt?:string
+  photoVideoConsent:boolean
+  paidAt?:string
+  registeredAt:string
+}
 
 export type CreatureTrait = 'curiosity'|'argumentative'|'social'|'romantic'|'chaotic'|'cinephile'
 export type CreatureCosmetic = {
@@ -177,4 +191,5 @@ export type DemoState = {
   screenMessage?: string
   outputs?: Record<string, unknown>
   outputApprovals?: Record<string,boolean>
+  adminParticipants?:AdminParticipant[]
 }
