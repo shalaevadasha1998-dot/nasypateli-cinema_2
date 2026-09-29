@@ -269,22 +269,43 @@ async function refreshLeaderboard(db:any,userIds:string[]){
 }
 
 async function userExtras(db:any,userId:string){
-  const [leader,ideas,past,messages]=await Promise.all([
+  const [leader,ideas,attendance,messages]=await Promise.all([
     db.from('leaderboard').select('events_attended,prediction_points,wins').eq('user_id',userId).maybeSingle(),
     db.from('film_ideas').select('*',{count:'exact',head:true}).eq('user_id',userId),
-    db.from('events').select('id,slug,title,starts_at,status').eq('status','CLOSED').order('starts_at',{ascending:false}).limit(12),
+    db.from('registrations').select('event_id').eq('user_id',userId).eq('status','attended'),
     db.from('jipitina_messages').select('id,role,text,mode,created_at').eq('user_id',userId).order('created_at',{ascending:false}).limit(30)
   ])
-  for(const r of [leader,ideas,past,messages])if(r.error)throw r.error
-  const pastEvents:any[]=[]
-  for(const ev of past.data||[]){
-    const [movie,review]=await Promise.all([
-      db.from('event_movie').select('movie_candidates(title,year)').eq('event_id',ev.id).maybeSingle(),
-      db.from('event_outputs').select('payload,approved').eq('event_id',ev.id).eq('output_key','collective_review').maybeSingle()
-    ])
-    if(movie.error)throw movie.error;if(review.error)throw review.error
-    pastEvents.push({id:ev.id,slug:ev.slug,title:ev.title,startsAt:ev.starts_at,movie:(movie.data as any)?.movie_candidates||undefined,review:review.data?.approved?review.data.payload:undefined})
-  }
+  for(const r of [leader,ideas,attendance,messages])if(r.error)throw r.error
+  const attendedIds=[...new Set((attendance.data||[]).map((x:any)=>x.event_id).filter(Boolean))]
+  const past=attendedIds.length
+    ?await db.from('events').select('id,slug,title,starts_at,status').in('id',attendedIds).eq('status','CLOSED').order('starts_at',{ascending:false}).limit(12)
+    :{data:[],error:null}
+  if(past.error)throw past.error
+  const eventIds=(past.data||[]).map((x:any)=>x.id)
+  const [movies,reviews,scores,myReviews]=eventIds.length?await Promise.all([
+    db.from('event_movie').select('event_id,movie_candidates(title,year)').in('event_id',eventIds),
+    db.from('event_outputs').select('event_id,payload').in('event_id',eventIds).eq('output_key','collective_review').eq('approved',true),
+    db.from('event_scores').select('event_id,correct,total,points,rank').eq('user_id',userId).in('event_id',eventIds),
+    db.from('final_reviews').select('event_id,rating,final_sentence').eq('user_id',userId).in('event_id',eventIds)
+  ]):[
+    {data:[],error:null},{data:[],error:null},{data:[],error:null},{data:[],error:null}
+  ]
+  for(const r of [movies,reviews,scores,myReviews])if(r.error)throw r.error
+  const movieMap=new Map((movies.data||[]).map((x:any)=>[x.event_id,x.movie_candidates]))
+  const reviewMap=new Map((reviews.data||[]).map((x:any)=>[x.event_id,x.payload]))
+  const scoreMap=new Map((scores.data||[]).map((x:any)=>[x.event_id,x]))
+  const myReviewMap=new Map((myReviews.data||[]).map((x:any)=>[x.event_id,x]))
+  const pastEvents=(past.data||[]).map((ev:any)=>{
+    const score:any=scoreMap.get(ev.id)
+    const own:any=myReviewMap.get(ev.id)
+    return {
+      id:ev.id,slug:ev.slug,title:ev.title,startsAt:ev.starts_at,
+      movie:movieMap.get(ev.id)||undefined,
+      review:reviewMap.get(ev.id)||undefined,
+      prediction:score?{correct:Number(score.correct||0),total:Number(score.total||0),points:Number(score.points||0),rank:Number(score.rank||0)}:undefined,
+      myReview:own?{rating:Number(own.rating||0),sentence:String(own.final_sentence||'')}:undefined
+    }
+  })
   return {
     profileStats:{eventsAttended:Number(leader.data?.events_attended||0),predictionPoints:Number(leader.data?.prediction_points||0),wins:Number(leader.data?.wins||0),ideasSubmitted:Number(ideas.count||0)},
     pastEvents,
@@ -917,9 +938,9 @@ export async function handleApi(req:Request){
     }
     if(action==='ai-finalize-memory'){
       if(event.status!=='CLOSED')return err('Память клуба можно сохранить после закрытия события',409)
-      const [feedback,reviews,outputs]=await Promise.all([db.from('event_feedback').select('return_intent,strongest_part,improve_text,willingness_to_pay').eq('event_id',event.id),db.from('final_reviews').select('rating,final_sentence').eq('event_id',event.id),db.from('event_outputs').select('output_key,payload').eq('event_id',event.id)])
+      const [feedback,reviews,outputs]=await Promise.all([db.from('event_feedback').select('return_intent,willingness_to_pay,duration_feel,invite_friend').eq('event_id',event.id),db.from('final_reviews').select('rating').eq('event_id',event.id),db.from('event_outputs').select('output_key,payload').eq('event_id',event.id).eq('approved',true).in('output_key',['score_summary','tiebreaker','post_film_synthesis','collective_review'])])
       const schema={type:'object',additionalProperties:false,properties:{memories:{type:'array',minItems:1,maxItems:8,items:{type:'object',additionalProperties:false,properties:{key:{type:'string'},text:{type:'string'}},required:['key','text']}}},required:['memories']}
-      const out=await structuredResponse<any>({name:'club_memory',schema,instructions:JIPITINA,input:`Сохрани только устойчивые факты, полезные на будущих вечерах: вкусы группы, традиции/шутки, уроки формата. Не сохраняй чувствительные персональные данные. Feedback: ${JSON.stringify(feedback.data||[])} Reviews: ${JSON.stringify(reviews.data||[])} Event outputs: ${JSON.stringify(outputs.data||[])}`})
+      const out=await structuredResponse<any>({name:'club_memory',schema,instructions:JIPITINA,input:`Сохрани только устойчивые факты, полезные на будущих вечерах: вкусы группы, традиции/шутки, уроки формата. Не сохраняй чувствительные персональные данные и не восстанавливай индивидуальные ответы. Используй только агрегируемую обратную связь и явно одобренные публичные результаты. Feedback metrics: ${JSON.stringify(feedback.data||[])} Review ratings: ${JSON.stringify(reviews.data||[])} Approved public outputs: ${JSON.stringify(outputs.data||[])}`})
       for(const m of out.memories){await db.from('jipitina_memory').upsert({scope:'club',scope_id:'00000000-0000-0000-0000-000000000000',memory_key:`event_${event.id}_${String(m.key).slice(0,80)}`,memory_text:String(m.text).slice(0,800),source:`event:${event.id}`},{onConflict:'scope,scope_id,memory_key'})}
       await db.from('event_outputs').upsert({event_id:event.id,output_key:'memory_saved',payload:{count:out.memories.length,memories:out.memories},approved:true,updated_at:new Date().toISOString()});return json({ok:true,memories:out.memories})
     }
