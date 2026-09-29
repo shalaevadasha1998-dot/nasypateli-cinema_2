@@ -1311,3 +1311,22 @@ body{text-transform:lowercase}
   .loading-track i,.loading-words span{animation:none!important}
   .loading-words span:first-child{opacity:1;transform:none}
 }
+
+
+/* v0.9.4 — compact chat composer */
+.chat-compose{
+  min-height:0!important;
+}
+.chat-compose textarea{
+  height:52px!important;
+  min-height:52px!important;
+  max-height:96px!important;
+  padding:14px 12px!important;
+  overflow-y:auto;
+}
+@media(max-width:600px){
+  .chat-compose textarea{
+    height:50px!important;
+    min-height:50px!important;
+  }
+}
