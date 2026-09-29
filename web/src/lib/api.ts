@@ -1,5 +1,5 @@
 import type { CinemaProfile, DemoState, EventStatus, JipitinaMessage, PostFilmReaction } from '../types'
-import { applyStageData, emptyProfile, initialDemoState, loadDemo, saveDemo } from '../demo'
+import { applyStageData, emptyProfile, initialDemoState, loadDemo, resetDemo, saveDemo } from '../demo'
 import { telegramInitData, telegramWebApp } from './telegram'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined
@@ -150,7 +150,7 @@ function demoAction(action:string,payload:Record<string,unknown>){
     case 'my-encounter-token': return {ok:true,token:'demo-encounter-token',deepLink:'https://t.me/nasipateli_v_kinobot?start=encounter_demo-encounter-token'}
     case 'encounter': return {ok:true,kind:'rabbit',sharedFavorites:1,sharedGenres:1}
     case 'audio-transcribe': return {ok:true,text:'демо голосового ввода'}
-    case 'delete-profile': localStorage.clear(); notifyDemo(); return {ok:true}
+    case 'delete-profile': resetDemo(); try{localStorage.removeItem('nasypateli-pending-creature-name')}catch{} notifyDemo(); return {ok:true}
     case 'reserve-ticket': return mutate(s=>({...s,registration:s.event.sold>=s.event.capacity?'waitlist':'paid',event:{...s.event,sold:s.event.sold+(s.event.sold<s.event.capacity?1:0)}}))
     case 'submit-idea': return mutate(s=>({...s,idea:{id:'mine',title:String(payload.title||''),plot:String(payload.plot||'')}}))
     case 'submit-predictions': return mutate(s=>({...s,predictions:(payload.predictions as DemoState['predictions'])||s.predictions,predictionSubmitted:true}))

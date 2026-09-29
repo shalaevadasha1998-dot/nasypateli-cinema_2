@@ -74,8 +74,13 @@ export function CreatureProfilePage(){
   const remove=async()=>{
     if(!window.confirm('Удалить кинопрофиль, Животину, знакомства и персональную историю? Это действие нельзя отменить.'))return
     if(!window.confirm('Точно удалить профиль? Билеты и платёжные записи останутся у организаторов, персонализация будет удалена.'))return
-    try{setBusy('delete');await callApi('delete-profile',{confirm:'DELETE_PROFILE'});location.hash='#/onboarding'}
-    catch(e:any){setMsg(e.message)}
+    try{
+      setBusy('delete')
+      await callApi('delete-profile',{confirm:'DELETE_PROFILE'})
+      try{localStorage.removeItem('nasypateli-pending-creature-name')}catch{}
+      window.history.replaceState(null,'',`${window.location.pathname}${window.location.search}#/onboarding`)
+      window.location.reload()
+    }catch(e:any){setMsg(e.message)}
     finally{setBusy('')}
   }
 
