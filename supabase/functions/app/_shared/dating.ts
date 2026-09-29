@@ -4,6 +4,10 @@ function tasteDistance(a:any,b:any){const keys=['weirdness','heaviness','atmosph
 function overlap(a:string[]=[],b:string[]=[]){const bs=new Set(b.map(x=>x.toLowerCase().trim()));return a.filter(x=>bs.has(x.toLowerCase().trim()))}
 function creatureStage(value:any){const s=String(value||'');return ['stage_0','stage_1','stage_2','stage_3','stage_4'].includes(s)?s:s==='grown'?'stage_4':s==='young'?'stage_2':'stage_0'}
 export function allowedGender(show:string,self:string){return show==='all'||(show==='women'&&self==='woman')||(show==='men'&&self==='man')}
+function hasIntent(list:string[]=[],intent:string){return list.includes(intent)||list.includes('anything')}
+export function intentsCompatible(a:string[]=[],b:string[]=[]){
+  return ['friends','cinema_company','chat','dates'].some(intent=>hasIntent(a,intent)&&hasIntent(b,intent))
+}
 
 export async function datingState(db:any,userId:string){
   const p=await db.from('dating_profiles').select('*').eq('user_id',userId).maybeSingle();if(p.error)throw p.error
@@ -18,7 +22,7 @@ export async function datingState(db:any,userId:string){
   if(profile.enabled&&!profile.paused&&profile.showGender){
     const candidates=await db.from('dating_profiles').select('user_id,self_gender,show_gender,intents').eq('enabled',true).eq('paused',false).neq('user_id',userId).limit(80);if(candidates.error)throw candidates.error
     for(const c of candidates.data||[]){
-      if(seen.has(c.user_id)||blocked.has(c.user_id)||!allowedGender(profile.showGender,c.self_gender)||!allowedGender(c.show_gender,profile.selfGender))continue
+      if(seen.has(c.user_id)||blocked.has(c.user_id)||!allowedGender(profile.showGender,c.self_gender)||!allowedGender(c.show_gender,profile.selfGender)||!intentsCompatible(profile.intents,c.intents||[]))continue
       const [u,cp,cr]=await Promise.all([db.from('users').select('display_name').eq('id',c.user_id).single(),db.from('cinema_profiles').select('favorite_films,favorite_genres,profile_json').eq('user_id',c.user_id).maybeSingle(),ensureCreature(db,c.user_id)])
       if(u.error||cp.error)continue
       const sharedFilms=overlap(mine.data?.favorite_films||[],cp.data?.favorite_films||[]);const sharedGenres=overlap(mine.data?.favorite_genres||[],cp.data?.favorite_genres||[]);const dist=tasteDistance(mine.data?.profile_json?.taste,cp.data?.profile_json?.taste);const compatibility=Math.round(Math.max(0,Math.min(100,50+sharedFilms.length*18+sharedGenres.length*7+(1-dist)*25)))
@@ -29,8 +33,21 @@ export async function datingState(db:any,userId:string){
   }
   const con=await db.from('social_connections').select('*').or(`user_a.eq.${userId},user_b.eq.${userId}`).eq('status','active').order('created_at',{ascending:false}).limit(30);if(con.error)throw con.error
   const matches:any[]=[]
-  for(const x of con.data||[]){if(Array.isArray(x.metadata?.hidden_by)&&x.metadata.hidden_by.includes(userId))continue;const other=x.user_a===userId?x.user_b:x.user_a;const [u,cr]=await Promise.all([db.from('users').select('display_name').eq('id',other).single(),ensureCreature(db,other)]);if(u.error)continue;matches.push({id:x.id,kind:x.kind,displayName:u.data.display_name||'участник',creatureName:cr.name||'Животина',createdAt:x.created_at,sharedFilms:x.metadata?.shared_films||[]})}
+  for(const x of con.data||[]){if(Array.isArray(x.metadata?.hidden_by)&&x.metadata.hidden_by.includes(userId))continue;const other=x.user_a===userId?x.user_b:x.user_a;if(blocked.has(other))continue;const [u,cr]=await Promise.all([db.from('users').select('display_name').eq('id',other).single(),ensureCreature(db,other)]);if(u.error)continue;matches.push({id:x.id,userId:other,kind:x.kind,displayName:u.data.display_name||'участник',creatureName:cr.name||'Животина',createdAt:x.created_at,sharedFilms:x.metadata?.shared_films||[]})}
   return {dating:profile,datingCards:cards.slice(0,12),datingMatches:matches}
 }
 
-export function connectionKind(a:string[]=[],b:string[]=[]){if(a.includes('dates')&&b.includes('dates'))return 'romantic';if(a.includes('cinema_company')&&b.includes('cinema_company'))return 'cinema';return 'friend'}
+export function connectionKind(a:string[]=[],b:string[]=[]){
+  if(a.includes('dates')&&b.includes('dates'))return 'romantic'
+  if(a.includes('cinema_company')&&b.includes('cinema_company'))return 'cinema'
+  if(a.includes('friends')&&b.includes('friends')||a.includes('chat')&&b.includes('chat'))return 'friend'
+  if(a.includes('anything')&&!b.includes('anything')){
+    if(b.includes('dates'))return 'romantic'
+    if(b.includes('cinema_company'))return 'cinema'
+  }
+  if(b.includes('anything')&&!a.includes('anything')){
+    if(a.includes('dates'))return 'romantic'
+    if(a.includes('cinema_company'))return 'cinema'
+  }
+  return 'friend'
+}
