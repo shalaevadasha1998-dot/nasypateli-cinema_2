@@ -14,6 +14,10 @@ const manualTransitions:Record<string,string>={
   PREDICTIONS_OPEN:'PREDICTIONS_LOCKED',PREDICTIONS_LOCKED:'WATCHING',PREDICTIONS_SCORED:'DISCUSSION',
   DISCUSSION:'FINAL_REVIEW',FINAL_REVIEW:'FEEDBACK',FEEDBACK:'CLOSED'
 }
+const checkinOpenStatuses=new Set([
+  'CHECKIN','IDEAS_OPEN','IDEAS_LOCKED','TOP3_READY','IDEA_RANDOMIZED','MOVIE_SEARCH','MOVIE_FINALISTS',
+  'MOVIE_SELECTED','PREDICTIONS_OPEN','PREDICTIONS_LOCKED','WATCHING','PREDICTIONS_SCORED','DISCUSSION','FINAL_REVIEW','FEEDBACK'
+])
 
 const defaultTaste={weirdness:50,heaviness:50,atmosphere:50,oldness:50,experimental:50,slowness:50,surrealism:50}
 const allowedChatModes=new Set(['general','idea_coach','post_film','taste'])
@@ -503,7 +507,27 @@ export async function handleApi(req:Request){
     if(action==='encounter'){
       const token=String(body.token||'').trim();const t=await db.from('encounter_tokens').select('*').eq('token',token).maybeSingle();if(t.error)throw t.error;if(!t.data)return err('Этот жетон не существует',404);if(t.data.expires_at&&new Date(t.data.expires_at).getTime()<Date.now())return err('Этот жетон уже истёк',410)
       if(t.data.kind==='event_checkin'){
-        if(!t.data.event_id)return err('У жетона нет события',422);const reg=await db.from('registrations').select('status').eq('event_id',t.data.event_id).eq('user_id',user.id).maybeSingle();if(reg.error)throw reg.error;if(!['paid','attended'].includes(reg.data?.status||''))return err('Для отметки нужен билет на это событие',403);await db.from('registrations').update({status:'attended'}).eq('event_id',t.data.event_id).eq('user_id',user.id);const ev=await db.from('events').select('slug,title,starts_at').eq('id',t.data.event_id).single();if(ev.error)throw ev.error;const memberCount=await db.from('registrations').select('*',{count:'exact',head:true}).eq('event_id',t.data.event_id).eq('status','attended');const minutesBefore=Math.round((new Date(ev.data.starts_at).getTime()-Date.now())/60000);const awards=await emitStoryTrigger(db,user.id,'event_checkin',{event_slug:ev.data.slug,member_number:Number(memberCount.count||0),minutes_before:minutesBefore,...(t.data.metadata||{})},t.data.event_id);await refreshLeaderboard(db,[user.id]);return json({ok:true,kind:'event_checkin',awards})
+        if(!t.data.event_id)return err('У жетона нет события',422)
+        const [reg,ev]=await Promise.all([
+          db.from('registrations').select('status').eq('event_id',t.data.event_id).eq('user_id',user.id).maybeSingle(),
+          db.from('events').select('slug,title,starts_at,status').eq('id',t.data.event_id).single()
+        ])
+        if(reg.error)throw reg.error;if(ev.error)throw ev.error
+        if(!checkinOpenStatuses.has(String(ev.data.status||'')))return err(ev.data.status==='CLOSED'?'Чек-ин на этот вечер уже закрыт':'Чек-ин ещё не открыт',409)
+        if(reg.data?.status==='attended')return json({ok:true,kind:'event_checkin',alreadyAttended:true,awards:[]})
+        if(reg.data?.status!=='paid')return err('Для отметки нужен подтверждённый билет на это событие',403)
+        const attended=await db.from('registrations').update({status:'attended'}).eq('event_id',t.data.event_id).eq('user_id',user.id).eq('status','paid').select('user_id').maybeSingle()
+        if(attended.error)throw attended.error
+        if(!attended.data){
+          const latest=await db.from('registrations').select('status').eq('event_id',t.data.event_id).eq('user_id',user.id).maybeSingle();if(latest.error)throw latest.error
+          if(latest.data?.status==='attended')return json({ok:true,kind:'event_checkin',alreadyAttended:true,awards:[]})
+          return err('Не удалось подтвердить чек-ин. Обновите билет и попробуйте ещё раз.',409)
+        }
+        const memberCount=await db.from('registrations').select('*',{count:'exact',head:true}).eq('event_id',t.data.event_id).eq('status','attended');if(memberCount.error)throw memberCount.error
+        const minutesBefore=Math.round((new Date(ev.data.starts_at).getTime()-Date.now())/60000)
+        const awards=await emitStoryTrigger(db,user.id,'event_checkin',{event_slug:ev.data.slug,member_number:Number(memberCount.count||0),minutes_before:minutesBefore,...(t.data.metadata||{})},t.data.event_id)
+        await refreshLeaderboard(db,[user.id])
+        return json({ok:true,kind:'event_checkin',alreadyAttended:false,awards})
       }
       if(t.data.kind==='rabbit'){
         const other=String(t.data.owner_user_id||'');if(!other||other===user.id)return err('Это жетон вашей собственной Животины',409);const [a,b]=await Promise.all([db.from('cinema_profiles').select('favorite_films,favorite_genres').eq('user_id',user.id).maybeSingle(),db.from('cinema_profiles').select('favorite_films,favorite_genres').eq('user_id',other).maybeSingle()]);const bf=new Set((b.data?.favorite_films||[]).map((x:string)=>x.toLowerCase()));const bg=new Set((b.data?.favorite_genres||[]).map((x:string)=>x.toLowerCase()));const sharedFavorites=(a.data?.favorite_films||[]).filter((x:string)=>bf.has(x.toLowerCase())).length;const sharedGenres=(a.data?.favorite_genres||[]).filter((x:string)=>bg.has(x.toLowerCase())).length;for(const uid of [user.id,other]){await emitStoryTrigger(db,uid,'encounter',{story_code:'first_rabbit_meet',shared_favorites:sharedFavorites,shared_genres:sharedGenres,other_user_id:uid===user.id?other:user.id},t.data.event_id||null);if(sharedFavorites)await emitStoryTrigger(db,uid,'encounter',{story_code:'same_taste',shared_favorites:sharedFavorites,shared_genres:sharedGenres},t.data.event_id||null);if(!sharedFavorites&&!sharedGenres)await emitStoryTrigger(db,uid,'encounter',{story_code:'nothing_common',shared_favorites:0,shared_genres:0},t.data.event_id||null)}return json({ok:true,kind:'rabbit',sharedFavorites,sharedGenres})
@@ -611,7 +635,9 @@ export async function handleApi(req:Request){
       const to=String(body.status||'');if(to==='IDEAS_OPEN'&&!nonexistentFilmEnabled(event))return err('Сначала включите режим «несуществующий фильм»',409)
       if(manualTransitions[event.status]!==to && body.force!==true)return err(`Этот переход выполняется отдельным действием: ${event.status} → ${to}`,409)
       const r=await db.from('events').update({status:to}).eq('id',event.id);if(r.error)throw r.error
-      await db.from('event_transitions').insert({event_id:event.id,from_status:event.status,to_status:to,actor_user_id:user?.id||null,metadata:{forced:body.force===true}});return json({ok:true,status:to})
+      let noShows=0
+      if(to==='CLOSED'){const absent=await db.from('registrations').update({status:'no_show'}).eq('event_id',event.id).eq('status','paid').select('user_id');if(absent.error)throw absent.error;noShows=(absent.data||[]).length;if(noShows)await refreshLeaderboard(db,(absent.data||[]).map((x:any)=>x.user_id))}
+      await db.from('event_transitions').insert({event_id:event.id,from_status:event.status,to_status:to,actor_user_id:user?.id||null,metadata:{forced:body.force===true,no_shows:noShows}});return json({ok:true,status:to,noShows})
     }
     if(action==='admin-event-config'){
       const patch:any={}
