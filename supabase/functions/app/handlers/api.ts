@@ -517,7 +517,13 @@ export async function handleApi(req:Request){
           }
           const webAppUrl=String(Deno.env.get('TELEGRAM_WEBAPP_URL')||'').trim()
           const waitlistPromotion=n.kind==='tickets'&&String(n.dedupe_key||'').startsWith('waitlist_promoted:')
-          const ticketReplyMarkup=n.kind==='tickets'&&webAppUrl?{inline_keyboard:[[{text:waitlistPromotion?'оплатить место':'открыть билет',web_app:{url:webAppUrl}}]]}:undefined
+          let waitlistButton='оплатить место'
+          if(waitlistPromotion&&n.event_id){
+            const price=await db.from('events').select('ticket_price_rub').eq('id',n.event_id).maybeSingle()
+            if(price.error)console.error('waitlist ticket price lookup failed',price.error)
+            else if(Number(price.data?.ticket_price_rub||0)===0)waitlistButton='подтвердить билет'
+          }
+          const ticketReplyMarkup=n.kind==='tickets'&&webAppUrl?{inline_keyboard:[[{text:waitlistPromotion?waitlistButton:'открыть билет',web_app:{url:webAppUrl}}]]}:undefined
           const baseUrl=webAppUrl.split('#')[0]
           const generalReplyMarkup=!ticketReplyMarkup&&webAppUrl&&['events','reminders','matches','stories','creature'].includes(String(n.kind))
             ?{inline_keyboard:[[{text:n.kind==='matches'?'открыть знакомства':n.kind==='stories'||n.kind==='creature'?'открыть животину':'открыть событие',web_app:{url:n.kind==='matches'?baseUrl+'#/dating':n.kind==='stories'||n.kind==='creature'?baseUrl+'#/zhivotina':webAppUrl}}]]}
