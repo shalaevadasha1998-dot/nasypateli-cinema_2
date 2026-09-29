@@ -2,8 +2,11 @@ export function nonexistentFilmEnabled(event:any){
   return event?.settings?.modes?.nonexistent_film?.enabled===true || event?.settings?.nonexistent_film_enabled===true
 }
 
-export async function eventBySlug(db:any,slug:string){
-  const r=await db.from('events').select('*').eq('slug',slug).single()
+export async function eventBySlug(db:any,slugOrId:string){
+  const value=String(slugOrId||'').trim()
+  const isUuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+  const query=db.from('events').select('*')
+  const r=await (isUuid?query.eq('id',value):query.eq('slug',value)).single()
   if(r.error)throw r.error
   return r.data
 }
