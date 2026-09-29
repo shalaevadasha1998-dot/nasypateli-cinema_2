@@ -98,8 +98,8 @@ export async function handleTelegram(req:Request){
     }
 
     if(msg?.text?.startsWith('/start')){
-      const payload=String(msg.text||'').split(/\s+/)[1]||'';let launchUrl=webAppUrl;let buttonText='открыть клуб';let intro='это НАСЫПАТЕЛИ В КИНО. здесь билеты, Животина, знакомства и механики вечера'
-      if(payload.startsWith('encounter_')&&webAppUrl){const token=payload.slice('encounter_'.length);const t=await db.from('encounter_tokens').select('kind').eq('token',token).maybeSingle();const u=new URL(webAppUrl);u.searchParams.set('encounter',token);launchUrl=u.toString();buttonText=t.data?.kind==='event_checkin'?'отметиться на событии':'встретить Животину';intro=t.data?.kind==='event_checkin'?'откройте НАСЫПАТЕЛИ В КИНО, чтобы отметиться на событии':'кажется, ваши Животины сейчас встретятся'}
+      const payload=String(msg.text||'').split(/\s+/)[1]||'';let launchUrl=webAppUrl;let buttonText='открыть клуб';let intro='это НАСЫПАТЕЛИ В КИНО. здесь билеты, животина, знакомства и механики вечера'
+      if(payload.startsWith('encounter_')&&webAppUrl){const token=payload.slice('encounter_'.length);const t=await db.from('encounter_tokens').select('kind').eq('token',token).maybeSingle();const u=new URL(webAppUrl);u.searchParams.set('encounter',token);launchUrl=u.toString();buttonText=t.data?.kind==='event_checkin'?'отметиться на событии':'встретить животину';intro=t.data?.kind==='event_checkin'?'откройте НАСЫПАТЕЛИ В КИНО, чтобы отметиться на событии':'кажется, ваши животины сейчас встретятся'}
       const reply_markup=launchUrl?{inline_keyboard:[[{text:buttonText,web_app:{url:launchUrl}}]]}:undefined
       await tg('sendMessage',{chat_id:msg.chat.id,text:intro,...(reply_markup?{reply_markup}:{})})
       return json({ok:true})
