@@ -252,7 +252,7 @@ async function runtimeHealth(db:any){
     db.from('creature_tasks').select('id,status,active,reward_crumbs,completion_type').eq('id','first_test_task').maybeSingle()
   ])
   const env=(name:string)=>!!String(Deno.env.get(name)||'').trim()
-  const pilotOk=!pilot.error&&pilot.data?.slug==='2026-10-03'&&Number(pilot.data?.capacity)===30&&Number(pilot.data?.ticket_price_rub)===0&&new Date(pilot.data?.starts_at||0).toISOString()==='2026-10-03T13:00:00.000Z'&&String(pilot.data?.venue_name||'').toLowerCase()==='хлебозавод №9'
+  const pilotOk=!pilot.error&&pilot.data?.slug==='2026-10-03'&&Number(pilot.data?.capacity)===50&&Number(pilot.data?.ticket_price_rub)===0&&new Date(pilot.data?.starts_at||0).toISOString()==='2026-10-03T13:00:00.000Z'&&String(pilot.data?.venue_name||'').toLowerCase()==='хлебозавод №9'
   const thresholds=gameConfig.data?.stage_thresholds||{}
   const thresholdValues=['stage_0','stage_1','stage_2','stage_3','stage_4'].map(stage=>Number(thresholds?.[stage]))
   const thresholdsOk=
