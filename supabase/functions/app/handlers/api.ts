@@ -443,11 +443,15 @@ export async function handleApi(req:Request){
         }catch{return err('Доступ к пульту запрещён',401)}
       }
       const event=await eventBySlug(db,String(body.slug||'2026-10-03'))
-      const [state,adminParticipants]=await Promise.all([
+      const [state,adminParticipants,movieCatalog,showLog]=await Promise.all([
         buildEventState(db,event,{includeActuals:true,includePrivateOutputs:true}),
-        adminParticipantRows(db,event.id)
+        adminParticipantRows(db,event.id),
+        db.from('movie_candidates').select('*').eq('event_id',event.id).order('title'),
+        db.from('event_runtime_log').select('id,action,created_at').eq('event_id',event.id).order('created_at',{ascending:false}).limit(20)
       ])
-      return json({...state,adminParticipants})
+      if(movieCatalog.error)throw movieCatalog.error
+      if(showLog.error)throw showLog.error
+      return json({...state,adminParticipants,movieCatalog:movieCatalog.data||[],showLog:showLog.data||[]})
     }
 
     if(action==='cron-notifications'){
@@ -609,6 +613,8 @@ export async function handleApi(req:Request){
       const event=await nextEvent(db)
       if(!event)return json({user,profile:null,event:null,onboardingComplete:false})
       if(event.status==='SALES_OPEN'){const promoted=await db.rpc('promote_event_waitlist',{p_event_id:event.id});if(promoted.error)throw promoted.error}
+      const presence=await db.from('event_presence').upsert({event_id:event.id,user_id:user.id,last_seen_at:new Date().toISOString()},{onConflict:'event_id,user_id'})
+      if(presence.error)console.error('presence heartbeat failed',presence.error)
       const [common,profileRow,reg,idea,answers,thought,reaction,review,feedback,extras,creature,datingBundle,notif]=await Promise.all([
         buildEventState(db,event,{includeActuals:false}),
         db.from('cinema_profiles').select('*').eq('user_id',user.id).maybeSingle(),
@@ -627,7 +633,13 @@ export async function handleApi(req:Request){
       for(const r of [profileRow,reg,idea,answers,thought,reaction,review,feedback,notif])if(r.error)throw r.error
       if(!notif.data)await db.from('notification_preferences').insert({user_id:user.id})
       const profile=normalizeProfile(user,profileRow.data,reg.data,tg);const answerMap=new Map((answers.data||[]).map((x:any)=>[x.question_id,x.answer]))
-      return json({...common,user,profile,onboardingComplete:profile.completed,registration:effectiveRegistrationStatus(reg.data),queuePosition:effectiveRegistrationStatus(reg.data)==='waitlist'?Number(reg.data?.queue_position||0)||undefined:undefined,reservationExpiresAt:effectiveRegistrationStatus(reg.data)==='reserved'?reg.data?.reservation_expires_at||undefined:undefined,idea:idea.data||undefined,predictions:(common.predictions||[]).map((p:any)=>({...p,answer:answerMap.get(p.id)})),predictionSubmitted:(answers.data||[]).length>0,thought:thought.data?.text,reaction:reaction.data?{rating:reaction.data.rating,stateWord:reaction.data.state_word,thought:reaction.data.thought,recommendation:reaction.data.recommendation}:undefined,review:review.data?{rating:review.data.rating,sentence:review.data.final_sentence}:undefined,feedback:feedback.data?{returnIntent:feedback.data.return_intent,strongest:feedback.data.strongest_part||'',improve:feedback.data.improve_text||'',willingness:feedback.data.willingness_to_pay||0,durationFeel:feedback.data.duration_feel||'нормально',inviteFriend:feedback.data.invite_friend===null||feedback.data.invite_friend===undefined?8:Number(feedback.data.invite_friend)}:undefined,...extras,creature,...datingBundle,notificationPrefs:{writeAccess:!!notif.data?.write_access,events:notif.data?.events!==false,creature:notif.data?.creature!==false,stories:notif.data?.stories!==false,matches:notif.data?.matches!==false,tickets:notif.data?.tickets!==false,reminders:notif.data?.reminders!==false,quietHours:notif.data?.quiet_hours!==false}})
+      let show=(common as any).show
+      if(show?.currentRound?.id){
+        const mine=await db.from('event_votes').select('answer').eq('event_id',event.id).eq('round_id',show.currentRound.id).eq('user_id',user.id).eq('question_key',String(show.currentRound.question?.key||'question')).maybeSingle()
+        if(mine.error)throw mine.error
+        show={...show,myVote:mine.data?.answer}
+      }
+      return json({...common,show,user,profile,onboardingComplete:profile.completed,registration:effectiveRegistrationStatus(reg.data),queuePosition:effectiveRegistrationStatus(reg.data)==='waitlist'?Number(reg.data?.queue_position||0)||undefined:undefined,reservationExpiresAt:effectiveRegistrationStatus(reg.data)==='reserved'?reg.data?.reservation_expires_at||undefined:undefined,idea:idea.data||undefined,predictions:(common.predictions||[]).map((p:any)=>({...p,answer:answerMap.get(p.id)})),predictionSubmitted:(answers.data||[]).length>0,thought:thought.data?.text,reaction:reaction.data?{rating:reaction.data.rating,stateWord:reaction.data.state_word,thought:reaction.data.thought,recommendation:reaction.data.recommendation}:undefined,review:review.data?{rating:review.data.rating,sentence:review.data.final_sentence}:undefined,feedback:feedback.data?{returnIntent:feedback.data.return_intent,strongest:feedback.data.strongest_part||'',improve:feedback.data.improve_text||'',willingness:feedback.data.willingness_to_pay||0,durationFeel:feedback.data.duration_feel||'нормально',inviteFriend:feedback.data.invite_friend===null||feedback.data.invite_friend===undefined?8:Number(feedback.data.invite_friend)}:undefined,...extras,creature,...datingBundle,notificationPrefs:{writeAccess:!!notif.data?.write_access,events:notif.data?.events!==false,creature:notif.data?.creature!==false,stories:notif.data?.stories!==false,matches:notif.data?.matches!==false,tickets:notif.data?.tickets!==false,reminders:notif.data?.reminders!==false,quietHours:notif.data?.quiet_hours!==false}})
     }
 
     if(action==='save-profile-progress'||action==='save-profile'){
