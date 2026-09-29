@@ -311,17 +311,19 @@ async function refreshLeaderboard(db:any,userIds:string[]){
 async function userExtras(db:any,userId:string){
   const [leader,ideas,attendance,messages]=await Promise.all([
     db.from('leaderboard').select('events_attended,prediction_points,wins').eq('user_id',userId).maybeSingle(),
-    db.from('film_ideas').select('*',{count:'exact',head:true}).eq('user_id',userId),
+    db.from('film_ideas').select('id').eq('user_id',userId),
     db.from('registrations').select('event_id').eq('user_id',userId).eq('status','attended'),
     db.from('jipitina_messages').select('id,role,text,mode,created_at').eq('user_id',userId).order('created_at',{ascending:false}).limit(30)
   ])
-  for(const r of [leader,ideas,attendance,messages])if(r.error)throw r.error
-  const attendedIds=[...new Set((attendance.data||[]).map((x:any)=>x.event_id).filter(Boolean))]
+  for(const [label,r] of [['leaderboard',leader],['ideas',ideas],['attendance',attendance],['messages',messages]] as const){
+    if(r.error)console.warn('optional bootstrap query failed',label,String(r.error.message||r.error))
+  }
+  const attendedIds=[...new Set((attendance.error?[]:(attendance.data||[])).map((x:any)=>x.event_id).filter(Boolean))]
   const past=attendedIds.length
     ?await db.from('events').select('id,slug,title,starts_at,status').in('id',attendedIds).eq('status','CLOSED').order('starts_at',{ascending:false}).limit(12)
     :{data:[],error:null}
-  if(past.error)throw past.error
-  const eventIds=(past.data||[]).map((x:any)=>x.id)
+  if(past.error)console.warn('optional bootstrap query failed','past-events',String(past.error.message||past.error))
+  const eventIds=(past.error?[]:(past.data||[])).map((x:any)=>x.id)
   const [movies,reviews,scores,myReviews]=eventIds.length?await Promise.all([
     db.from('event_movie').select('event_id,movie_candidates(title,year)').in('event_id',eventIds),
     db.from('event_outputs').select('event_id,payload').in('event_id',eventIds).eq('output_key','collective_review').eq('approved',true),
@@ -330,11 +332,13 @@ async function userExtras(db:any,userId:string){
   ]):[
     {data:[],error:null},{data:[],error:null},{data:[],error:null},{data:[],error:null}
   ]
-  for(const r of [movies,reviews,scores,myReviews])if(r.error)throw r.error
-  const movieMap=new Map((movies.data||[]).map((x:any)=>[x.event_id,x.movie_candidates]))
-  const reviewMap=new Map((reviews.data||[]).map((x:any)=>[x.event_id,x.payload]))
-  const scoreMap=new Map((scores.data||[]).map((x:any)=>[x.event_id,x]))
-  const myReviewMap=new Map((myReviews.data||[]).map((x:any)=>[x.event_id,x]))
+  for(const [label,r] of [['movies',movies],['reviews',reviews],['scores',scores],['my-reviews',myReviews]] as const){
+    if(r.error)console.warn('optional bootstrap query failed',label,String(r.error.message||r.error))
+  }
+  const movieMap=new Map((movies.error?[]:(movies.data||[])).map((x:any)=>[x.event_id,x.movie_candidates]))
+  const reviewMap=new Map((reviews.error?[]:(reviews.data||[])).map((x:any)=>[x.event_id,x.payload]))
+  const scoreMap=new Map((scores.error?[]:(scores.data||[])).map((x:any)=>[x.event_id,x]))
+  const myReviewMap=new Map((myReviews.error?[]:(myReviews.data||[])).map((x:any)=>[x.event_id,x]))
   const pastEvents=(past.data||[]).map((ev:any)=>{
     const score:any=scoreMap.get(ev.id)
     const own:any=myReviewMap.get(ev.id)
@@ -347,9 +351,9 @@ async function userExtras(db:any,userId:string){
     }
   })
   return {
-    profileStats:{eventsAttended:Number(leader.data?.events_attended||0),predictionPoints:Number(leader.data?.prediction_points||0),wins:Number(leader.data?.wins||0),ideasSubmitted:Number(ideas.count||0)},
+    profileStats:{eventsAttended:Number(leader.error?0:(leader.data?.events_attended||0)),predictionPoints:Number(leader.error?0:(leader.data?.prediction_points||0)),wins:Number(leader.error?0:(leader.data?.wins||0)),ideasSubmitted:ideas.error?0:(ideas.data||[]).length},
     pastEvents,
-    jipitinaMessages:(messages.data||[]).reverse().map((m:any)=>({id:m.id,role:m.role,text:m.text,mode:m.mode,createdAt:m.created_at}))
+    jipitinaMessages:(messages.error?[]:(messages.data||[])).reverse().map((m:any)=>({id:m.id,role:m.role,text:m.text,mode:m.mode,createdAt:m.created_at}))
   }
 }
 
