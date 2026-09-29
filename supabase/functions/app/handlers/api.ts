@@ -770,10 +770,17 @@ export async function handleApi(req:Request){
       const context=await chatContext(db,event,user,profile);const recent=await db.from('jipitina_messages').select('role,text,mode').eq('user_id',user.id).order('created_at',{ascending:false}).limit(8);if(recent.error)throw recent.error
       const draft=mode==='idea_coach'?{title:String(body.draftTitle||''),plot:String(body.draftPlot||'')}:undefined
       const input=`КОНТЕКСТ JSON:\n${JSON.stringify({...context,draft,recent:(recent.data||[]).reverse()})}\n\nСООБЩЕНИЕ ПОЛЬЗОВАТЕЛЯ:\n${message}`
-      const userInsert=await db.from('jipitina_messages').insert({user_id:user.id,event_id:event.id,role:'user',mode,text:message,created_at:new Date().toISOString()}).select('id').single();if(userInsert.error)throw userInsert.error
       const chatSchema={type:'object',additionalProperties:false,properties:{inScope:{type:'boolean'},reply:{type:'string',minLength:1,maxLength:2200}},required:['inScope','reply']}
-      const chat=await structuredResponse<{inScope:boolean;reply:string}>({name:'cinema_chat',schema:chatSchema,instructions:jipitinaInstructions(mode),input,maxOutputTokens:520,reasoningEffort:'none'})
-      const reply=(chat.inScope?String(chat.reply||'').trim():'я здесь только про кино. могу подобрать фильм, разобрать твой кинопрофиль или обсудить просмотренное.').toLocaleLowerCase('ru-RU')
+      let chat:{inScope:boolean;reply:string}
+      try{
+        chat=await structuredResponse<{inScope:boolean;reply:string}>({name:'cinema_chat',schema:chatSchema,instructions:jipitinaInstructions(mode),input,maxOutputTokens:520,reasoningEffort:'none'})
+      }catch(e:any){
+        const detail=String(e?.message||e||'unknown')
+        console.error('jipitina model request failed',detail)
+        return err('чат временно недоступен · попробуйте ещё раз позже',503)
+      }
+      const reply=(chat.inScope?String(chat.reply||'').trim():'я здесь только про кино · могу подобрать фильм, разобрать твой кинопрофиль или обсудить просмотренное').toLocaleLowerCase('ru-RU').replace(/\.(?=\s|$)/g,'')
+      const userInsert=await db.from('jipitina_messages').insert({user_id:user.id,event_id:event.id,role:'user',mode,text:message,created_at:new Date().toISOString()}).select('id').single();if(userInsert.error)throw userInsert.error
       const assistantInsert=await db.from('jipitina_messages').insert({user_id:user.id,event_id:event.id,role:'assistant',mode,text:reply,created_at:new Date().toISOString()});if(assistantInsert.error)throw assistantInsert.error
       const task=processChatAftermath(db,user.id,message,reply,String(userInsert.data.id),event.id).catch((e:any)=>console.error('chat aftermath failed',e));const edge=(globalThis as any).EdgeRuntime;if(edge?.waitUntil)edge.waitUntil(task)
       return json({ok:true,reply,mode})
