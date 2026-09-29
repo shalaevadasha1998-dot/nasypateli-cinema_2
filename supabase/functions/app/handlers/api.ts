@@ -2,7 +2,7 @@ import { adminDb } from '../_shared/db.ts'
 import { cors, err, json } from '../_shared/http.ts'
 import { telegramUserFromRequest, isConfiguredAdmin } from '../_shared/telegram.ts'
 import { secureIndex } from '../_shared/random.ts'
-import { structuredResponse, textResponse, transcribeAudio } from '../_shared/openai.ts'
+import { structuredResponse, transcribeAudio } from '../_shared/openai.ts'
 import { creatureState, emitStoryTrigger, ensureCreature } from '../_shared/stories.ts'
 import { allowedGender, connectionKind, datingState, intentsCompatible } from '../_shared/dating.ts'
 import { JIPITINA, jipitinaInstructions } from '../_shared/jipitina.ts'
@@ -71,7 +71,6 @@ async function withEventOperation<T>(db:any,eventId:string,operation:string,work
     if(release.error)console.error('event operation release failed',operation,release.error)
   }
 }
-function isMatchmakerRequest(message:string){return /(найди|познаком|сваха|компан).{0,40}(кого|кто|человек|кино|смотр|ужас|хоррор|свидан|друг)|кого.{0,30}(кино|познаком|смотр)/iu.test(message)}
 
 async function getOrCreateUser(db:any,tg:any){
   const existing=await db.from('users').select('*').eq('telegram_id',tg.id).maybeSingle()
@@ -375,7 +374,7 @@ async function processChatAftermath(db:any,userId:string,message:string,reply:st
   if(message.trim().length<12)return
   const storyCodes=['rabbit_wrong','we_agreed','rabbit_knows_me','rabbit_doesnt_know','first_argument','changed_rabbit_mind','rabbit_changed_mine','asked_for_surprise','trusted_choice','rejected_three','taste_calibrated','rabbit_predicted_rating','rabbit_missed_rating','late_night_chat','rabbit_secret']
   const schema={type:'object',additionalProperties:false,properties:{updates:{type:'array',maxItems:3,items:{type:'object',additionalProperties:false,properties:{key:{type:'string'},text:{type:'string'},confidence:{type:'number',minimum:0,maximum:1}},required:['key','text','confidence']}},storyCodes:{type:'array',maxItems:2,items:{type:'string',enum:storyCodes}}},required:['updates','storyCodes']}
-  const out=await structuredResponse<any>({name:'chat_aftermath',schema,instructions:JIPITINA,input:`Из пары реплик извлеки только устойчивые факты о кинопредпочтениях и, если реально произошла одна из перечисленных историй Животины, верни её code. Не выдавай историю просто за упоминание условия: она должна действительно произойти в разговоре. Не сохраняй здоровье, политику, интимную жизнь, финансы, адреса и случайные эмоции. Пользователь: ${JSON.stringify(message)}\nЖивотина: ${JSON.stringify(reply)}`,maxOutputTokens:350,reasoningEffort:'none'})
+  const out=await structuredResponse<any>({name:'chat_aftermath',schema,instructions:JIPITINA,input:`Из пары реплик извлеки только устойчивые факты о кинопредпочтениях. Можно сохранить осторожный паттерн вкуса, если он прямо поддержан репликами: например отношение к темпу, атмосфере, экспериментальности, жанрам, сложности или эмоциональной тяжести. Не делай выводов о личности вне кино. Если реально произошла одна из перечисленных историй Животины, верни её code. Не выдавай историю просто за упоминание условия: она должна действительно произойти в разговоре. Не сохраняй здоровье, политику, интимную жизнь, финансы, адреса, отношения и случайные эмоции. Пользователь: ${JSON.stringify(message)}\nЖивотина: ${JSON.stringify(reply)}`,maxOutputTokens:350,reasoningEffort:'none'})
   for(const u of out.updates||[]){if(Number(u.confidence)<0.78)continue;const key=String(u.key||'preference').toLowerCase().replace(/[^a-z0-9а-яё_-]+/gi,'_').slice(0,70)||'preference';await db.from('jipitina_memory').upsert({scope:'user',scope_id:userId,memory_key:key,memory_text:String(u.text||'').slice(0,500),source:'jipitina_chat'},{onConflict:'scope,scope_id,memory_key'})}
   await emitStoryTrigger(db,userId,'jipitina_chat',{occurrenceKey},eventId||null)
   for(const code of out.storyCodes||[]){if(storyCodes.includes(code))await emitStoryTrigger(db,userId,'jipitina_chat',{story_code:code,occurrenceKey},eventId||null)}
@@ -746,14 +745,11 @@ export async function handleApi(req:Request){
       if(mode==='post_film'){if(!await hasPaidAccess(db,event.id,user.id))return err('Нужен оплаченный билет',403);if(!['DISCUSSION','FINAL_REVIEW','FEEDBACK','CLOSED'].includes(event.status))return err('Разговор после фильма ещё не открыт',409)}
       const context=await chatContext(db,event,user,profile);const recent=await db.from('jipitina_messages').select('role,text,mode').eq('user_id',user.id).order('created_at',{ascending:false}).limit(8);if(recent.error)throw recent.error
       const draft=mode==='idea_coach'?{title:String(body.draftTitle||''),plot:String(body.draftPlot||'')}:undefined
-      let matchmaker:any=undefined
-      if(mode==='general'&&isMatchmakerRequest(message)){
-        const social=await datingState(db,user.id)
-        matchmaker={enabled:social.dating.enabled,paused:social.dating.paused,intents:social.dating.intents,candidates:(social.datingCards||[]).slice(0,6).map((c:any)=>({displayName:c.displayName,creatureName:c.creatureName,favoriteFilms:c.favoriteFilms,favoriteGenres:c.favoriteGenres,matchNote:c.matchNote,compatibility:c.compatibility}))}
-      }
-      const input=`КОНТЕКСТ JSON:\n${JSON.stringify({...context,draft,matchmaker,recent:(recent.data||[]).reverse()})}\n\nСООБЩЕНИЕ ПОЛЬЗОВАТЕЛЯ:\n${message}`
+      const input=`КОНТЕКСТ JSON:\n${JSON.stringify({...context,draft,recent:(recent.data||[]).reverse()})}\n\nСООБЩЕНИЕ ПОЛЬЗОВАТЕЛЯ:\n${message}`
       const userInsert=await db.from('jipitina_messages').insert({user_id:user.id,event_id:event.id,role:'user',mode,text:message,created_at:new Date().toISOString()}).select('id').single();if(userInsert.error)throw userInsert.error
-      const reply=await textResponse({instructions:jipitinaInstructions(mode),input,maxOutputTokens:420,reasoningEffort:'none'})
+      const chatSchema={type:'object',additionalProperties:false,properties:{inScope:{type:'boolean'},reply:{type:'string',minLength:1,maxLength:2200}},required:['inScope','reply']}
+      const chat=await structuredResponse<{inScope:boolean;reply:string}>({name:'cinema_chat',schema:chatSchema,instructions:jipitinaInstructions(mode),input,maxOutputTokens:520,reasoningEffort:'none'})
+      const reply=(chat.inScope?String(chat.reply||'').trim():'я здесь только про кино. могу подобрать фильм, разобрать твой кинопрофиль или обсудить просмотренное.').toLocaleLowerCase('ru-RU')
       const assistantInsert=await db.from('jipitina_messages').insert({user_id:user.id,event_id:event.id,role:'assistant',mode,text:reply,created_at:new Date().toISOString()});if(assistantInsert.error)throw assistantInsert.error
       const task=processChatAftermath(db,user.id,message,reply,String(userInsert.data.id),event.id).catch((e:any)=>console.error('chat aftermath failed',e));const edge=(globalThis as any).EdgeRuntime;if(edge?.waitUntil)edge.waitUntil(task)
       return json({ok:true,reply,mode})
