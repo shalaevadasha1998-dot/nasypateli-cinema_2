@@ -900,6 +900,28 @@ export async function handleApi(req:Request){
       const f=body.feedback||{};const invite=Math.max(0,Math.min(10,Number(f.inviteFriend)));const r=await db.from('event_feedback').upsert({event_id:event.id,user_id:user.id,return_intent:String(f.returnIntent||''),strongest_part:String(f.strongest||'').slice(0,1000),improve_text:String(f.improve||'').slice(0,1000),willingness_to_pay:Number(f.willingness)||null,duration_feel:String(f.durationFeel||''),invite_friend:Number.isFinite(invite)?String(invite):null});if(r.error)throw r.error;return json({ok:true})
     }
 
+    if(action==='event-vote'){
+      if(!await hasPaidAccess(db,event.id,user.id))return err('нужен подтверждённый билет',403)
+      const show=await buildShowState(db,event)
+      const round=show.currentRound
+      if(!round?.id||round.status!=='active')return err('сейчас нет активного раунда',409)
+      if(round.voteState!=='open')return err('голосование сейчас закрыто',409)
+      const questionKey=String(round.question?.key||'question')
+      const answer=body.answer
+      const encoded=JSON.stringify(answer)
+      if(answer===undefined||encoded.length>1200)return err('некорректный ответ',422)
+      const vote=await db.from('event_votes').upsert({
+        event_id:event.id,
+        round_id:round.id,
+        question_key:questionKey,
+        user_id:user.id,
+        answer,
+        updated_at:new Date().toISOString()
+      },{onConflict:'round_id,question_key,user_id'}).select('answer').single()
+      if(vote.error)throw vote.error
+      return json({ok:true,answer:vote.data.answer})
+    }
+
     if(!adminTokenOk)await mustAdmin(db,user,tg)
 
     if(action==='admin-fix-registration'){
