@@ -55,7 +55,7 @@ export async function emitStoryTrigger(db:any,userId:string,trigger:string,conte
     if(!await conditionPasses(db,userId,trigger,d.condition||{},context))continue
     const occurrence=d.repeatable?String(eventId||context.occurrenceKey||new Date().toISOString().slice(0,10)):'once'
     const r=await db.rpc('award_story',{p_user_id:userId,p_story_code:d.code,p_event_id:eventId||null,p_occurrence_key:occurrence,p_context:context});if(r.error)throw r.error
-    const row=Array.isArray(r.data)?r.data[0]:r.data;if(row?.awarded){awards.push({code:d.code,title:d.title,visibility:d.visibility,...row});await db.from('notification_queue').upsert({user_id:userId,kind:'stories',text:d.visibility==='secret'?'у вашей Животины появилась новая секретная история':'с Животиной что-то произошло: '+d.title,send_after:new Date().toISOString(),status:'pending',dedupe_key:'story:'+d.code},{onConflict:'user_id,dedupe_key'})}
+    const row=Array.isArray(r.data)?r.data[0]:r.data;if(row?.awarded){awards.push({code:d.code,title:d.title,visibility:d.visibility,...row});await db.from('notification_queue').upsert({user_id:userId,kind:'stories',text:d.visibility==='secret'?'у вашей Животины появилась новая секретная история':'с Животиной что-то произошло: '+d.title,send_after:new Date().toISOString(),status:'pending',dedupe_key:'story:'+d.code+':'+occurrence,event_id:eventId||null},{onConflict:'user_id,dedupe_key'})}
   }
   return awards
 }
