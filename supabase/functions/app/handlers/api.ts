@@ -639,16 +639,39 @@ export async function handleApi(req:Request){
       const target=String(body.userId||'');const code=String(body.storyCode||'');if(!target||!code)return err('userId и storyCode обязательны',422);const r=await db.rpc('award_story',{p_user_id:target,p_story_code:code,p_event_id:event.id,p_occurrence_key:'once',p_context:{source:'admin'}});if(r.error)throw r.error;return json({ok:true,result:r.data})
     }
     if(action==='admin-set-mechanic'){
+      if(!['DRAFT','SALES_OPEN','CHECKIN'].includes(event.status))return err('Режим нельзя менять после открытия приёма идей',409)
       const enabled=body.enabled===true;const settings={...(event.settings||{}),modes:{...(event.settings?.modes||{}),nonexistent_film:{...(event.settings?.modes?.nonexistent_film||{}),enabled,updated_at:new Date().toISOString()}}}
-      const r=await db.from('events').update({settings}).eq('id',event.id);if(r.error)throw r.error;return json({ok:true,enabled})
+      const r=await db.from('events').update({settings}).eq('id',event.id).eq('status',event.status).select('id').maybeSingle();if(r.error)throw r.error;if(!r.data)return err('Этап события уже изменился в другой вкладке. Обновите пульт.',409);return json({ok:true,enabled})
     }
     if(action==='admin-stage'){
-      const to=String(body.status||'');if(to==='IDEAS_OPEN'&&!nonexistentFilmEnabled(event))return err('Сначала включите режим «несуществующий фильм»',409)
-      if(manualTransitions[event.status]!==to && body.force!==true)return err(`Этот переход выполняется отдельным действием: ${event.status} → ${to}`,409)
-      const r=await db.from('events').update({status:to}).eq('id',event.id);if(r.error)throw r.error
+      const to=String(body.status||'')
+      if(body.force===true)return err('Force-переходы отключены. Используйте штатный следующий шаг или отдельное действие этапа.',409)
+      if(manualTransitions[event.status]!==to)return err(`Недопустимый переход: ${event.status} → ${to}. Обновите пульт и используйте следующий шаг.`,409)
+      if(to==='IDEAS_OPEN'&&!nonexistentFilmEnabled(event))return err('Сначала включите режим «несуществующий фильм»',409)
+      if(to==='IDEAS_LOCKED'){
+        const ideas=await db.from('film_ideas').select('*',{count:'exact',head:true}).eq('event_id',event.id);if(ideas.error)throw ideas.error
+        if(Number(ideas.count||0)<3)return err('Нельзя закрыть идеи: нужно минимум 3 заявки для следующего шага',409)
+      }
+      if(to==='WATCHING'){
+        const [movie,questions]=await Promise.all([
+          db.from('event_movie').select('availability_status').eq('event_id',event.id).maybeSingle(),
+          db.from('prediction_questions').select('*',{count:'exact',head:true}).eq('event_id',event.id)
+        ])
+        if(movie.error)throw movie.error;if(questions.error)throw questions.error
+        if(movie.data?.availability_status!=='confirmed')return err('Перед просмотром подтвердите доступность выбранного фильма',409)
+        if(Number(questions.count||0)!==10)return err('Перед просмотром должны быть сохранены все 10 прогнозов',409)
+      }
+      if(to==='DISCUSSION'){
+        const score=await db.from('event_outputs').select('id').eq('event_id',event.id).eq('output_key','score_summary').maybeSingle();if(score.error)throw score.error
+        if(!score.data)return err('Сначала завершите подсчёт прогнозов',409)
+      }
+      if(to==='CLOSED'&&String(body.confirm||'')!=='CLOSE_EVENT')return err('Закрытие вечера требует отдельного подтверждения',422)
+      const r=await db.from('events').update({status:to}).eq('id',event.id).eq('status',event.status).select('id').maybeSingle();if(r.error)throw r.error
+      if(!r.data)return err('Этап события уже изменился в другой вкладке. Обновите пульт.',409)
       let noShows=0
       if(to==='CLOSED'){const absent=await db.from('registrations').update({status:'no_show'}).eq('event_id',event.id).eq('status','paid').select('user_id');if(absent.error)throw absent.error;noShows=(absent.data||[]).length;if(noShows)await refreshLeaderboard(db,(absent.data||[]).map((x:any)=>x.user_id))}
-      await db.from('event_transitions').insert({event_id:event.id,from_status:event.status,to_status:to,actor_user_id:user?.id||null,metadata:{forced:body.force===true,no_shows:noShows}});return json({ok:true,status:to,noShows})
+      const transition=await db.from('event_transitions').insert({event_id:event.id,from_status:event.status,to_status:to,actor_user_id:user?.id||null,metadata:{forced:false,no_shows:noShows}});if(transition.error)throw transition.error
+      return json({ok:true,status:to,noShows})
     }
     if(action==='admin-event-config'){
       const patch:any={}
