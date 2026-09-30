@@ -1737,8 +1737,8 @@ export async function handleApi(req:Request){
       const checks:any[]=[]
       const add=(key:string,label:string,status:'pass'|'warn'|'fail'|'info',detail:string)=>checks.push({key,label,status,detail})
       const screenConfigured=!!String(Deno.env.get('SCREEN_ACCESS_TOKEN')||'').trim()&&!!String(Deno.env.get('TELEGRAM_WEBAPP_URL')||'').trim()
-      add('screen','projector access',screenConfigured?'pass':'fail',screenConfigured?'screen token и webapp url настроены':'не хватает SCREEN_ACCESS_TOKEN или TELEGRAM_WEBAPP_URL')
-      add('telegram','telegram bot',telegram?'pass':'fail',telegram?'бот и webhook отвечают корректно':'бот или webhook не прошёл runtime-проверку')
+      add('screen','экран / проектор',screenConfigured?'pass':'fail',screenConfigured?'доступ к большому экрану настроен':'не настроен закрытый доступ к большому экрану')
+      add('telegram','telegram',telegram?'pass':'fail',telegram?'бот и связь с приложением работают':'бот или связь с приложением не прошли проверку')
 
       const blocks=Array.isArray(programR.data?.config?.blocks)?programR.data.config.blocks.filter((x:any)=>x?.enabled!==false):[]
       const requiredTypes=['arrival','onboarding','warm_up','cinema_rounds','music_live','final_vote','finale']
@@ -1746,8 +1746,8 @@ export async function handleApi(req:Request){
       const duration=blocks.reduce((sum:number,x:any)=>sum+Math.max(0,Number(x?.duration_min||0)),0)
       add('program','программа вечера',blocks.length&&missingTypes.length===0?'pass':'fail',
         blocks.length?(`${blocks.length} блоков · ${duration} мин${missingTypes.length?' · нет: '+missingTypes.join(', '):''}`):'программа пустая')
-      add('runtime','show runtime',runtimeR.data?'pass':'fail',runtimeR.data?`${runtimeR.data.run_status} · блок ${runtimeR.data.current_block_id}`:'runtime не создан')
-      add('projector_state','projector state',projectorR.data?'pass':'fail',projectorR.data?`${projectorR.data.state} · revision ${projectorR.data.revision}`:'projector state не создан')
+      add('runtime','состояние мероприятия',runtimeR.data?'pass':'fail',runtimeR.data?`режим: ${runtimeR.data.run_status} · текущий блок: ${runtimeR.data.current_block_id}`:'состояние мероприятия не создано')
+      add('projector_state','что сейчас на экране',projectorR.data?'pass':'fail',projectorR.data?`режим экрана: ${projectorR.data.state}`:'состояние большого экрана не создано')
 
       const packages=packagesR.data||[]
       const questions=questionsR.data||[]
@@ -1759,7 +1759,7 @@ export async function handleApi(req:Request){
       const packageProblems:string[]=[]
       for(const m of enabledMovies){
         const p:any=packagesByMovie.get(String(m.id))
-        if(!p){packageProblems.push(String(m.title||m.id)+' · нет package');continue}
+        if(!p){packageProblems.push(String(m.title||m.id)+' · не подготовлен');continue}
         const fragments=Array.isArray(p.fragments)?p.fragments:[]
         const fragmentsOk=fragments.length===6&&fragments.every((x:any)=>{
           const start=Math.max(0,Number(x?.startSec||0))
@@ -1773,7 +1773,7 @@ export async function handleApi(req:Request){
       }
       const coveredPackages=enabledMovies.length-packageProblems.length
       add('film_packages','кинопакеты',enabledMovies.length>0&&packageProblems.length===0?'pass':'fail',
-        enabledMovies.length?`${coveredPackages}/${enabledMovies.length} enabled-фильмов полностью готовы${packageProblems.length?' · проверить: '+packageProblems.join(', '):''}`:'enabled-фильмов нет')
+        enabledMovies.length?`${coveredPackages} из ${enabledMovies.length} фильмов полностью готовы${packageProblems.length?' · проверить: '+packageProblems.join(', '):''}`:'нет включённых фильмов')
 
       const sources=sourcesR.data||[]
       const unavailableMovies=enabledMovies.filter((m:any)=>!sources.some((s:any)=>
@@ -1782,7 +1782,7 @@ export async function handleApi(req:Request){
         (String(s.rights_status)==='allowed'||String(s.metadata?.manual_selected||'false')==='true')
       ))
       add('video_sources','видеоисточники',enabledMovies.length>0&&unavailableMovies.length===0?'pass':'fail',
-        enabledMovies.length?`${enabledMovies.length-unavailableMovies.length}/${enabledMovies.length} фильмов имеют пригодный source${unavailableMovies.length?' · нет source: '+unavailableMovies.map((x:any)=>x.title).join(', '):''}`:'фильмов в пуле нет')
+        enabledMovies.length?`${enabledMovies.length-unavailableMovies.length} из ${enabledMovies.length} фильмов имеют рабочее видео${unavailableMovies.length?' · нет подходящего видео: '+unavailableMovies.map((x:any)=>x.title).join(', '):''}`:'фильмов пока нет')
 
       const venueName=String(event.venue_name||'').trim()
       const venueAddress=String(event.venue_address||'').trim()
@@ -1793,7 +1793,7 @@ export async function handleApi(req:Request){
       const confirmed=regs.filter((x:any)=>['paid','attended'].includes(String(x.status))).length
       const attended=regs.filter((x:any)=>String(x.status)==='attended').length
       const waitlist=regs.filter((x:any)=>String(x.status)==='waitlist').length
-      add('attendance','участники','info',`confirmed ${confirmed} · attended ${attended} · waitlist ${waitlist} · capacity ${event.capacity}`)
+      add('attendance','участники','info',`подтвердили: ${confirmed} · пришли: ${attended} · ждут: ${waitlist} · всего мест: ${event.capacity}`)
 
       const failed=checks.filter(x=>x.status==='fail').length
       const warnings=checks.filter(x=>x.status==='warn').length
