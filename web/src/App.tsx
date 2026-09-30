@@ -399,9 +399,63 @@ function MovieCatalogAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(act
   const [draft,setDraft]=useState<any>(empty)
   const edit=(m:any)=>setDraft({movieId:m.id,title:m.title,year:m.year||'',genre:m.genre||'',videoId:m.videoId||'',sourceUrl:m.sourceUrl||'',sourcePlatform:m.sourcePlatform||'youtube',startSec:m.startSec||0,endSec:m.endSec??'',usageStatus:m.usageStatus||'needs_review',sourceVerified:m.sourceVerified===true,animalComment:m.animalComment||''})
   const save=async()=>{const res=await run('admin-movie-save',draft);if(res)setDraft(empty)}
-  return <Card className="movie-catalog-admin"><div className="section-title">каталог видео. preflight</div><p className="muted">рандом берёт только ready / partial / no_video и исключает уже выпавшее</p><div className="movie-preflight-list">{catalog.map(m=><button type="button" onClick={()=>edit(m)} key={m.id}><b>{m.title}</b><span>{m.usageStatus||'needs_review'}. {m.videoId?'video id есть':'без video id'}</span></button>)}</div><div className="movie-editor"><Field label="фильм"><input value={draft.title} onChange={e=>setDraft((v:any)=>({...v,title:e.target.value}))} placeholder="название"/></Field><div className="inline"><Field label="год"><input type="number" value={draft.year} onChange={e=>setDraft((v:any)=>({...v,year:e.target.value}))}/></Field><Field label="жанр"><input value={draft.genre} onChange={e=>setDraft((v:any)=>({...v,genre:e.target.value}))}/></Field></div><Field label="youtube video id"><input value={draft.videoId} onChange={e=>setDraft((v:any)=>({...v,videoId:e.target.value}))} placeholder="без полного url"/></Field><Field label="или source url"><input value={draft.sourceUrl} onChange={e=>setDraft((v:any)=>({...v,sourceUrl:e.target.value}))}/></Field><div className="inline"><Field label="start sec"><input type="number" min="0" value={draft.startSec} onChange={e=>setDraft((v:any)=>({...v,startSec:Number(e.target.value)}))}/></Field><Field label="end sec"><input type="number" min="0" value={draft.endSec} onChange={e=>setDraft((v:any)=>({...v,endSec:e.target.value}))}/></Field></div><Field label="статус"><select value={draft.usageStatus} onChange={e=>setDraft((v:any)=>({...v,usageStatus:e.target.value}))}><option value="needs_review">needs_review</option><option value="ready">ready</option><option value="partial">partial</option><option value="no_video">no_video</option><option value="blocked">blocked</option></select></Field><Field label="fallback животины"><textarea value={draft.animalComment} onChange={e=>setDraft((v:any)=>({...v,animalComment:e.target.value}))} placeholder="что сказать, если видео нет"/></Field><label className="toggle-row"><span>источник проверен вручную</span><button type="button" className={draft.sourceVerified?'switch on':'switch'} onClick={()=>setDraft((v:any)=>({...v,sourceVerified:!v.sourceVerified}))}><i/></button></label><Button disabled={busy||!draft.title.trim()} onClick={save}>{draft.movieId?'сохранить фильм':'добавить фильм'}</Button>{draft.movieId&&<Button kind="secondary" onClick={()=>setDraft(empty)}>новый фильм</Button>}</div></Card>
+  const selectedMovie=draft.movieId?catalog.find(m=>m.id===draft.movieId):undefined
+  const sources=selectedMovie?.sourceCandidates||[]
+  const selectedSource=sources.find(s=>s.selected)||sources.find(s=>s.sourceUrl===selectedMovie?.sourceUrl)
+  const sourceLabel=(s:any)=>s.useMode==='fragment'?(s.sourceType==='full_film'?'фрагмент из полного фильма':'фрагмент'):(s.sourceType==='teaser'?'тизер':'трейлер')
+  return <Card className="movie-catalog-admin">
+    <div className="section-title">каталог видео. preflight</div>
+    <p className="muted">животина сначала ищет фрагменты по всем подключённым источникам. трейлеры и тизеры используются только как fallback.</p>
+    <div className="movie-preflight-list">{catalog.map(m=>{
+      const picked=(m.sourceCandidates||[]).find(s=>s.selected)
+      return <button type="button" onClick={()=>edit(m)} key={m.id}>
+        <b>{m.title}</b>
+        <span>{picked?sourceLabel(picked):m.videoId?'старый источник':'источник не выбран'} · {(m.sourceCandidates||[]).length} найдено</span>
+      </button>
+    })}</div>
+    {selectedMovie&&<div className="movie-source-panel">
+      <div className="row spread">
+        <div>
+          <div className="section-title">источники · {selectedMovie.title}</div>
+          <p className="muted">{selectedSource
+            ?<>сейчас выбрано: <b>{sourceLabel(selectedSource)}</b> · {selectedSource.sourcePlatform}</>
+            :'подходящий источник пока не выбран'}</p>
+        </div>
+        <Button kind="secondary" disabled={busy} onClick={()=>run('admin-discover-movie-sources',{movieId:selectedMovie.id})}>перепроверить источники</Button>
+      </div>
+      {sources.length?<div className="movie-source-list">{sources.map(s=><div className={'movie-source-row'+(s.selected?' selected':'')+(s.availabilityStatus==='dead'||s.availabilityStatus==='blocked'?' unavailable':'')} key={s.id}>
+        <div className="movie-source-main">
+          <div className="movie-source-title">
+            <b>{sourceLabel(s)}</b>
+            {s.selected&&<span className="movie-source-selected">выбран</span>}
+            <span>{s.sourcePlatform}</span>
+          </div>
+          <small>{s.title||s.sourceChannel||s.sourceUrl}</small>
+          <div className="movie-source-flags">
+            <span>{Math.round(Number(s.confidence||0)*100)}% confidence</span>
+            <span>{s.verified?'verified':'не проверен'}</span>
+            <span>{s.embeddable?'встраивается':'не встраивается'}</span>
+            <span>{s.rightsStatus}</span>
+            <span>{s.availabilityStatus}</span>
+            {s.official&&<span>official</span>}
+          </div>
+        </div>
+        <a href={s.sourceUrl} target="_blank" rel="noreferrer">открыть ↗</a>
+      </div>)}</div>:<p className="muted movie-source-empty">источников ещё нет. нажмите «перепроверить источники».</p>}
+    </div>}
+    <div className="movie-editor">
+      <Field label="фильм"><input value={draft.title} onChange={e=>setDraft((v:any)=>({...v,title:e.target.value}))} placeholder="название"/></Field>
+      <div className="inline"><Field label="год"><input type="number" value={draft.year} onChange={e=>setDraft((v:any)=>({...v,year:e.target.value}))}/></Field><Field label="жанр"><input value={draft.genre} onChange={e=>setDraft((v:any)=>({...v,genre:e.target.value}))}/></Field></div>
+      <Field label="youtube video id"><input value={draft.videoId} onChange={e=>setDraft((v:any)=>({...v,videoId:e.target.value}))} placeholder="без полного url"/></Field>
+      <Field label="или source url"><input value={draft.sourceUrl} onChange={e=>setDraft((v:any)=>({...v,sourceUrl:e.target.value}))}/></Field>
+      <div className="inline"><Field label="start sec"><input type="number" min="0" value={draft.startSec} onChange={e=>setDraft((v:any)=>({...v,startSec:Number(e.target.value)}))}/></Field><Field label="end sec"><input type="number" min="0" value={draft.endSec} onChange={e=>setDraft((v:any)=>({...v,endSec:e.target.value}))}/></Field></div>
+      <Field label="статус"><select value={draft.usageStatus} onChange={e=>setDraft((v:any)=>({...v,usageStatus:e.target.value}))}><option value="needs_review">needs_review</option><option value="ready">ready</option><option value="partial">partial</option><option value="no_video">no_video</option><option value="blocked">blocked</option></select></Field>
+      <Field label="fallback животины"><textarea value={draft.animalComment} onChange={e=>setDraft((v:any)=>({...v,animalComment:e.target.value}))} placeholder="что сказать, если видео нет"/></Field>
+      <label className="toggle-row"><span>источник проверен вручную</span><button type="button" className={draft.sourceVerified?'switch on':'switch'} onClick={()=>setDraft((v:any)=>({...v,sourceVerified:!v.sourceVerified}))}><i/></button></label>
+      <Button disabled={busy||!draft.title.trim()} onClick={save}>{draft.movieId?'сохранить фильм':'добавить фильм'}</Button>{draft.movieId&&<Button kind="secondary" onClick={()=>setDraft(empty)}>новый фильм</Button>}
+    </div>
+  </Card>
 }
-
 
 function FilmPackagePrepAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(action:string,payload?:Record<string,unknown>)=>Promise<any>}){
   const catalog=(data.movieCatalog||[]).filter(m=>m.enabledForEvent!==false)
