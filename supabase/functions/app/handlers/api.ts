@@ -782,7 +782,7 @@ export async function handleApi(req:Request){
       ])
       if(attended.error)throw attended.error
       const ids=(attended.data||[]).map((x:any)=>String(x.user_id))
-      const creatures=ids.length?await db.from('creatures').select('user_id,name,stage,crumbs,growth_progress').in('user_id',ids):{data:[],error:null} as any
+      const creatures=ids.length?await db.from('creatures').select('user_id,name,stage,crumbs,growth_progress,settings').in('user_id',ids):{data:[],error:null} as any
       if(creatures.error)throw creatures.error
       const creatureMap=new Map((creatures.data||[]).map((x:any)=>[String(x.user_id),x]))
       const screenCreatures=(await Promise.all(ids.map(async(userId)=>{
@@ -790,6 +790,7 @@ export async function handleApi(req:Request){
         if(!x)return null
         return {
           id:await publicScreenAnimalId(event.id,userId),name:String(x.name||'животина'),stage:String(x.stage||'stage_0'),
+          visualVariant:Math.max(1,Math.min(50,Math.round(Number(x.settings?.visual_variant||1)))),
           crumbs:Number(x.crumbs||0),growthProgress:Number(x.growth_progress||0)
         }
       }))).filter(Boolean)
