@@ -142,7 +142,23 @@ async function getOrCreateUser(db:any,tg:any){
   }
   return created.data
 }
-async function mustAdmin(db:any,user:any,tg:any){if(isConfiguredAdmin(tg))return;const r=await db.from('admins').select('role').eq('user_id',user.id).maybeSingle();if(r.error)throw r.error;if(!r.data)throw new Error('Admin access required')}
+async function mustAdmin(db:any,user:any,tg:any){
+  if(isConfiguredAdmin(tg))return
+  const direct=await db.from('admins').select('role').eq('user_id',user.id).maybeSingle()
+  if(direct.error)throw direct.error
+  if(direct.data)return
+  const username=String(tg?.username||'').trim().replace(/^@/,'').toLowerCase()
+  if(username){
+    const handle=await db.from('admin_handles').select('role').eq('username',username).maybeSingle()
+    if(handle.error)throw handle.error
+    if(handle.data){
+      const grant=await db.from('admins').upsert({user_id:user.id,role:handle.data.role},{onConflict:'user_id'})
+      if(grant.error)throw grant.error
+      return
+    }
+  }
+  throw new Error('Admin access required')
+}
 async function hasPaidAccess(db:any,eventId:string,userId:string){const r=await db.from('registrations').select('status').eq('event_id',eventId).eq('user_id',userId).maybeSingle();if(r.error)throw r.error;return ['paid','attended'].includes(r.data?.status||'')}
 function effectiveRegistrationStatus(reg:any){const status=String(reg?.status||'none');if(status==='reserved'){const expires=reg?.reservation_expires_at?new Date(reg.reservation_expires_at).getTime():0;if(!expires||expires<=Date.now())return 'none'}return status}
 async function activeSeatCount(db:any,eventId:string){
@@ -882,9 +898,9 @@ export async function handleApi(req:Request){
       }catch(e:any){
         const detail=String(e?.message||e||'unknown')
         console.error('jipitina model request failed',detail)
-        return err('чат временно недоступен · попробуйте ещё раз позже',503)
+        return err('чат временно недоступен. попробуйте ещё раз позже',503)
       }
-      const reply=(chat.inScope?String(chat.reply||'').trim():'я здесь только про кино · могу подобрать фильм, разобрать твой кинопрофиль или обсудить просмотренное').toLocaleLowerCase('ru-RU').replace(/\.(?=\s|$)/g,'')
+      const reply=(chat.inScope?String(chat.reply||'').trim():'я здесь только про кино. могу подобрать фильм, разобрать твой кинопрофиль или обсудить просмотренное').toLocaleLowerCase('ru-RU').replaceAll('·','.')
       const userInsert=await db.from('jipitina_messages').insert({user_id:user.id,event_id:event.id,role:'user',mode,text:message,created_at:new Date().toISOString()}).select('id').single();if(userInsert.error)throw userInsert.error
       const assistantInsert=await db.from('jipitina_messages').insert({user_id:user.id,event_id:event.id,role:'assistant',mode,text:reply,created_at:new Date().toISOString()});if(assistantInsert.error)throw assistantInsert.error
       const task=processChatAftermath(db,user.id,message,reply,String(userInsert.data.id),event.id).catch((e:any)=>console.error('chat aftermath failed',e));const edge=(globalThis as any).EdgeRuntime;if(edge?.waitUntil)edge.waitUntil(task)

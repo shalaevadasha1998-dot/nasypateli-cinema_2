@@ -1917,3 +1917,27 @@ body{text-transform:lowercase}
     display:grid;
   }
 }
+
+
+/* v0.10.1 — chat composer always visible */
+.chat-page{
+  animation:none!important;
+  transform:none!important;
+}
+.chat-compose-portal{
+  position:fixed!important;
+  z-index:120!important;
+  left:max(12px,env(safe-area-inset-left))!important;
+  right:max(12px,env(safe-area-inset-right))!important;
+  bottom:calc(76px + max(env(safe-area-inset-bottom),var(--tg-content-safe-area-inset-bottom,0px)))!important;
+  width:auto!important;
+  max-width:720px!important;
+  margin:0 auto!important;
+}
+@media(max-width:600px){
+  .chat-compose-portal{
+    left:max(10px,env(safe-area-inset-left))!important;
+    right:max(10px,env(safe-area-inset-right))!important;
+    bottom:calc(74px + max(env(safe-area-inset-bottom),var(--tg-content-safe-area-inset-bottom,0px)))!important;
+  }
+}
