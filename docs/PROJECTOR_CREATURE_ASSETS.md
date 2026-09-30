@@ -25,6 +25,9 @@
 
 ### пять стадий животины
 
+код уже пытается загрузить эти файлы автоматически. если конкретного файла нет или он не загрузился, projector без падения использует текущий rabbit fallback.
+
+
 1. projector-stage-0.webp
 2. projector-stage-1.webp
 3. projector-stage-2.webp
