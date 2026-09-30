@@ -771,14 +771,21 @@ export async function handleApi(req:Request){
         }catch{return err('Доступ к пульту запрещён',401)}
       }
       const event=await eventBySlug(db,String(body.slug||'2026-10-03'))
-      const [state,adminParticipants,movieCatalog,showLog]=await Promise.all([
+      const [state,adminParticipants,movieCatalog,showLog,movieSources]=await Promise.all([
         buildEventState(db,event,{includeActuals:true,includePrivateOutputs:true}),
         adminParticipantRows(db,event.id),
         db.from('movie_candidates').select('*').eq('event_id',event.id).order('title'),
-        db.from('event_runtime_log').select('id,action,created_at').eq('event_id',event.id).order('created_at',{ascending:false}).limit(20)
+        db.from('event_runtime_log').select('id,action,created_at').eq('event_id',event.id).order('created_at',{ascending:false}).limit(20),
+        db.from('movie_source_candidates').select('*').eq('event_id',event.id).order('discovered_at',{ascending:false})
       ])
       if(movieCatalog.error)throw movieCatalog.error
       if(showLog.error)throw showLog.error
+      if(movieSources.error)throw movieSources.error
+      const sourceByMovie=new Map<string,any[]>()
+      for(const s of movieSources.data||[]){
+        const key=String(s.movie_candidate_id)
+        sourceByMovie.set(key,[...(sourceByMovie.get(key)||[]),s])
+      }
       const [filmPackages,reviewQueue,projector]=await Promise.all([
         filmAdminPackages(db,event.id),
         filmAdminReviews(db,event.id),
@@ -792,7 +799,15 @@ export async function handleApi(req:Request){
         startSec:x.start_sec??undefined,endSec:x.end_sec??undefined,sourceChannel:x.source_channel||undefined,
         sourceVerified:x.source_verified===true,verifiedAt:x.verified_at||undefined,usageStatus:x.usage_status||'needs_review',
         discussionPrompts:Array.isArray(x.discussion_prompts)?x.discussion_prompts:[],animalComment:x.animal_comment||undefined,
-        tags:Array.isArray(x.tags)?x.tags:[]
+        tags:Array.isArray(x.tags)?x.tags:[],
+        sourceCandidates:(sourceByMovie.get(String(x.id))||[]).map((s:any)=>({
+          id:String(s.id),useMode:String(s.use_mode),sourceType:String(s.source_type),sourcePlatform:String(s.source_platform),
+          sourceUrl:String(s.source_url),videoId:s.video_id||undefined,title:s.title||undefined,sourceChannel:s.source_channel||undefined,
+          startSec:Number(s.start_sec||0),endSec:s.end_sec==null?undefined:Number(s.end_sec),verified:s.verified===true,
+          embeddable:s.embeddable===true,official:s.official===true,rightsStatus:String(s.rights_status),
+          availabilityStatus:String(s.availability_status),confidence:Number(s.confidence||0),discoveredAt:s.discovered_at,
+          selected:String(s.source_url)===String(x.source_url||'')&&Number(s.start_sec||0)===Number(x.start_sec||0)
+        }))
       })),showLog:(showLog.data||[]).map((x:any)=>({id:String(x.id),action:x.action,createdAt:x.created_at}))})
     }
 
