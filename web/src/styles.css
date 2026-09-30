@@ -2701,3 +2701,62 @@ body{text-transform:lowercase}
 }
 
 /* animated rabbit assets shipped */
+
+
+/* dora voice input */
+.chat-compose .mic{
+  position:relative;
+  width:46px;
+  height:46px;
+  min-width:46px;
+  padding:0;
+  border:1px solid #30332d;
+  border-radius:14px;
+  background:#11120f;
+  color:#9aa58d;
+}
+.chat-compose .mic:before{
+  content:"";
+  position:absolute;
+  left:50%;
+  top:10px;
+  width:10px;
+  height:16px;
+  transform:translateX(-50%);
+  border:2px solid currentColor;
+  border-radius:8px;
+}
+.chat-compose .mic:after{
+  content:"";
+  position:absolute;
+  left:50%;
+  top:24px;
+  width:18px;
+  height:10px;
+  transform:translateX(-50%);
+  border:2px solid currentColor;
+  border-top:0;
+  border-radius:0 0 10px 10px;
+}
+.chat-compose .mic.recording{
+  color:#ef765f;
+  border-color:rgba(239,118,95,.55);
+  background:rgba(239,118,95,.08);
+  animation:dora-recording 1s ease-in-out infinite alternate;
+}
+.chat-compose .mic span{
+  position:absolute;
+  inset:0;
+  display:grid;
+  place-items:center;
+  z-index:2;
+  background:inherit;
+  border-radius:inherit;
+  font-size:18px;
+  font-weight:800;
+}
+.chat-compose .mic span:empty{display:none}
+@keyframes dora-recording{
+  from{box-shadow:0 0 0 0 rgba(239,118,95,.08)}
+  to{box-shadow:0 0 0 7px rgba(239,118,95,.08)}
+}
