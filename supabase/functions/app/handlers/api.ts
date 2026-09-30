@@ -1275,19 +1275,19 @@ export async function handleApi(req:Request){
       const mode=allowedChatModes.has(String(body.mode))?String(body.mode):'general';const message=String(body.message||'').trim().slice(0,3000);if(!message)return err('Напишите сообщение')
       if(mode==='idea_coach'){mechanicsRequired(event);if(!await hasPaidAccess(db,event.id,user.id))return err('Нужен оплаченный билет',403);if(event.status!=='IDEAS_OPEN')return err('Идеи сейчас не принимаются',409)}
       if(mode==='post_film'){if(!await hasPaidAccess(db,event.id,user.id))return err('Нужен оплаченный билет',403);if(!['DISCUSSION','FINAL_REVIEW','FEEDBACK','CLOSED'].includes(event.status))return err('Разговор после фильма ещё не открыт',409)}
-      const context=await chatContext(db,event,user,profile);const recent=await db.from('jipitina_messages').select('role,text,mode').eq('user_id',user.id).order('created_at',{ascending:false}).limit(8);if(recent.error)throw recent.error
+      const context=await chatContext(db,event,user,profile);const recent=await db.from('jipitina_messages').select('role,text,mode').eq('user_id',user.id).order('created_at',{ascending:false}).limit(16);if(recent.error)throw recent.error
       const draft=mode==='idea_coach'?{title:String(body.draftTitle||''),plot:String(body.draftPlot||'')}:undefined
       const input=`КОНТЕКСТ JSON:\n${JSON.stringify({...context,draft,recent:(recent.data||[]).reverse()})}\n\nСООБЩЕНИЕ ПОЛЬЗОВАТЕЛЯ:\n${message}`
-      const chatSchema={type:'object',additionalProperties:false,properties:{inScope:{type:'boolean'},reply:{type:'string',minLength:1,maxLength:2200}},required:['inScope','reply']}
-      let chat:{inScope:boolean;reply:string}
+      const chatSchema={type:'object',additionalProperties:false,properties:{reply:{type:'string',minLength:1,maxLength:2200}},required:['reply']}
+      let chat:{reply:string}
       try{
-        chat=await structuredResponse<{inScope:boolean;reply:string}>({name:'cinema_chat',schema:chatSchema,instructions:jipitinaInstructions(mode),input,maxOutputTokens:520,reasoningEffort:'none'})
+        chat=await structuredResponse<{reply:string}>({name:'dora_chat',schema:chatSchema,instructions:jipitinaInstructions(mode),input,maxOutputTokens:620,reasoningEffort:'none'})
       }catch(e:any){
         const detail=String(e?.message||e||'unknown')
         console.error('jipitina model request failed',detail)
         return err('чат временно недоступен. попробуйте ещё раз позже',503)
       }
-      const reply=(chat.inScope?String(chat.reply||'').trim():'я здесь только про кино. могу подобрать фильм, разобрать твой кинопрофиль или обсудить просмотренное').toLocaleLowerCase('ru-RU').replaceAll('·','.')
+      const reply=String(chat.reply||'').trim().toLocaleLowerCase('ru-RU').replaceAll('·','.').replace(/\.+$/,'')
       const userInsert=await db.from('jipitina_messages').insert({user_id:user.id,event_id:event.id,role:'user',mode,text:message,created_at:new Date().toISOString()}).select('id').single();if(userInsert.error)throw userInsert.error
       const assistantInsert=await db.from('jipitina_messages').insert({user_id:user.id,event_id:event.id,role:'assistant',mode,text:reply,created_at:new Date().toISOString()});if(assistantInsert.error)throw assistantInsert.error
       const task=processChatAftermath(db,user.id,message,reply,String(userInsert.data.id),event.id).catch((e:any)=>console.error('chat aftermath failed',e));const edge=(globalThis as any).EdgeRuntime;if(edge?.waitUntil)edge.waitUntil(task)
