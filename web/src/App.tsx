@@ -556,7 +556,53 @@ function ScreenCreatureWall({data}:{data:DemoState}){
   </div>
 }
 
+
+function ProjectorFragment({fragment,title}:{fragment:any;title:string}){
+  if(!fragment?.videoId)return <><div className="eyebrow">фрагмент</div><h1>{title}</h1><p>для этого фрагмента пока не указан video id</p></>
+  const start=Math.max(0,Number(fragment.startSec||0))
+  const end=fragment.endSec&&Number(fragment.endSec)>start?Number(fragment.endSec):undefined
+  const qs=new URLSearchParams({autoplay:'1',controls:'0',rel:'0',modestbranding:'1',start:String(start)})
+  if(end)qs.set('end',String(end))
+  const src='https://www.youtube.com/embed/'+encodeURIComponent(String(fragment.videoId))+'?'+qs.toString()
+  return <div className="screen-video-wrap"><iframe title={title} src={src} allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen/></div>
+}
+
+function ScreenWordWall({groups,collecting=false}:{groups:any[];collecting?:boolean}){
+  const max=Math.max(1,...groups.map(x=>Number(x.count||0)))
+  return <div className="screen-word-wall">{groups.map((g:any,i:number)=>{
+    const scale=.82+(Number(g.count||1)/max)*1.05
+    return <div className="screen-word" key={String(g.word)+'-'+i} style={{fontSize:'calc(clamp(28px,4.7vw,76px) * '+scale+')'}}><b>{String(g.word)}</b>{Number(g.count||0)>1&&<span>×{g.count}</span>}{Array.isArray(g.animals)&&g.animals.length>0&&<small>{g.animals.slice(0,6).join(' · ')}</small>}</div>
+  })}{!groups.length&&<div className="screen-word-empty">{collecting?'слова появятся здесь вживую':'зал пока молчит'}</div>}</div>
+}
+
+function ProjectorAnswerBars({results}:{results:any[]}){
+  const total=results.reduce((sum,x)=>sum+Number(x.count||0),0)||1
+  return <div className="screen-results">{results.map((x:any,i:number)=><div key={i}><div className="screen-result-label"><span>{answerText(x.answer)}</span><b>{x.count}</b></div><div className="screen-result-bar"><i style={{width:Math.round(Number(x.count||0)/total*100)+'%'}}/></div></div>)}</div>
+}
+
+function projectorContent(d:DemoState){
+  const p=d.projector
+  if(!p||['idle','arrival'].includes(p.state))return null
+  const payload:any=p.payload||{}
+  if(p.state==='film_intro')return <ProjectorFragment fragment={payload.fragment} title={String(payload.filmTitle||'фильм')}/>
+  if(p.state==='one_word_collecting')return <><div className="eyebrow">первое впечатление</div><h1>одно слово.<br/>что это за фильм?</h1><ScreenWordWall groups={Array.isArray(payload.wordGroups)?payload.wordGroups:[]} collecting/></>
+  if(p.state==='one_word_results')return <><div className="eyebrow">зал до полного просмотра</div><h1>вот что вы увидели</h1><ScreenWordWall groups={Array.isArray(payload.wordGroups)?payload.wordGroups:[]}/></>
+  if(p.state==='question_open')return <><div className="eyebrow">что будет дальше · {Number(payload.position||0)}/5</div><h1>{String(payload.prompt||'что будет дальше?')}</h1><div className="screen-question-options">{(Array.isArray(payload.options)?payload.options:[]).map((x:any,i:number)=><span key={i}>{answerText(x)}</span>)}</div><p>ответьте в телефоне</p></>
+  if(p.state==='question_results')return <><div className="eyebrow">как решил зал · {Number(payload.position||0)}/5</div><h1>{String(payload.prompt||'результаты')}</h1><ProjectorAnswerBars results={Array.isArray(payload.results)?payload.results:[]}/></>
+  if(p.state==='question_reveal'){
+    const fragment=payload.revealFragment
+    if(fragment?.videoId)return <><ProjectorFragment fragment={fragment} title={String(payload.filmTitle||'продолжение')}/><div className="screen-reveal-overlay"><small>правильный ответ</small><b>{answerText(payload.correctAnswer)}</b>{payload.revealText&&<span>{String(payload.revealText)}</span>}</div></>
+    return <><div className="eyebrow">правильный ответ · {Number(payload.position||0)}/5</div><h1>{answerText(payload.correctAnswer)}</h1>{payload.revealText&&<p>{String(payload.revealText)}</p>}</>
+  }
+  if(p.state==='assignment_randomizing')return <div className="screen-assignment-random"><div className="eyebrow">этот фильм кто-то унесёт с собой</div><h1>кому он достанется?</h1><div className="random-rabbits">{[0,1,2,3,4,5,6].map(i=><img key={i} src={import.meta.env.BASE_URL+'assets/rabbit-baby.png'} alt="" draggable={false}/>)}</div></div>
+  if(p.state==='assignment_winner')return <div className="screen-assignment-winner"><div className="winner-rabbit"><img src={import.meta.env.BASE_URL+'assets/rabbit-baby.png'} alt="" draggable={false}/></div><div className="eyebrow">этот фильм твой</div><h1>{String(payload.animalName||'животина')}.</h1><h2>{String(payload.filmTitle||'фильм')}</h2><p>досмотри его за 7 дней. потом я спрошу.</p>{payload.dueAt&&<div className="winner-deadline">до {eventDate(String(payload.dueAt))}</div>}</div>
+  if(p.state==='past_review_card')return <div className="screen-past-review"><div className="eyebrow">в прошлый раз</div><h1>{String(payload.animalName||'животина')} × {String(payload.filmTitle||'фильм')}</h1><div className="review-before-after"><span><small>до</small>«{String(payload.beforeWord||'')}»</span><span><small>после</small>«{String(payload.afterWord||'')}»</span></div><p>{String(payload.crumbs||'—')}/5 крошек</p>{payload.animalTake&&<h3>{String(payload.animalTake)}</h3>}</div>
+  return null
+}
+
 function screenContent(d:DemoState){
+  const projected=projectorContent(d)
+  if(projected)return projected
   const show=d.show
   if(show&&show.runtime.currentBlock?.type==='arrival'&&!['paused','finished'].includes(show.runtime.runStatus))return <><div className="eyebrow">сбор гостей</div><h1>животины заходят в зал</h1><ScreenCreatureWall data={d}/></>
   if(show&&show.runtime.runStatus!=='idle'){
@@ -595,7 +641,8 @@ function showTimerText(data:DemoState,now:number){
   return `${Math.floor(left/60)}:${String(left%60).padStart(2,'0')}`
 }
 
-function Screen(){const {slug}=useParams();const {data,error}=usePrivilegedState('screen',slug);const [now,setNow]=useState(()=>Date.now());useEffect(()=>{const t=window.setInterval(()=>setNow(Date.now()),1000);return()=>window.clearInterval(t)},[]);if(!data)return <Loading error={error}/>;const content=screenContent(data);const timer=showTimerText(data,now);const status=data.show?.runtime.currentBlock?.type==='arrival'?'сбор гостей':data.show?.runtime.runStatus!=='idle'?data.show?.runtime.currentBlock?.title:statusLabel(data.event.status);return <div className="screen-page"><div className="screen-brand">насыпатели в кино</div><div className="screen-status">{status}{timer&&<b>{timer}</b>}</div>{data.screenMessage&&<div className="screen-message">{data.screenMessage}</div>}<div className="screen-content">{content}</div><div className="screen-footer">{eventDate(data.event.startsAt)}. насыпатели в кино</div></div>}
+function projectorStateLabel(state:string){const m:Record<string,string>={film_intro:'фрагмент',one_word_collecting:'одно слово',one_word_results:'слова зала',question_open:'вопрос открыт',question_results:'результаты',question_reveal:'продолжение',assignment_randomizing:'рандом',assignment_winner:'фильм назначен',past_review_card:'из архива'};return m[state]||state}
+function Screen(){const {slug}=useParams();const {data,error}=usePrivilegedState('screen',slug);const [now,setNow]=useState(()=>Date.now());useEffect(()=>{const t=window.setInterval(()=>setNow(Date.now()),1000);return()=>window.clearInterval(t)},[]);if(!data)return <Loading error={error}/>;const content=screenContent(data);const timer=showTimerText(data,now);const status=data.projector&&!['idle','arrival'].includes(data.projector.state)?projectorStateLabel(data.projector.state):data.show?.runtime.currentBlock?.type==='arrival'?'сбор гостей':data.show?.runtime.runStatus!=='idle'?data.show?.runtime.currentBlock?.title:statusLabel(data.event.status);return <div className="screen-page"><div className="screen-brand">насыпатели в кино</div><div className="screen-status">{status}{timer&&<b>{timer}</b>}</div>{data.screenMessage&&<div className="screen-message">{data.screenMessage}</div>}<div className="screen-content">{content}</div><div className="screen-footer">{eventDate(data.event.startsAt)}. насыпатели в кино</div></div>}
 
 function statusLabel(s:EventStatus){const m:Record<EventStatus,string>={DRAFT:'черновик',SALES_OPEN:'регистрация открыта',CHECKIN:'сбор гостей',IDEAS_OPEN:'идеи открыты',IDEAS_LOCKED:'идеи закрыты',TOP3_READY:'три идеи',IDEA_RANDOMIZED:'идея выбрана',MOVIE_SEARCH:'поиск фильма',MOVIE_FINALISTS:'три фильма',MOVIE_SELECTED:'фильм выбран',PREDICTIONS_OPEN:'прогнозы',PREDICTIONS_LOCKED:'прогнозы закрыты',WATCHING:'просмотр',PREDICTIONS_SCORED:'результаты',DISCUSSION:'реакции',FINAL_REVIEW:'финальная фраза',FEEDBACK:'исследование',CLOSED:'закрыто'};return m[s]}
 
