@@ -1941,3 +1941,17 @@ body{text-transform:lowercase}
     bottom:calc(74px + max(env(safe-area-inset-bottom),var(--tg-content-safe-area-inset-bottom,0px)))!important;
   }
 }
+
+
+.admin-entry-link{
+  width:100%;
+  margin:0 0 18px;
+  padding:14px 16px;
+  border:1px solid rgba(131,154,105,.25);
+  border-radius:14px;
+  background:rgba(131,154,105,.08);
+  color:#a9ba94;
+  font:inherit;
+  font-weight:750;
+  text-align:left;
+}
