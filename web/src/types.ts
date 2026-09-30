@@ -59,6 +59,27 @@ export type EventInfo = {
 }
 
 export type FilmIdea = { id:string; title:string; plot:string; author?:string }
+export type MovieSourceCandidate = {
+  id:string
+  useMode:'fragment'|'trailer'
+  sourceType:'clip'|'full_film'|'trailer'|'teaser'|'unknown'
+  sourcePlatform:string
+  sourceUrl:string
+  videoId?:string
+  title?:string
+  sourceChannel?:string
+  startSec:number
+  endSec?:number
+  verified:boolean
+  embeddable:boolean
+  official:boolean
+  rightsStatus:'unknown'|'allowed'|'restricted'|'blocked'
+  availabilityStatus:'candidate'|'ready'|'dead'|'blocked'
+  confidence:number
+  discoveredAt?:string
+  selected?:boolean
+}
+
 export type MovieCandidate = {
   id:string
   title:string
@@ -85,6 +106,7 @@ export type MovieCandidate = {
   discussionPrompts?:unknown[]
   animalComment?:string
   tags?:string[]
+  sourceCandidates?:MovieSourceCandidate[]
 }
 export type Prediction = { id:string; position:number; text:string; answer?:boolean; actual?:boolean }
 export type LeaderRow = { name:string; points:number; wins:number; events:number }
