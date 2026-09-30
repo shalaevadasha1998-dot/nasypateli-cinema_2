@@ -2145,3 +2145,14 @@ body{text-transform:lowercase}
   .review-preview-actions,.film-control-three{grid-template-columns:1fr}
   .screen-assignment-winner{grid-template-columns:1fr;grid-template-areas:"rabbit" "eye" "name" "film" "copy" "due"}
 }
+
+.review-admin-title{display:flex;align-items:center;gap:10px;min-width:0}
+.review-admin-title img{width:38px;height:46px;object-fit:contain;flex:none}
+.review-admin-title>div{min-width:0}
+.review-admin-title b{display:block;overflow-wrap:anywhere}
+.review-admin-title small{display:block;margin-top:3px;color:#777970;font-size:10px}
+.review-admin-dates{display:flex;flex-wrap:wrap;gap:7px;margin:10px 0 4px}
+.review-admin-dates span{border:1px solid rgba(234,229,220,.09);border-radius:999px;padding:5px 7px;color:#777970;font-size:9px}
+.review-publish-copy{margin-top:12px;padding:12px;border:1px solid rgba(131,154,105,.2);border-radius:12px;background:rgba(131,154,105,.055)}
+.review-publish-copy small{display:block;margin-bottom:6px;color:var(--rabbit);text-transform:uppercase;letter-spacing:.08em;font-size:9px}
+.review-publish-copy p{margin:0;color:#bbb8b0;line-height:1.45}
