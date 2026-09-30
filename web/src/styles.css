@@ -2156,3 +2156,18 @@ body{text-transform:lowercase}
 .review-publish-copy{margin-top:12px;padding:12px;border:1px solid rgba(131,154,105,.2);border-radius:12px;background:rgba(131,154,105,.055)}
 .review-publish-copy small{display:block;margin-bottom:6px;color:var(--rabbit);text-transform:uppercase;letter-spacing:.08em;font-size:9px}
 .review-publish-copy p{margin:0;color:#bbb8b0;line-height:1.45}
+
+.cinema-passport-card{border-color:rgba(131,154,105,.18);background:radial-gradient(circle at 90% 0,rgba(131,154,105,.09),transparent 38%),#10110e}
+.cinema-passport-card h2{margin:7px 0 18px;font-size:30px;line-height:1;letter-spacing:-.045em}
+.cinema-passport-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:14px}
+.cinema-passport-stats span{padding:11px;border:1px solid rgba(234,229,220,.08);border-radius:12px;color:#73766e;font-size:10px}
+.cinema-passport-stats b{display:block;color:var(--paper);font-size:24px;line-height:1;margin-bottom:4px}
+.cinema-passport-missions{display:grid;gap:6px}
+.cinema-passport-missions button{display:flex;align-items:center;justify-content:space-between;gap:14px;width:100%;text-align:left;border:1px solid rgba(234,229,220,.08);border-radius:13px;background:#0b0c09;color:var(--paper);padding:12px;cursor:pointer}
+.cinema-passport-missions button b{display:block;font-size:15px}
+.cinema-passport-missions button small{display:block;margin-top:4px;color:#72746d;font-size:10px}
+.cinema-passport-missions button>span{color:var(--rabbit);font-weight:800;white-space:nowrap}
+.review-predictions{margin:12px 0;border-top:1px solid rgba(234,229,220,.08);border-bottom:1px solid rgba(234,229,220,.08);padding:10px 0}
+.review-predictions summary{cursor:pointer;color:#98958d;font-size:12px}
+.review-predictions>div{display:grid;gap:3px;padding:10px 0;border-top:1px solid rgba(234,229,220,.06)}
+.review-predictions>div b{font-size:12px}.review-predictions>div span,.review-predictions>div small{color:#777970;font-size:10px}
