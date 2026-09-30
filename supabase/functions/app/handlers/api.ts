@@ -28,6 +28,45 @@ function splitList(x:any){
 }
 function clamp100(x:any){const n=Number(x);return Number.isFinite(n)?Math.max(0,Math.min(100,Math.round(n))):50}
 
+async function resolvedMovieSource(db:any,movieId:string){
+  const resolved=await db.rpc('resolve_movie_source',{p_movie_candidate_id:movieId})
+  if(resolved.error)throw resolved.error
+  const raw=resolved.data?.[0]
+  if(!raw)return null
+  return {
+    id:String(raw.id),useMode:raw.use_mode,sourceType:raw.source_type,sourcePlatform:raw.source_platform,sourceUrl:raw.source_url,
+    videoId:raw.video_id||undefined,title:raw.title||undefined,sourceChannel:raw.source_channel||undefined,
+    startSec:Number(raw.start_sec||0),endSec:raw.end_sec==null?null:Number(raw.end_sec),
+    verified:raw.verified===true,embeddable:raw.embeddable===true,official:raw.official===true,
+    rightsStatus:raw.rights_status,confidence:Number(raw.confidence||0),metadata:raw.metadata||{}
+  }
+}
+
+async function applyMovieSourceToCandidate(db:any,event:any,movieId:string,preferred:any|null){
+  const now=new Date().toISOString()
+  const patch:any=preferred?{
+    source_type:preferred.sourceType,
+    source_platform:preferred.sourcePlatform,
+    source_url:preferred.sourceUrl,
+    video_id:preferred.videoId||null,
+    start_sec:Math.max(0,Math.round(Number(preferred.startSec)||0)),
+    end_sec:preferred.endSec==null?null:Math.max(0,Math.round(Number(preferred.endSec)||0)),
+    source_channel:preferred.sourceChannel||null,
+    source_verified:true,
+    verified_at:now,
+    usage_status:'ready'
+  }:{
+    source_type:null,source_platform:null,source_url:null,video_id:null,start_sec:0,end_sec:null,source_channel:null,
+    source_verified:false,verified_at:null,usage_status:'no_video',clip_status:'missing',trailer_status:'missing'
+  }
+  if(preferred?.useMode==='fragment')patch.clip_status='ready'
+  if(preferred?.useMode==='trailer')patch.trailer_status='ready'
+  const updated=await db.from('movie_candidates').update(patch).eq('id',movieId).eq('event_id',event.id).select('id').maybeSingle()
+  if(updated.error)throw updated.error
+  if(!updated.data)throw new Error('movie candidate not found while applying source')
+  return preferred
+}
+
 async function discoverAndPersistMovieSources(db:any,event:any,movie:any){
   const discovery=await discoverMovieSources(movie)
   const existing=await db.from('movie_source_candidates').select('source_url,start_sec,end_sec').eq('event_id',event.id).eq('movie_candidate_id',movie.id)
@@ -63,34 +102,8 @@ async function discoverAndPersistMovieSources(db:any,event:any,movie:any){
     const ins=await db.from('movie_source_candidates').insert(rows)
     if(ins.error)throw ins.error
   }
-  const resolved=await db.rpc('resolve_movie_source',{p_movie_candidate_id:movie.id})
-  if(resolved.error)throw resolved.error
-  const raw=resolved.data?.[0]
-  if(!raw)return {discovery,preferred:null}
-  const preferred:any={
-    useMode:raw.use_mode,sourceType:raw.source_type,sourcePlatform:raw.source_platform,sourceUrl:raw.source_url,
-    videoId:raw.video_id||undefined,title:raw.title||undefined,sourceChannel:raw.source_channel||undefined,
-    startSec:Number(raw.start_sec||0),endSec:raw.end_sec==null?null:Number(raw.end_sec),
-    verified:raw.verified===true,embeddable:raw.embeddable===true,official:raw.official===true,
-    rightsStatus:raw.rights_status,confidence:Number(raw.confidence||0),metadata:raw.metadata||{}
-  }
-  const now=new Date().toISOString()
-  const patch:any={
-    source_type:preferred.sourceType,
-    source_platform:preferred.sourcePlatform,
-    source_url:preferred.sourceUrl,
-    video_id:preferred.videoId||null,
-    start_sec:Math.max(0,Math.round(Number(preferred.startSec)||0)),
-    end_sec:preferred.endSec==null?null:Math.max(0,Math.round(Number(preferred.endSec)||0)),
-    source_channel:preferred.sourceChannel||null,
-    source_verified:true,
-    verified_at:now,
-    usage_status:'ready'
-  }
-  if(preferred.useMode==='fragment')patch.clip_status='ready'
-  else patch.trailer_status='ready'
-  const updated=await db.from('movie_candidates').update(patch).eq('id',movie.id).eq('event_id',event.id)
-  if(updated.error)throw updated.error
+  const preferred=await resolvedMovieSource(db,movie.id)
+  await applyMovieSourceToCandidate(db,event,movie.id,preferred)
   return {discovery,preferred}
 }
 function normalizeProfile(user:any,row:any,registration:any,tg:any){
@@ -806,7 +819,8 @@ export async function handleApi(req:Request){
           startSec:Number(s.start_sec||0),endSec:s.end_sec==null?undefined:Number(s.end_sec),verified:s.verified===true,
           embeddable:s.embeddable===true,official:s.official===true,rightsStatus:String(s.rights_status),
           availabilityStatus:String(s.availability_status),confidence:Number(s.confidence||0),discoveredAt:s.discovered_at,
-          selected:String(s.source_url)===String(x.source_url||'')&&Number(s.start_sec||0)===Number(x.start_sec||0)
+          selected:String(s.source_url)===String(x.source_url||'')&&Number(s.start_sec||0)===Number(x.start_sec||0),
+          manualSelected:String(s.metadata?.manual_selected||'false')==='true'
         }))
       })),showLog:(showLog.data||[]).map((x:any)=>({id:String(x.id),action:x.action,createdAt:x.created_at}))})
     }
@@ -1930,6 +1944,50 @@ export async function handleApi(req:Request){
       const b=await db.from('event_runtime').update({vote_state:'closed',revision:Number(rt.data.revision||0)+1,updated_at:now}).eq('event_id',event.id).eq('revision',rt.data.revision).select('event_id').maybeSingle();if(b.error)throw b.error
       if(!b.data)return err('пульт уже изменился в другой вкладке · обновите экран',409)
       return json({ok:true,show:await buildShowState(db,event)})
+    }
+
+    if(action==='admin-movie-source-action'){
+      const sourceId=String(body.sourceId||'').trim()
+      const op=String(body.op||'').trim()
+      if(!isUuid(sourceId))return err('некорректный source id',422)
+      if(!['select','dead','block'].includes(op))return err('неизвестное действие с источником',422)
+      return await withEventOperation(db,event.id,'movie-source-control',async()=>{
+        const source=await db.from('movie_source_candidates').select('*').eq('id',sourceId).eq('event_id',event.id).maybeSingle()
+        if(source.error)throw source.error
+        if(!source.data)return err('источник не найден',404)
+        const movieId=String(source.data.movie_candidate_id)
+
+        if(op==='select'){
+          if(['dead','blocked'].includes(String(source.data.availability_status)))return err('мёртвый или заблокированный источник нельзя выбрать',409)
+          if(source.data.verified!==true)return err('сначала источник должен пройти проверку',409)
+          if(source.data.embeddable!==true)return err('этот источник сейчас нельзя встроить в проектор',409)
+          if(String(source.data.rights_status)==='blocked')return err('этот источник заблокирован по правам',409)
+
+          const pool=await db.from('movie_source_candidates').select('id,metadata').eq('event_id',event.id).eq('movie_candidate_id',movieId)
+          if(pool.error)throw pool.error
+          for(const row of pool.data||[]){
+            const metadata={...(row.metadata&&typeof row.metadata==='object'?row.metadata:{}),manual_selected:String(row.id)===sourceId}
+            const u=await db.from('movie_source_candidates').update({
+              metadata,
+              ...(String(row.id)===sourceId?{availability_status:'ready'}:{}),
+              updated_at:new Date().toISOString()
+            }).eq('id',row.id).eq('event_id',event.id)
+            if(u.error)throw u.error
+          }
+        }else{
+          const metadata={...(source.data.metadata&&typeof source.data.metadata==='object'?source.data.metadata:{}),manual_selected:false}
+          const u=await db.from('movie_source_candidates').update({
+            availability_status:op==='dead'?'dead':'blocked',
+            metadata,
+            updated_at:new Date().toISOString()
+          }).eq('id',sourceId).eq('event_id',event.id)
+          if(u.error)throw u.error
+        }
+
+        const preferred=await resolvedMovieSource(db,movieId)
+        await applyMovieSourceToCandidate(db,event,movieId,preferred)
+        return json({ok:true,movieId,preferred})
+      })
     }
 
     if(action==='admin-discover-movie-sources'){
