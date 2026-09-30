@@ -156,6 +156,7 @@ export type CreatureState = {
   born:boolean
   bornAt?:string
   name:string
+  visualVariant?:number
   stage:'stage_0'|'stage_1'|'stage_2'|'stage_3'|'stage_4'
   crumbs:number
   growthProgress:number
@@ -270,6 +271,7 @@ export type ShowState = {
 export type ScreenCreature = {
   id:string
   name:string
+  visualVariant?:number
   stage:CreatureState['stage']
   crumbs:number
   growthProgress:number
