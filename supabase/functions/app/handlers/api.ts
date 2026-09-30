@@ -758,6 +758,12 @@ async function processChatAftermath(db:any,userId:string,message:string,reply:st
   for(const code of out.storyCodes||[]){if(storyCodes.includes(code))await emitStoryTrigger(db,userId,'jipitina_chat',{story_code:code,occurrenceKey},eventId||null)}
 }
 
+async function publicScreenAnimalId(eventId:string,userId:string){
+  const bytes=new TextEncoder().encode(eventId+':'+userId)
+  const digest=new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))
+  return 'animal-'+Array.from(digest.slice(0,8)).map(x=>x.toString(16).padStart(2,'0')).join('')
+}
+
 export async function handleApi(req:Request){
   if(req.method==='OPTIONS')return new Response('ok',{headers:cors})
   if(req.method==='GET')return json({ok:true,version:'0.9.0',service:'nasypateli-cinema'})
@@ -779,10 +785,14 @@ export async function handleApi(req:Request){
       const creatures=ids.length?await db.from('creatures').select('user_id,name,stage,crumbs,growth_progress').in('user_id',ids):{data:[],error:null} as any
       if(creatures.error)throw creatures.error
       const creatureMap=new Map((creatures.data||[]).map((x:any)=>[String(x.user_id),x]))
-      const screenCreatures=ids.map(userId=>creatureMap.get(userId)).filter(Boolean).map((x:any,index:number)=>({
-        id:`animal-${index+1}`,name:String(x.name||'животина'),stage:String(x.stage||'stage_0'),
-        crumbs:Number(x.crumbs||0),growthProgress:Number(x.growth_progress||0)
-      }))
+      const screenCreatures=(await Promise.all(ids.map(async(userId)=>{
+        const x:any=creatureMap.get(userId)
+        if(!x)return null
+        return {
+          id:await publicScreenAnimalId(event.id,userId),name:String(x.name||'животина'),stage:String(x.stage||'stage_0'),
+          crumbs:Number(x.crumbs||0),growthProgress:Number(x.growth_progress||0)
+        }
+      }))).filter(Boolean)
       const projector=await projectorPublicState(db,event)
       return json({
         event:state.event,
