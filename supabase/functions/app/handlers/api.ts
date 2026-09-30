@@ -440,6 +440,20 @@ async function notificationRelevance(db:any,n:any){
   const now=Date.now()
   if(n.expires_at&&new Date(n.expires_at).getTime()<=now)return {ok:false,reason:'notification expired'}
   if(n.kind==='reminders'){
+    const reminderKey=String(n.dedupe_key||'')
+    if(reminderKey.startsWith('film_assignment:')){
+      const parts=reminderKey.split(':')
+      const assignmentId=parts[1]||''
+      const code=parts[2]||''
+      if(!isUuid(assignmentId))return {ok:false,reason:'film assignment missing'}
+      const assignment=await db.from('film_assignments').select('status,due_at').eq('id',assignmentId).eq('user_id',n.user_id).maybeSingle()
+      if(assignment.error)throw assignment.error
+      if(!assignment.data)return {ok:false,reason:'film assignment missing'}
+      const status=String(assignment.data.status||'')
+      if(code==='overdue')return status==='overdue'?{ok:true,reason:''}:{ok:false,reason:'film assignment no longer overdue'}
+      if(code==='3d'||code==='24h')return ['assigned','watching'].includes(status)?{ok:true,reason:''}:{ok:false,reason:'film already watched or review started'}
+      return ['assigned','watching','overdue'].includes(status)?{ok:true,reason:''}:{ok:false,reason:'film assignment already progressed'}
+    }
     if(!n.event_id)return {ok:false,reason:'reminder event missing'}
     const [event,registration]=await Promise.all([
       db.from('events').select('status,starts_at').eq('id',n.event_id).maybeSingle(),
@@ -490,7 +504,7 @@ async function telegramRuntimeReady(){
 }
 
 async function runtimeHealth(db:any){
-  const requiredTables=['users','cinema_profiles','events','registrations','payment_refunds','event_operation_locks','creatures','creature_tasks','user_creature_tasks','creature_game_config','crumb_ledger','story_definitions','dating_profiles','notification_preferences','notification_queue','encounter_tokens']
+  const requiredTables=['users','cinema_profiles','events','registrations','payment_refunds','event_operation_locks','creatures','creature_tasks','user_creature_tasks','creature_game_config','crumb_ledger','story_definitions','dating_profiles','notification_preferences','notification_queue','encounter_tokens','film_packages','film_questions','film_impressions','film_predictions','film_assignments','review_sessions','submitted_reviews','event_projector_state']
   const [tableChecks,pilot,telegram,gameConfig,testTask]=await Promise.all([
     Promise.all(requiredTables.map(async table=>{const r=await db.from(table).select('*',{head:true}).limit(1);return !r.error})),
     db.from('events').select('slug,capacity,ticket_price_rub,starts_at,venue_name').eq('slug','2026-10-03').maybeSingle(),
@@ -652,7 +666,8 @@ export async function handleApi(req:Request){
         id:String(x.user_id),name:String(x.name||'животина'),stage:String(x.stage||'stage_0'),
         crumbs:Number(x.crumbs||0),growthProgress:Number(x.growth_progress||0)
       }))
-      return json({...state,screenCreatures})
+      const projector=await projectorPublicState(db,event)
+      return json({...state,screenCreatures,projector})
     }
     if(action==='admin-bootstrap'){
       if(!adminTokenOk){
@@ -671,7 +686,12 @@ export async function handleApi(req:Request){
       ])
       if(movieCatalog.error)throw movieCatalog.error
       if(showLog.error)throw showLog.error
-      return json({...state,adminParticipants,movieCatalog:(movieCatalog.data||[]).map((x:any)=>({
+      const [filmPackages,reviewQueue,projector]=await Promise.all([
+        filmAdminPackages(db,event.id),
+        filmAdminReviews(db,event.id),
+        projectorPublicState(db,event)
+      ])
+      return json({...state,adminParticipants,filmPackages,reviewQueue,projector,movieCatalog:(movieCatalog.data||[]).map((x:any)=>({
         id:x.id,title:x.title,originalTitle:x.original_title||undefined,year:x.year||undefined,runtimeMin:x.runtime_min||undefined,
         genre:x.genre||undefined,country:x.country||undefined,reason:x.reason||undefined,enabledForEvent:x.enabled_for_event!==false,
         trailerStatus:x.trailer_status||'unchecked',clipStatus:x.clip_status||'unchecked',sourceType:x.source_type||undefined,
@@ -690,6 +710,8 @@ export async function handleApi(req:Request){
       for(const ev of saleEvents.data||[]){const p=await db.rpc('promote_event_waitlist',{p_event_id:ev.id});if(p.error)throw p.error;promoted+=Number(p.data||0)}
       const reminderSchedule=await db.rpc('schedule_event_reminders');if(reminderSchedule.error)throw reminderSchedule.error
       const scheduledReminders=Number(reminderSchedule.data||0)
+      const overdueAssignments=await db.from('film_assignments').update({status:'overdue',updated_at:new Date().toISOString()}).lt('due_at',new Date().toISOString()).in('status',['assigned','watching']).select('id')
+      if(overdueAssignments.error)throw overdueAssignments.error
       const due=await db.from('notification_queue').select('id,user_id,kind,text,dedupe_key,event_id,expires_at,send_after,attempts,users(telegram_id)').eq('status','pending').lte('send_after',new Date().toISOString()).order('send_after').limit(50)
       if(due.error)throw due.error
       let sent=0,retried=0,failed=0,cancelled=0,deferred=0
@@ -876,7 +898,8 @@ export async function handleApi(req:Request){
         if(mine.error)throw mine.error
         show={...show,myVote:mine.data?.answer}
       }
-      return json({...common,show,isAdmin,user,profile,onboardingComplete:profile.completed,registration:effectiveRegistrationStatus(reg.data),queuePosition:effectiveRegistrationStatus(reg.data)==='waitlist'?Number(reg.data?.queue_position||0)||undefined:undefined,reservationExpiresAt:effectiveRegistrationStatus(reg.data)==='reserved'?reg.data?.reservation_expires_at||undefined:undefined,idea:idea.data||undefined,predictions:(common.predictions||[]).map((p:any)=>({...p,answer:answerMap.get(p.id)})),predictionSubmitted:(answers.data||[]).length>0,thought:thought.data?.text,reaction:reaction.data?{rating:reaction.data.rating,stateWord:reaction.data.state_word,thought:reaction.data.thought,recommendation:reaction.data.recommendation}:undefined,review:review.data?{rating:review.data.rating,sentence:review.data.final_sentence}:undefined,feedback:feedback.data?{returnIntent:feedback.data.return_intent,strongest:feedback.data.strongest_part||'',improve:feedback.data.improve_text||'',willingness:feedback.data.willingness_to_pay||0,durationFeel:feedback.data.duration_feel||'нормально',inviteFriend:feedback.data.invite_friend===null||feedback.data.invite_friend===undefined?8:Number(feedback.data.invite_friend)}:undefined,...extras,creature,...datingBundle,notificationPrefs:{writeAccess:!!notif.data?.write_access,events:notif.data?.events!==false,creature:notif.data?.creature!==false,stories:notif.data?.stories!==false,matches:notif.data?.matches!==false,tickets:notif.data?.tickets!==false,reminders:notif.data?.reminders!==false,quietHours:notif.data?.quiet_hours!==false}})
+      const [filmAssignments,filmLive]=await Promise.all([userFilmAssignments(db,user.id),filmLiveState(db,event,user.id)])
+      return json({...common,show,isAdmin,user,profile,filmAssignments,filmLive,onboardingComplete:profile.completed,registration:effectiveRegistrationStatus(reg.data),queuePosition:effectiveRegistrationStatus(reg.data)==='waitlist'?Number(reg.data?.queue_position||0)||undefined:undefined,reservationExpiresAt:effectiveRegistrationStatus(reg.data)==='reserved'?reg.data?.reservation_expires_at||undefined:undefined,idea:idea.data||undefined,predictions:(common.predictions||[]).map((p:any)=>({...p,answer:answerMap.get(p.id)})),predictionSubmitted:(answers.data||[]).length>0,thought:thought.data?.text,reaction:reaction.data?{rating:reaction.data.rating,stateWord:reaction.data.state_word,thought:reaction.data.thought,recommendation:reaction.data.recommendation}:undefined,review:review.data?{rating:review.data.rating,sentence:review.data.final_sentence}:undefined,feedback:feedback.data?{returnIntent:feedback.data.return_intent,strongest:feedback.data.strongest_part||'',improve:feedback.data.improve_text||'',willingness:feedback.data.willingness_to_pay||0,durationFeel:feedback.data.duration_feel||'нормально',inviteFriend:feedback.data.invite_friend===null||feedback.data.invite_friend===undefined?8:Number(feedback.data.invite_friend)}:undefined,...extras,creature,...datingBundle,notificationPrefs:{writeAccess:!!notif.data?.write_access,events:notif.data?.events!==false,creature:notif.data?.creature!==false,stories:notif.data?.stories!==false,matches:notif.data?.matches!==false,tickets:notif.data?.tickets!==false,reminders:notif.data?.reminders!==false,quietHours:notif.data?.quiet_hours!==false}})
     }
 
     if(action==='save-profile-progress'||action==='save-profile'){
@@ -1176,7 +1199,311 @@ export async function handleApi(req:Request){
       return json({ok:true,answer:vote.data.answer,crumbs})
     }
 
+    if(action==='film-one-word'){
+      const reg=await db.from('registrations').select('status').eq('event_id',event.id).eq('user_id',user.id).maybeSingle()
+      if(reg.error)throw reg.error
+      if(reg.data?.status!=='attended')return err('эта механика только для тех, кто уже отметился в зале',403)
+      const projector=await db.from('event_projector_state').select('*').eq('event_id',event.id).single()
+      if(projector.error)throw projector.error
+      if(projector.data.state!=='one_word_collecting'||!projector.data.round_id||!projector.data.film_package_id)return err('сейчас слово не собираем',409)
+      const word=String(body.word||'').trim().slice(0,80)
+      const normalized=normalizeFilmWord(word)
+      if(!word||!normalized)return err('нужно одно слово',422)
+      if(word.split(/\s+/).filter(Boolean).length!==1)return err('ровно одно слово',422)
+      const creature=await db.from('creatures').select('name').eq('user_id',user.id).single()
+      if(creature.error)throw creature.error
+      const saved=await db.from('film_impressions').upsert({
+        event_id:event.id,round_id:projector.data.round_id,film_package_id:projector.data.film_package_id,
+        user_id:user.id,animal_name_snapshot:creature.data.name,word,normalized_word:normalized,updated_at:new Date().toISOString()
+      },{onConflict:'round_id,user_id'}).select('word').single()
+      if(saved.error)throw saved.error
+      return json({ok:true,word:saved.data.word})
+    }
+
+    if(action==='film-prediction'){
+      const reg=await db.from('registrations').select('status').eq('event_id',event.id).eq('user_id',user.id).maybeSingle()
+      if(reg.error)throw reg.error
+      if(reg.data?.status!=='attended')return err('эта механика только для тех, кто уже отметился в зале',403)
+      const projector=await db.from('event_projector_state').select('*').eq('event_id',event.id).single()
+      if(projector.error)throw projector.error
+      const questionId=String(body.questionId||'')
+      if(projector.data.state!=='question_open'||!projector.data.round_id||!projector.data.film_package_id||String(projector.data.payload?.questionId||'')!==questionId)return err('этот вопрос сейчас закрыт',409)
+      if(!isUuid(questionId))return err('вопрос не найден',404)
+      const q=await db.from('film_questions').select('*').eq('id',questionId).eq('film_package_id',projector.data.film_package_id).maybeSingle()
+      if(q.error)throw q.error
+      if(!q.data)return err('вопрос не найден',404)
+      const answer=body.answer
+      const encoded=JSON.stringify(answer)
+      if(answer===undefined||encoded.length>1000)return err('некорректный ответ',422)
+      const options=Array.isArray(q.data.options)?q.data.options:[]
+      if(options.length&&!options.some((x:any)=>JSON.stringify(x)===encoded))return err('выберите один из вариантов',422)
+      const isCorrect=JSON.stringify(q.data.correct_answer)===encoded
+      const creature=await db.from('creatures').select('name').eq('user_id',user.id).single()
+      if(creature.error)throw creature.error
+      const saved=await db.from('film_predictions').upsert({
+        event_id:event.id,round_id:projector.data.round_id,film_package_id:projector.data.film_package_id,
+        question_id:questionId,user_id:user.id,animal_name_snapshot:creature.data.name,answer,is_correct:isCorrect,updated_at:new Date().toISOString()
+      },{onConflict:'question_id,user_id'}).select('answer,is_correct').single()
+      if(saved.error)throw saved.error
+      return json({ok:true,answer:saved.data.answer})
+    }
+
+    if(action==='film-mark-watched'){
+      const assignmentId=String(body.assignmentId||'')
+      if(!isUuid(assignmentId))return err('задание не найдено',404)
+      if(String(body.confirm||'')!=='credits')return err('сначала подтвердите, что досмотрели до титров',422)
+      const assignment=await db.from('film_assignments').select('*').eq('id',assignmentId).eq('user_id',user.id).maybeSingle()
+      if(assignment.error)throw assignment.error
+      if(!assignment.data)return err('задание не найдено',404)
+      if(!['assigned','watching','overdue','watched'].includes(String(assignment.data.status)))return err('это задание уже перешло к рецензии',409)
+      const watchedAt=assignment.data.watched_at||new Date().toISOString()
+      const updated=await db.from('film_assignments').update({status:'watched',watched_at:watchedAt,updated_at:new Date().toISOString()}).eq('id',assignmentId).eq('user_id',user.id).select('*').single()
+      if(updated.error)throw updated.error
+      await db.from('notification_queue').update({status:'cancelled',error:'film already watched'}).eq('user_id',user.id).eq('status','pending').like('dedupe_key',`film_assignment:${assignmentId}:%`)
+      return json({ok:true,status:'watched'})
+    }
+
+    if(action==='film-review-start'){
+      const assignmentId=String(body.assignmentId||'')
+      if(!isUuid(assignmentId))return err('задание не найдено',404)
+      const assignment=await db.from('film_assignments').select('*').eq('id',assignmentId).eq('user_id',user.id).maybeSingle()
+      if(assignment.error)throw assignment.error
+      if(!assignment.data)return err('задание не найдено',404)
+      if(!['watched','review_in_progress','review_ready','changes_requested'].includes(String(assignment.data.status)))return err('сначала досмотрите фильм и подтвердите это',409)
+      let session=await db.from('review_sessions').select('*').eq('assignment_id',assignmentId).eq('user_id',user.id).maybeSingle()
+      if(session.error)throw session.error
+      if(!session.data){
+        const created=await db.from('review_sessions').insert({assignment_id:assignmentId,user_id:user.id,status:'active',step:0}).select('*').single()
+        if(created.error)throw created.error
+        session=created
+      }
+      if(session.data.status==='draft_ready'||assignment.data.status==='review_ready')return json({ok:true,status:'draft_ready',draft:session.data.draft,adminComment:session.data.admin_comment||undefined})
+      if(session.data.status==='submitted'&&assignment.data.status!=='changes_requested')return err('рецензия уже отправлена',409)
+      if(session.data.status==='changes_requested'){
+        const reopened=await db.from('review_sessions').update({status:'active',step:0,updated_at:new Date().toISOString()}).eq('id',session.data.id).select('*').single()
+        if(reopened.error)throw reopened.error
+        session=reopened
+      }
+      await db.from('film_assignments').update({status:'review_in_progress',updated_at:new Date().toISOString()}).eq('id',assignmentId).eq('user_id',user.id)
+      const nextQuestion=await reviewQuestionForStep(db,assignment.data,Number(session.data.step||0))
+      return json({ok:true,status:'active',sessionId:session.data.id,step:Number(session.data.step||0),nextQuestion,answers:session.data.answers||{},adminComment:session.data.admin_comment||undefined})
+    }
+
+    if(action==='film-review-answer'){
+      const assignmentId=String(body.assignmentId||'')
+      if(!isUuid(assignmentId))return err('задание не найдено',404)
+      const [assignment,session]=await Promise.all([
+        db.from('film_assignments').select('*').eq('id',assignmentId).eq('user_id',user.id).maybeSingle(),
+        db.from('review_sessions').select('*').eq('assignment_id',assignmentId).eq('user_id',user.id).maybeSingle()
+      ])
+      if(assignment.error)throw assignment.error;if(session.error)throw session.error
+      if(!assignment.data||!session.data)return err('сессия рецензии не найдена',404)
+      if(session.data.status!=='active')return err('разговор сейчас не активен',409)
+      const step=Number(session.data.step||0)
+      if(step<0||step>7)return err('интервью уже завершено',409)
+      const question=await reviewQuestionForStep(db,assignment.data,step)
+      let answer:any=body.answer
+      if(question.key==='crumbs'){
+        const n=Number(answer);if(!Number.isInteger(n)||n<1||n>5)return err('поставьте от 1 до 5 крошек',422);answer=n
+      }else{
+        answer=String(answer||'').trim().slice(0,1200)
+        if(!answer)return err('ответ не может быть пустым',422)
+        if(question.key==='after_word'&&answer.split(/\s+/).filter(Boolean).length!==1)return err('нужно одно слово',422)
+      }
+      const answers={...(session.data.answers||{}),[question.key]:answer}
+      const messages=[...(Array.isArray(session.data.messages)?session.data.messages:[]),{role:'assistant',text:question.text},{role:'user',text:String(answer)}].slice(-40)
+      if(step<7){
+        const updated=await db.from('review_sessions').update({answers,messages,step:step+1,updated_at:new Date().toISOString()}).eq('id',session.data.id).select('*').single()
+        if(updated.error)throw updated.error
+        const nextQuestion=await reviewQuestionForStep(db,assignment.data,step+1)
+        return json({ok:true,status:'active',step:step+1,nextQuestion,answers})
+      }
+      const draft=await buildReviewDraft(db,assignment.data,answers)
+      const completed=await db.from('review_sessions').update({answers,messages,draft,status:'draft_ready',step:8,completed_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq('id',session.data.id).select('id').single()
+      if(completed.error)throw completed.error
+      const au=await db.from('film_assignments').update({status:'review_ready',after_word:String(answers.after_word||'').slice(0,80),updated_at:new Date().toISOString()}).eq('id',assignmentId).eq('user_id',user.id)
+      if(au.error)throw au.error
+      return json({ok:true,status:'draft_ready',draft})
+    }
+
+    if(action==='film-review-reopen'){
+      const assignmentId=String(body.assignmentId||'')
+      if(!isUuid(assignmentId))return err('задание не найдено',404)
+      const session=await db.from('review_sessions').select('*').eq('assignment_id',assignmentId).eq('user_id',user.id).maybeSingle()
+      if(session.error)throw session.error
+      if(!session.data||!session.data.draft)return err('черновик не найден',404)
+      const updated=await db.from('review_sessions').update({status:'active',step:0,updated_at:new Date().toISOString()}).eq('id',session.data.id)
+      if(updated.error)throw updated.error
+      await db.from('film_assignments').update({status:'review_in_progress',updated_at:new Date().toISOString()}).eq('id',assignmentId).eq('user_id',user.id)
+      return json({ok:true,status:'active'})
+    }
+
+    if(action==='film-review-submit'){
+      const assignmentId=String(body.assignmentId||'')
+      if(!isUuid(assignmentId))return err('задание не найдено',404)
+      const [assignment,session]=await Promise.all([
+        db.from('film_assignments').select('*').eq('id',assignmentId).eq('user_id',user.id).maybeSingle(),
+        db.from('review_sessions').select('*').eq('assignment_id',assignmentId).eq('user_id',user.id).maybeSingle()
+      ])
+      if(assignment.error)throw assignment.error;if(session.error)throw session.error
+      if(!assignment.data||!session.data?.draft)return err('сначала закончите разговор с животинкой',409)
+      if(session.data.status!=='draft_ready')return err('сначала откройте preview и подтвердите финальный черновик',409)
+      const latest=await db.from('submitted_reviews').select('version').eq('assignment_id',assignmentId).order('version',{ascending:false}).limit(1).maybeSingle()
+      if(latest.error)throw latest.error
+      const version=Number(latest.data?.version||0)+1
+      const inserted=await db.from('submitted_reviews').insert({assignment_id:assignmentId,user_id:user.id,version,snapshot:session.data.draft,status:'submitted'}).select('id,status,submitted_at').single()
+      if(inserted.error)throw inserted.error
+      const now=new Date().toISOString()
+      const [a,u]=await Promise.all([
+        db.from('film_assignments').update({status:'submitted',submitted_at:now,updated_at:now}).eq('id',assignmentId).eq('user_id',user.id),
+        db.from('review_sessions').update({status:'submitted',updated_at:now}).eq('id',session.data.id)
+      ])
+      if(a.error)throw a.error;if(u.error)throw u.error
+      return json({ok:true,reviewId:inserted.data.id,status:'submitted'})
+    }
+
     if(!adminTokenOk)await mustAdmin(db,user,tg)
+
+    if(action==='admin-film-package-save'){
+      const movieCandidateId=String(body.movieCandidateId||'')
+      if(!isUuid(movieCandidateId))return err('выберите фильм',422)
+      const movie=await db.from('movie_candidates').select('id,title').eq('id',movieCandidateId).eq('event_id',event.id).maybeSingle()
+      if(movie.error)throw movie.error
+      if(!movie.data)return err('фильм не найден в каталоге этого события',404)
+      const fragments=(Array.isArray(body.fragments)?body.fragments:[]).slice(0,6).map((f:any,index:number)=>({
+        index,
+        label:String(f?.label||`фрагмент ${index+1}`).slice(0,80),
+        videoId:String(f?.videoId||'').trim().slice(0,120),
+        sourceUrl:String(f?.sourceUrl||'').trim().slice(0,500),
+        startSec:Math.max(0,Math.round(Number(f?.startSec)||0)),
+        endSec:f?.endSec===null||f?.endSec===undefined||f?.endSec===''?null:Math.max(0,Math.round(Number(f.endSec)||0))
+      }))
+      const incomingQuestions=Array.isArray(body.questions)?body.questions:[]
+      if(incomingQuestions.length!==5)return err('для готового киноблока нужно ровно 5 вопросов',422)
+      const questions=incomingQuestions.map((q:any,index:number)=>({
+        position:index+1,prompt:String(q?.prompt||'').trim().slice(0,500),
+        options:(Array.isArray(q?.options)?q.options:[]).map((x:any)=>String(x).trim()).filter(Boolean).slice(0,8),
+        correct_answer:q?.correctAnswer,reveal_text:String(q?.revealText||'').trim().slice(0,1000),
+        reveal_fragment:q?.revealFragment&&typeof q.revealFragment==='object'?q.revealFragment:{}
+      }))
+      if(questions.some((q:any)=>!q.prompt||q.options.length<2||q.correct_answer===undefined))return err('у каждого вопроса нужны текст, минимум 2 варианта и правильный ответ',422)
+      const pack=await db.from('film_packages').upsert({
+        event_id:event.id,movie_candidate_id:movieCandidateId,title_snapshot:movie.data.title,fragments,status:'ready',updated_at:new Date().toISOString()
+      },{onConflict:'event_id,movie_candidate_id'}).select('*').single()
+      if(pack.error)throw pack.error
+      const rows=questions.map((q:any)=>({film_package_id:pack.data.id,...q,updated_at:new Date().toISOString()}))
+      const qs=await db.from('film_questions').upsert(rows,{onConflict:'film_package_id,position'}).select('id,position')
+      if(qs.error)throw qs.error
+      return json({ok:true,packageId:pack.data.id,questions:qs.data})
+    }
+
+    if(action==='admin-film-projector'){
+      const packageId=String(body.filmPackageId||'')
+      const roundId=String(body.roundId||'')
+      const op=String(body.op||'')
+      if(!isUuid(packageId)||!isUuid(roundId))return err('не выбран фильм или раунд',422)
+      const [pack,round,current]=await Promise.all([
+        db.from('film_packages').select('*').eq('id',packageId).eq('event_id',event.id).maybeSingle(),
+        db.from('event_rounds').select('id,movie_candidate_id').eq('id',roundId).eq('event_id',event.id).maybeSingle(),
+        db.from('event_projector_state').select('revision').eq('event_id',event.id).maybeSingle()
+      ])
+      if(pack.error)throw pack.error;if(round.error)throw round.error;if(current.error)throw current.error
+      if(!pack.data||!round.data)return err('киноблок не найден',404)
+      if(String(round.data.movie_candidate_id||'')!==String(pack.data.movie_candidate_id))return err('этот пакет не соответствует фильму текущего раунда',409)
+      let state='film_intro',payload:any={filmTitle:pack.data.title_snapshot}
+      if(op==='film_intro'){
+        state='film_intro';payload={filmTitle:pack.data.title_snapshot,fragment:(Array.isArray(pack.data.fragments)?pack.data.fragments:[])[0]||null}
+      }else if(op==='one_word_open'){
+        state='one_word_collecting';payload={filmTitle:pack.data.title_snapshot,prompt:'одно слово. что это за фильм?'}
+      }else if(op==='one_word_results'){
+        state='one_word_results';payload={filmTitle:pack.data.title_snapshot}
+      }else if(op==='question_open'||op==='question_results'||op==='question_reveal'){
+        const position=Math.max(1,Math.min(5,Number(body.position)||1))
+        const q=await db.from('film_questions').select('*').eq('film_package_id',packageId).eq('position',position).maybeSingle()
+        if(q.error)throw q.error
+        if(!q.data)return err('вопрос не найден',404)
+        if(op==='question_open'){
+          state='question_open';payload={filmTitle:pack.data.title_snapshot,questionId:q.data.id,position,prompt:q.data.prompt,options:q.data.options}
+        }else if(op==='question_results'){
+          const answers=await db.from('film_predictions').select('answer').eq('event_id',event.id).eq('round_id',roundId).eq('film_package_id',packageId).eq('question_id',q.data.id)
+          if(answers.error)throw answers.error
+          const counts=new Map<string,{answer:any;count:number}>()
+          for(const x of answers.data||[]){const key=JSON.stringify(x.answer);const cur=counts.get(key)||{answer:x.answer,count:0};cur.count++;counts.set(key,cur)}
+          state='question_results';payload={filmTitle:pack.data.title_snapshot,questionId:q.data.id,position,prompt:q.data.prompt,results:[...counts.values()].sort((a,b)=>b.count-a.count)}
+        }else{
+          state='question_reveal';payload={filmTitle:pack.data.title_snapshot,questionId:q.data.id,position,prompt:q.data.prompt,correctAnswer:q.data.correct_answer,revealText:q.data.reveal_text,revealFragment:q.data.reveal_fragment}
+        }
+      }else if(op==='assignment_randomizing'){
+        state='assignment_randomizing';payload={filmTitle:pack.data.title_snapshot}
+      }else return err('неизвестное состояние projector',422)
+      const revision=Number(current.data?.revision||0)+1
+      const saved=await db.from('event_projector_state').upsert({event_id:event.id,state,film_package_id:packageId,round_id:roundId,payload,revision,updated_at:new Date().toISOString()},{onConflict:'event_id'}).select('*').single()
+      if(saved.error)throw saved.error
+      return json({ok:true,projector:await projectorPublicState(db,event)})
+    }
+
+    if(action==='admin-film-assign'){
+      const packageId=String(body.filmPackageId||'')
+      const roundId=String(body.roundId||'')
+      if(!isUuid(packageId)||!isUuid(roundId))return err('не выбран фильм или раунд',422)
+      const pack=await db.from('film_packages').select('id,title_snapshot').eq('id',packageId).eq('event_id',event.id).maybeSingle()
+      if(pack.error)throw pack.error
+      if(!pack.data)return err('киноблок не найден',404)
+      const assignment=await db.rpc('assign_film_mission',{p_event_id:event.id,p_round_id:roundId,p_film_package_id:packageId})
+      if(assignment.error){
+        const m=String(assignment.error.message||'')
+        if(m.includes('no eligible animal'))return err('нет животинки, которая присутствует, отправила слово и ответила на все 5 вопросов',409)
+        if(m.includes('exactly 5 questions'))return err('в пакете должно быть ровно 5 вопросов',409)
+        throw assignment.error
+      }
+      const winner=assignment.data?.[0]
+      if(!winner)return err('не удалось выбрать животинку',500)
+      const current=await db.from('event_projector_state').select('revision').eq('event_id',event.id).maybeSingle()
+      if(current.error)throw current.error
+      const projector=await db.from('event_projector_state').upsert({
+        event_id:event.id,state:'assignment_winner',film_package_id:packageId,round_id:roundId,
+        payload:{animalName:winner.animal_name,filmTitle:pack.data.title_snapshot,dueAt:winner.due_at},
+        revision:Number(current.data?.revision||0)+1,updated_at:new Date().toISOString()
+      },{onConflict:'event_id'})
+      if(projector.error)throw projector.error
+      return json({ok:true,assignment:{animalName:winner.animal_name,filmTitle:pack.data.title_snapshot,dueAt:winner.due_at},projector:await projectorPublicState(db,event)})
+    }
+
+    if(action==='admin-review-action'){
+      const reviewId=String(body.reviewId||'')
+      const op=String(body.op||'')
+      if(!isUuid(reviewId)||!['approve','changes_requested','publish'].includes(op))return err('неизвестное действие рецензии',422)
+      const review=await db.from('submitted_reviews').select('*').eq('id',reviewId).maybeSingle()
+      if(review.error)throw review.error
+      if(!review.data)return err('рецензия не найдена',404)
+      const assignment=await db.from('film_assignments').select('*').eq('id',review.data.assignment_id).eq('event_id',event.id).maybeSingle()
+      if(assignment.error)throw assignment.error
+      if(!assignment.data)return err('рецензия относится к другому событию',403)
+      const now=new Date().toISOString()
+      if(op==='approve'){
+        const a=await db.from('submitted_reviews').update({status:'approved',approved_at:now,admin_comment:null}).eq('id',reviewId)
+        const b=await db.from('film_assignments').update({status:'approved',approved_at:now,updated_at:now}).eq('id',assignment.data.id)
+        if(a.error)throw a.error;if(b.error)throw b.error
+      }else if(op==='publish'){
+        if(review.data.status!=='approved')return err('сначала одобрите рецензию',409)
+        const a=await db.from('submitted_reviews').update({status:'published',published_at:now}).eq('id',reviewId)
+        const b=await db.from('film_assignments').update({status:'published',published_at:now,updated_at:now}).eq('id',assignment.data.id)
+        if(a.error)throw a.error;if(b.error)throw b.error
+      }else{
+        const comment=String(body.comment||'').trim().slice(0,1000)
+        if(!comment)return err('напишите, что нужно уточнить',422)
+        const a=await db.from('submitted_reviews').update({status:'changes_requested',admin_comment:comment}).eq('id',reviewId)
+        const b=await db.from('film_assignments').update({status:'changes_requested',updated_at:now}).eq('id',assignment.data.id)
+        const c=await db.from('review_sessions').update({status:'changes_requested',admin_comment:comment,updated_at:now}).eq('assignment_id',assignment.data.id)
+        if(a.error)throw a.error;if(b.error)throw b.error;if(c.error)throw c.error
+        const notice=await db.from('notification_queue').upsert({
+          user_id:assignment.data.user_id,kind:'reminders',text:'взрослым что-то не понравилось. надо уточнить.',send_after:now,status:'pending',
+          dedupe_key:`film_assignment:${assignment.data.id}:changes_${review.data.version}`,event_id:event.id
+        },{onConflict:'user_id,dedupe_key'})
+        if(notice.error)console.error('review changes notification failed',notice.error)
+      }
+      return json({ok:true,reviewQueue:await filmAdminReviews(db,event.id)})
+    }
 
     if(action==='admin-screen-link'){
       const screenToken=String(Deno.env.get('SCREEN_ACCESS_TOKEN')||'').trim()
