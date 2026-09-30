@@ -689,11 +689,32 @@ function ScreenVideo({data}:{data:DemoState}){
   return <ProjectorMedia media={movie} title={movie.title}/>
 }
 
+function projectorCreatureAsset(stage:string){
+  if(stage==='stage_0')return 'assets/rabbit-baby.png'
+  if(stage==='stage_1'||stage==='stage_2')return 'assets/rabbit-idle.webp'
+  return 'assets/rabbit-name-react.webp'
+}
+
 function ScreenCreatureWall({data}:{data:DemoState}){
   const creatures=data.screenCreatures||[]
+  const seen=useRef<Set<string>|null>(null)
+  const [arriving,setArriving]=useState<Set<string>>(new Set())
+  const signature=creatures.map(c=>c.id).join('|')
+  useEffect(()=>{
+    const ids=creatures.map(c=>c.id)
+    if(seen.current===null){seen.current=new Set(ids);return}
+    const fresh=ids.filter(id=>!seen.current?.has(id))
+    seen.current=new Set(ids)
+    if(!fresh.length)return
+    setArriving(new Set(fresh))
+    const timer=window.setTimeout(()=>setArriving(new Set()),4200)
+    return()=>window.clearTimeout(timer)
+  },[signature])
+  const newest=creatures.find(c=>arriving.has(c.id))
   return <div className="screen-creature-wall">
     <div className="screen-creature-count"><b>{creatures.length}</b><span>{creatures.length===1?'животина уже в зале':'животин уже в зале'}</span></div>
-    {creatures.length?<div className="screen-creature-grid">{creatures.map(c=><div className={`screen-creature-card ${c.stage}`} key={c.id}><div className="screen-creature-art"><img src={`${import.meta.env.BASE_URL}assets/rabbit-baby.png`} alt="" draggable={false}/></div><span>{c.name}</span></div>)}</div>:<p className="screen-creature-empty">первая животина появится здесь после чек-ина</p>}
+    {newest&&<div className="screen-creature-arrival-callout"><span>в зал заходит</span><b>{newest.name}</b></div>}
+    {creatures.length?<div className="screen-creature-grid">{creatures.map(c=><div className={`screen-creature-card ${c.stage}${arriving.has(c.id)?' arrived':''}`} key={c.id}><div className="screen-creature-art"><img src={`${import.meta.env.BASE_URL}${projectorCreatureAsset(c.stage)}`} alt="" draggable={false}/></div><span>{c.name}</span></div>)}</div>:<p className="screen-creature-empty">первая животина появится здесь после чек-ина</p>}
   </div>
 }
 
