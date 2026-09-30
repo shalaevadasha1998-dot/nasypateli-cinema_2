@@ -266,10 +266,30 @@ async function discoverMode(movie:any,mode:'fragment'|'trailer'){
 
 export async function discoverMovieSources(movie:any){
   const fragments=await discoverMode(movie,'fragment')
-  const usableFragment=fragments.some(x=>x.verified&&x.embeddable&&x.confidence>=.60)
-  if(usableFragment)return {candidates:fragments,fallbackUsed:false}
+  const usableFragments=fragments.filter(x=>x.verified&&x.embeddable&&x.confidence>=.60)
+  if(usableFragments.length)return {
+    candidates:fragments,
+    fallbackUsed:false,
+    trace:{
+      fragmentsSearched:true,
+      fragmentCount:fragments.length,
+      usableFragmentCount:usableFragments.length,
+      trailersSearched:false,
+      trailerCount:0
+    }
+  }
   const trailers=await discoverMode(movie,'trailer')
-  return {candidates:dedupeSources([...fragments,...trailers]),fallbackUsed:true}
+  return {
+    candidates:dedupeSources([...fragments,...trailers]),
+    fallbackUsed:true,
+    trace:{
+      fragmentsSearched:true,
+      fragmentCount:fragments.length,
+      usableFragmentCount:0,
+      trailersSearched:true,
+      trailerCount:trailers.length
+    }
+  }
 }
 
 export function preferredMovieSource(rows:MovieSourceCandidate[]){
