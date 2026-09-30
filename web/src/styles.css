@@ -1956,3 +1956,100 @@ body{text-transform:lowercase}
   font-weight:750;
   text-align:left;
 }
+
+
+/* v0.10.2 — projector creature wall */
+.projector-access-card{
+  margin:0 0 16px;
+  border-color:rgba(131,154,105,.22);
+  background:rgba(131,154,105,.055);
+}
+.projector-access-card .inline{
+  display:flex;
+  flex-wrap:wrap;
+}
+.projector-access-card .inline .btn{
+  width:auto;
+  flex:1 1 180px;
+}
+.projector-access-card .share-link{
+  margin-top:10px;
+}
+.screen-content:has(.screen-creature-wall){
+  width:100%;
+  max-width:1400px;
+}
+.screen-content:has(.screen-creature-wall) h1{
+  margin-bottom:24px;
+  font-size:clamp(54px,6vw,100px);
+}
+.screen-creature-wall{
+  width:min(100%,1380px);
+}
+.screen-creature-count{
+  display:flex;
+  align-items:baseline;
+  gap:12px;
+  margin-bottom:18px;
+  color:#767970;
+}
+.screen-creature-count b{
+  color:var(--paper);
+  font-size:32px;
+  line-height:1;
+}
+.screen-creature-count span{
+  font-size:15px;
+  text-transform:lowercase;
+}
+.screen-creature-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(86px,1fr));
+  gap:12px;
+  align-items:end;
+}
+.screen-creature-card{
+  min-width:0;
+  display:grid;
+  justify-items:center;
+  gap:7px;
+  padding:10px 6px 9px;
+  border:1px solid rgba(234,229,220,.09);
+  border-radius:16px;
+  background:rgba(17,18,15,.78);
+  animation:screen-creature-arrive .55s cubic-bezier(.2,.8,.2,1) both;
+}
+.screen-creature-art{
+  height:82px;
+  display:grid;
+  place-items:end center;
+}
+.screen-creature-art img{
+  display:block;
+  width:74px;
+  height:78px;
+  object-fit:contain;
+  object-position:center bottom;
+  filter:drop-shadow(0 8px 12px rgba(0,0,0,.32));
+}
+.screen-creature-card.stage_0 .screen-creature-art{transform:scale(.84);transform-origin:center bottom}
+.screen-creature-card.stage_2 .screen-creature-art{transform:scale(1.04);transform-origin:center bottom}
+.screen-creature-card.stage_3 .screen-creature-art{transform:scale(1.08);transform-origin:center bottom}
+.screen-creature-card.stage_4 .screen-creature-art{transform:scale(1.12);transform-origin:center bottom}
+.screen-creature-card>span{
+  max-width:100%;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  color:#aaa79f;
+  font-size:12px;
+}
+.screen-creature-empty{
+  margin:0!important;
+  color:#676a62!important;
+  font-size:clamp(18px,2vw,30px)!important;
+}
+@keyframes screen-creature-arrive{
+  from{opacity:0;transform:translateY(22px) scale(.9)}
+  to{opacity:1;transform:none}
+}
