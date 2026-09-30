@@ -1428,6 +1428,8 @@ export async function handleApi(req:Request){
         startSec:Math.max(0,Math.round(Number(f?.startSec)||0)),
         endSec:f?.endSec===null||f?.endSec===undefined||f?.endSec===''?null:Math.max(0,Math.round(Number(f.endSec)||0))
       }))
+      if(fragments.length!==6)return err('для готового киноблока нужно ровно 6 фрагментов',422)
+      if(fragments.some((f:any)=>!f.videoId||f.endSec===null||f.endSec<=f.startSec))return err('у каждого фрагмента нужны video id и корректные start/end',422)
       const incomingQuestions=Array.isArray(body.questions)?body.questions:[]
       if(incomingQuestions.length!==5)return err('для готового киноблока нужно ровно 5 вопросов',422)
       const questions=incomingQuestions.map((q:any,index:number)=>({
