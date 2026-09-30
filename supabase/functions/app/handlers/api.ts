@@ -69,43 +69,60 @@ async function applyMovieSourceToCandidate(db:any,event:any,movieId:string,prefe
 
 async function discoverAndPersistMovieSources(db:any,event:any,movie:any){
   const discovery=await discoverMovieSources(movie)
-  const existing=await db.from('movie_source_candidates').select('source_url,start_sec,end_sec').eq('event_id',event.id).eq('movie_candidate_id',movie.id)
+  const existing=await db.from('movie_source_candidates').select('*').eq('event_id',event.id).eq('movie_candidate_id',movie.id)
   if(existing.error)throw existing.error
-  const seen=new Set((existing.data||[]).map((x:any)=>[String(x.source_url||''),Number(x.start_sec||0),x.end_sec==null?'':Number(x.end_sec)].join('|')))
-  const rows=(discovery.candidates||[]).filter((x:any)=>{
-    const key=[String(x.sourceUrl||''),Number(x.startSec||0),x.endSec==null?'':Number(x.endSec)].join('|')
-    if(seen.has(key))return false
-    seen.add(key);return true
-  }).map((x:any)=>({
-    event_id:event.id,
-    movie_candidate_id:movie.id,
-    use_mode:x.useMode,
-    source_type:x.sourceType,
-    source_platform:String(x.sourcePlatform||'unknown').slice(0,80),
-    source_url:String(x.sourceUrl||'').slice(0,1500),
-    video_id:x.videoId?String(x.videoId).slice(0,200):null,
-    title:x.title?String(x.title).slice(0,300):null,
-    source_channel:x.sourceChannel?String(x.sourceChannel).slice(0,300):null,
-    start_sec:Math.max(0,Math.round(Number(x.startSec)||0)),
-    end_sec:x.endSec==null?null:Math.max(0,Math.round(Number(x.endSec)||0)),
-    verified:x.verified===true,
-    embeddable:x.embeddable===true,
-    official:x.official===true,
-    rights_status:['unknown','allowed','restricted','blocked'].includes(String(x.rightsStatus))?String(x.rightsStatus):'unknown',
-    availability_status:x.verified===true&&x.embeddable===true&&Number(x.confidence)>=.60?'ready':'candidate',
-    confidence:Math.max(0,Math.min(1,Number(x.confidence)||0)),
-    metadata:x.metadata&&typeof x.metadata==='object'?x.metadata:{},
-    verified_at:x.verified===true?new Date().toISOString():null,
-    updated_at:new Date().toISOString()
-  }))
-  if(rows.length){
-    const ins=await db.from('movie_source_candidates').insert(rows)
-    if(ins.error)throw ins.error
+  const byKey=new Map((existing.data||[]).map((x:any)=>[
+    [String(x.source_url||''),Number(x.start_sec||0),x.end_sec==null?'':Number(x.end_sec)].join('|'),x
+  ]))
+  const now=new Date().toISOString()
+  for(const x of discovery.candidates||[]){
+    const sourceUrl=String(x.sourceUrl||'').slice(0,1500)
+    if(!sourceUrl)continue
+    const startSec=Math.max(0,Math.round(Number(x.startSec)||0))
+    const endSec=x.endSec==null?null:Math.max(0,Math.round(Number(x.endSec)||0))
+    const key=[sourceUrl,startSec,endSec==null?'':endSec].join('|')
+    const old:any=byKey.get(key)
+    const metadata={
+      ...(old?.metadata&&typeof old.metadata==='object'?old.metadata:{}),
+      ...(x.metadata&&typeof x.metadata==='object'?x.metadata:{}),
+      ...(old?.metadata?.manual_selected===true||old?.metadata?.manual_selected==='true'?{manual_selected:true}:{})
+    }
+    const row={
+      event_id:event.id,
+      movie_candidate_id:movie.id,
+      use_mode:x.useMode,
+      source_type:x.sourceType,
+      source_platform:String(x.sourcePlatform||'unknown').slice(0,80),
+      source_url:sourceUrl,
+      video_id:x.videoId?String(x.videoId).slice(0,200):null,
+      title:x.title?String(x.title).slice(0,300):null,
+      source_channel:x.sourceChannel?String(x.sourceChannel).slice(0,300):null,
+      start_sec:startSec,
+      end_sec:endSec,
+      verified:x.verified===true,
+      embeddable:x.embeddable===true,
+      official:x.official===true,
+      rights_status:['unknown','allowed','restricted','blocked'].includes(String(x.rightsStatus))?String(x.rightsStatus):'unknown',
+      availability_status:x.verified===true&&x.embeddable===true&&Number(x.confidence)>=.60?'ready':'candidate',
+      confidence:Math.max(0,Math.min(1,Number(x.confidence)||0)),
+      metadata,
+      verified_at:x.verified===true?now:null,
+      updated_at:now
+    }
+    if(old?.id){
+      if(['dead','blocked'].includes(String(old.availability_status)))row.availability_status=old.availability_status
+      const u=await db.from('movie_source_candidates').update(row).eq('id',old.id).eq('event_id',event.id)
+      if(u.error)throw u.error
+    }else{
+      const ins=await db.from('movie_source_candidates').insert(row)
+      if(ins.error)throw ins.error
+    }
   }
   const preferred=await resolvedMovieSource(db,movie.id)
   await applyMovieSourceToCandidate(db,event,movie.id,preferred)
   return {discovery,preferred}
 }
+
 function normalizeProfile(user:any,row:any,registration:any,tg:any){
   const j=row?.profile_json||{}
   const t=j.taste||{}
