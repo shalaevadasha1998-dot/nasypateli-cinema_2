@@ -650,18 +650,35 @@ function ShowVoteResults({data}:{data:DemoState}){
   return <div className="screen-results">{results.map((x,i)=><div key={i}><div className="screen-result-label"><span>{answerText(x.answer)}</span><b>{x.count}</b></div><div className="screen-result-bar"><i style={{width:`${Math.round(Number(x.count||0)/total*100)}%`}}/></div></div>)}</div>
 }
 
+function DirectVideoPlayer({src,title,startSec=0,endSec}:{src:string;title:string;startSec?:number;endSec?:number}){
+  const ref=useRef<HTMLVideoElement|null>(null)
+  const start=Math.max(0,Number(startSec||0))
+  const end=endSec&&Number(endSec)>start?Number(endSec):undefined
+  const seekAndPlay=()=>{const el=ref.current;if(!el)return;try{if(Math.abs(el.currentTime-start)>.6)el.currentTime=start}catch{}void el.play().catch(()=>{})}
+  const stopAtEnd=()=>{const el=ref.current;if(!el||!end)return;if(el.currentTime>=end){el.pause();try{el.currentTime=end}catch{}}}
+  return <div className="screen-video-wrap"><video ref={ref} title={title} src={src} autoPlay playsInline preload="auto" onLoadedMetadata={seekAndPlay} onCanPlay={seekAndPlay} onTimeUpdate={stopAtEnd}/></div>
+}
+
+function ProjectorMedia({media,title}:{media:any;title:string}){
+  const start=Math.max(0,Number(media?.startSec||0))
+  const end=media?.endSec&&Number(media.endSec)>start?Number(media.endSec):undefined
+  const platform=String(media?.sourcePlatform||((media?.videoId)?'youtube':''))
+  if(media?.videoId&&(platform==='youtube'||!platform)){
+    const qs=new URLSearchParams({autoplay:'1',controls:'0',rel:'0',modestbranding:'1',start:String(start)})
+    if(end)qs.set('end',String(end))
+    return <div className="screen-video-wrap"><iframe title={title} src={`https://www.youtube.com/embed/${encodeURIComponent(String(media.videoId))}?${qs.toString()}`} allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen/></div>
+  }
+  if(media?.sourceUrl&&['internet_archive','wikimedia_commons','direct'].includes(platform)){
+    return <DirectVideoPlayer src={String(media.sourceUrl)} title={title} startSec={start} endSec={end}/>
+  }
+  return null
+}
+
 function ScreenVideo({data}:{data:DemoState}){
   const movie=data.show?.runtime.currentMovie
   const video:any=data.show?.runtime.videoState||{}
-  if(!movie)return null
-  if(video.status==='playing'&&movie.videoId&&(movie.sourcePlatform==='youtube'||!movie.sourcePlatform)){
-    const start=Math.max(0,Number(movie.startSec||0))
-    const end=movie.endSec&&Number(movie.endSec)>start?Number(movie.endSec):undefined
-    const qs=new URLSearchParams({autoplay:'1',controls:'0',rel:'0',modestbranding:'1',start:String(start)})
-    if(end)qs.set('end',String(end))
-    return <div className="screen-video-wrap"><iframe title={movie.title} src={`https://www.youtube.com/embed/${encodeURIComponent(movie.videoId)}?${qs.toString()}`} allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen/></div>
-  }
-  return null
+  if(!movie||video.status!=='playing')return null
+  return <ProjectorMedia media={movie} title={movie.title}/>
 }
 
 function ScreenCreatureWall({data}:{data:DemoState}){
@@ -674,13 +691,9 @@ function ScreenCreatureWall({data}:{data:DemoState}){
 
 
 function ProjectorFragment({fragment,title}:{fragment:any;title:string}){
-  if(!fragment?.videoId)return <><div className="eyebrow">фрагмент</div><h1>{title}</h1><p>для этого фрагмента пока не указан video id</p></>
-  const start=Math.max(0,Number(fragment.startSec||0))
-  const end=fragment.endSec&&Number(fragment.endSec)>start?Number(fragment.endSec):undefined
-  const qs=new URLSearchParams({autoplay:'1',controls:'0',rel:'0',modestbranding:'1',start:String(start)})
-  if(end)qs.set('end',String(end))
-  const src='https://www.youtube.com/embed/'+encodeURIComponent(String(fragment.videoId))+'?'+qs.toString()
-  return <div className="screen-video-wrap"><iframe title={title} src={src} allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen/></div>
+  if(!fragment?.videoId&&!fragment?.sourceUrl)return <><div className="eyebrow">фрагмент</div><h1>{title}</h1><p>для этого фрагмента пока не указан источник видео</p></>
+  const media=<ProjectorMedia media={fragment} title={title}/>
+  return media||<><div className="eyebrow">фрагмент</div><h1>{title}</h1><p>этот формат источника пока нельзя показать на проекторе</p></>
 }
 
 function ScreenWordWall({groups,collecting=false}:{groups:any[];collecting?:boolean}){
@@ -707,7 +720,7 @@ function projectorContent(d:DemoState){
   if(p.state==='question_results')return <><div className="eyebrow">как решил зал · {Number(payload.position||0)}/5</div><h1>{String(payload.prompt||'результаты')}</h1><ProjectorAnswerBars results={Array.isArray(payload.results)?payload.results:[]}/></>
   if(p.state==='question_reveal'){
     const fragment=payload.revealFragment
-    if(fragment?.videoId)return <><ProjectorFragment fragment={fragment} title={String(payload.filmTitle||'продолжение')}/><div className="screen-reveal-overlay"><small>правильный ответ</small><b>{answerText(payload.correctAnswer)}</b>{payload.revealText&&<span>{String(payload.revealText)}</span>}</div></>
+    if(fragment?.videoId||fragment?.sourceUrl)return <><ProjectorFragment fragment={fragment} title={String(payload.filmTitle||'продолжение')}/><div className="screen-reveal-overlay"><small>правильный ответ</small><b>{answerText(payload.correctAnswer)}</b>{payload.revealText&&<span>{String(payload.revealText)}</span>}</div></>
     return <><div className="eyebrow">правильный ответ · {Number(payload.position||0)}/5</div><h1>{answerText(payload.correctAnswer)}</h1>{payload.revealText&&<p>{String(payload.revealText)}</p>}</>
   }
   if(p.state==='assignment_randomizing')return <div className="screen-assignment-random"><div className="eyebrow">этот фильм кто-то унесёт с собой</div><h1>кому он достанется?</h1><div className="random-rabbits">{[0,1,2,3,4,5,6].map(i=><img key={i} src={import.meta.env.BASE_URL+'assets/rabbit-baby.png'} alt="" draggable={false}/>)}</div></div>
@@ -726,7 +739,7 @@ function screenContent(d:DemoState){
     const round=show.currentRound
     if(show.runtime.runStatus==='paused')return <><div className="eyebrow">пауза</div><h1>никуда не уходим</h1><p>ведущий сейчас продолжит</p></>
     if(block?.type==='music_live')return <><div className="eyebrow">живой блок</div><h1>{block.title}</h1><p>живой звук. животина временно молчит</p></>
-    if(show.runtime.videoState?.status==='playing'&&show.runtime.currentMovie?.videoId)return <><ScreenVideo data={d}/></>
+    if(show.runtime.videoState?.status==='playing'&&(show.runtime.currentMovie?.videoId||show.runtime.currentMovie?.sourceUrl))return <><ScreenVideo data={d}/></>
     if(round?.resultsVisible&&show.voteResults.length)return <><div className="eyebrow">как проголосовал зал</div><h1>{round.question?.prompt||'результаты'}</h1><ShowVoteResults data={d}/></>
     if(round?.question&&round.voteState==='open')return <><div className="eyebrow">раунд {round.roundNo}</div><h1>{round.question.prompt}</h1><p>голосование открыто. отвечайте в телефоне</p></>
     if(round?.movie){
