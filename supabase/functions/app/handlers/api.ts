@@ -280,19 +280,27 @@ async function filmAdminReviews(db:any,eventId:string){
     userIds.length?db.from('users').select('id,display_name,telegram_username').in('id',userIds):Promise.resolve({data:[],error:null}),
     packageIds.length?db.from('film_packages').select('id,title_snapshot').in('id',packageIds):Promise.resolve({data:[],error:null}),
     assignmentIds.length?db.from('film_impressions').select('round_id,normalized_word,word').eq('event_id',eventId):Promise.resolve({data:[],error:null}),
-    assignmentIds.length?db.from('film_predictions').select('round_id,user_id,is_correct').eq('event_id',eventId):Promise.resolve({data:[],error:null})
+    assignmentIds.length?db.from('film_predictions').select('round_id,user_id,question_id,answer,is_correct').eq('event_id',eventId):Promise.resolve({data:[],error:null})
   ])
   for(const x of [reviews,users,packages,impressions,predictions])if((x as any).error)throw (x as any).error
   const reviewByAssignment=new Map<string,any>()
   for(const x of (reviews as any).data||[]){if(!reviewByAssignment.has(String(x.assignment_id)))reviewByAssignment.set(String(x.assignment_id),x)}
   const userMap=new Map(((users as any).data||[]).map((x:any)=>[String(x.id),x]))
   const packageMap=new Map(((packages as any).data||[]).map((x:any)=>[String(x.id),x]))
+  const questionIds=[...new Set(((predictions as any).data||[]).map((x:any)=>String(x.question_id)).filter(Boolean))]
+  const questionRows=questionIds.length?await db.from('film_questions').select('id,position,prompt,correct_answer,reveal_text').in('id',questionIds):{data:[],error:null} as any
+  if(questionRows.error)throw questionRows.error
+  const questionMap=new Map((questionRows.data||[]).map((x:any)=>[String(x.id),x]))
   return (assignments.data||[]).map((a:any)=>{
     const review:any=reviewByAssignment.get(String(a.id));const u:any=userMap.get(String(a.user_id))||{};const p:any=packageMap.get(String(a.film_package_id))||{}
     return {
       assignmentId:String(a.id),animalName:String(a.animal_name_snapshot),filmTitle:String(p.title_snapshot||'фильм'),
       assignedAt:a.assigned_at,dueAt:a.due_at,assignmentStatus:String(a.status),beforeWord:String(a.before_word||''),afterWord:a.after_word||undefined,
       correctCount:Number(a.correct_count||0),totalQuestions:Number(a.total_questions||5),
+      oldPredictions:((predictions as any).data||[]).filter((x:any)=>String(x.round_id)===String(a.round_id)&&String(x.user_id)===String(a.user_id)).map((x:any)=>{
+        const q:any=questionMap.get(String(x.question_id))||{}
+        return {position:Number(q.position||0),prompt:String(q.prompt||''),answer:x.answer,isCorrect:x.is_correct===true,correctAnswer:q.correct_answer,revealText:String(q.reveal_text||'')}
+      }).sort((x:any,y:any)=>x.position-y.position),
       reviewId:review?String(review.id):undefined,reviewStatus:review?.status||undefined,submittedAt:review?.submitted_at||undefined,
       snapshot:review?.snapshot||undefined,adminComment:review?.admin_comment||undefined,
       user:{displayName:String(u.display_name||''),telegramUsername:u.telegram_username?String(u.telegram_username):''}
@@ -663,8 +671,8 @@ export async function handleApi(req:Request){
       const creatures=ids.length?await db.from('creatures').select('user_id,name,stage,crumbs,growth_progress').in('user_id',ids):{data:[],error:null} as any
       if(creatures.error)throw creatures.error
       const creatureMap=new Map((creatures.data||[]).map((x:any)=>[String(x.user_id),x]))
-      const screenCreatures=ids.map(userId=>creatureMap.get(userId)).filter(Boolean).map((x:any)=>({
-        id:String(x.user_id),name:String(x.name||'животина'),stage:String(x.stage||'stage_0'),
+      const screenCreatures=ids.map(userId=>creatureMap.get(userId)).filter(Boolean).map((x:any,index:number)=>({
+        id:`animal-${index+1}`,name:String(x.name||'животина'),stage:String(x.stage||'stage_0'),
         crumbs:Number(x.crumbs||0),growthProgress:Number(x.growth_progress||0)
       }))
       const projector=await projectorPublicState(db,event)
@@ -1424,7 +1432,12 @@ export async function handleApi(req:Request){
       }else if(op==='one_word_open'){
         state='one_word_collecting';payload={filmTitle:pack.data.title_snapshot,prompt:'одно слово. что это за фильм?'}
       }else if(op==='one_word_results'){
-        state='one_word_results';payload={filmTitle:pack.data.title_snapshot}
+        const impressions=await db.from('film_impressions').select('word,normalized_word').eq('event_id',event.id).eq('round_id',roundId).eq('film_package_id',packageId)
+        if(impressions.error)throw impressions.error
+        const groups=new Map<string,{word:string;count:number}>()
+        for(const x of impressions.data||[]){const key=String(x.normalized_word||'');if(!key)continue;const current=groups.get(key)||{word:String(x.word||key),count:0};current.count++;groups.set(key,current)}
+        const collectiveWords=[...groups.values()].sort((a,b)=>b.count-a.count||a.word.localeCompare(b.word,'ru')).slice(0,5)
+        state='one_word_results';payload={filmTitle:pack.data.title_snapshot,collectiveWords}
       }else if(op==='question_open'||op==='question_results'||op==='question_reveal'){
         const position=Math.max(1,Math.min(5,Number(body.position)||1))
         const q=await db.from('film_questions').select('*').eq('film_package_id',packageId).eq('position',position).maybeSingle()
