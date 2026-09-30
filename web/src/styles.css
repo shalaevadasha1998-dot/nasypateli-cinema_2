@@ -1082,16 +1082,16 @@ body{text-transform:lowercase}
   filter:drop-shadow(0 16px 30px rgba(0,0,0,.42));
 }
 .loading-rabbit{
-  width:min(250px,62vw);
-  aspect-ratio:3/4;
-  margin:0 auto -18px;
-  opacity:.94;
+  width:min(190px,54vw);
+  aspect-ratio:5/7;
+  margin:0 auto -10px;
+  opacity:.96;
 }
 .telegram-gate-rabbit{
-  width:min(220px,58vw);
-  aspect-ratio:3/4;
-  margin:0 auto -12px;
-  opacity:.9;
+  width:min(180px,52vw);
+  aspect-ratio:5/7;
+  margin:0 auto -8px;
+  opacity:.92;
 }
 .gender-rabbit-stage{
   display:grid;
@@ -1104,8 +1104,8 @@ body{text-transform:lowercase}
   overflow:hidden;
 }
 .gender-rabbit-stage .rabbit-loop{
-  width:min(240px,72vw);
-  height:260px;
+  width:min(200px,64vw);
+  height:280px;
   transition:opacity .25s ease,transform .25s ease;
 }
 .onboarding-gender .binary{
@@ -2127,9 +2127,9 @@ body{text-transform:lowercase}
   .event-preflight-row em{
     grid-column:2;
   }
-  .loading-rabbit{width:min(210px,58vw)}
-  .gender-rabbit-stage{min-height:210px}
-  .gender-rabbit-stage .rabbit-loop{height:225px}
+  .loading-rabbit{width:min(180px,52vw)}
+  .gender-rabbit-stage{min-height:230px}
+  .gender-rabbit-stage .rabbit-loop{width:min(175px,58vw);height:245px}
 
 }
 
