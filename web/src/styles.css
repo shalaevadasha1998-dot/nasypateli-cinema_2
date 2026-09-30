@@ -1864,6 +1864,92 @@ body{text-transform:lowercase}
   padding-top:16px;
   border-top:1px solid rgba(234,229,220,.09);
 }
+
+.movie-source-panel{
+  margin:14px 0 2px;
+  padding:14px;
+  border:1px solid rgba(131,154,105,.18);
+  border-radius:14px;
+  background:rgba(131,154,105,.035);
+}
+.movie-source-panel .row{
+  align-items:flex-start;
+  gap:12px;
+}
+.movie-source-panel .row .btn{
+  width:auto;
+  flex:0 0 auto;
+}
+.movie-source-list{
+  display:grid;
+  gap:7px;
+  margin-top:12px;
+}
+.movie-source-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:11px;
+  border:1px solid rgba(234,229,220,.08);
+  border-radius:11px;
+  background:#0c0d0b;
+}
+.movie-source-row.selected{
+  border-color:rgba(131,154,105,.42);
+  background:rgba(131,154,105,.075);
+}
+.movie-source-row.unavailable{
+  opacity:.54;
+}
+.movie-source-main{
+  min-width:0;
+  display:grid;
+  gap:5px;
+}
+.movie-source-title{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:7px;
+}
+.movie-source-title>span{
+  color:#777970;
+  font-size:9px;
+}
+.movie-source-selected{
+  padding:2px 6px;
+  border-radius:999px;
+  background:rgba(131,154,105,.18);
+  color:#b1c29c!important;
+}
+.movie-source-main>small{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  color:#8b8b84;
+}
+.movie-source-flags{
+  display:flex;
+  flex-wrap:wrap;
+  gap:5px;
+}
+.movie-source-flags span{
+  padding:2px 5px;
+  border:1px solid rgba(234,229,220,.08);
+  border-radius:999px;
+  color:#666a62;
+  font-size:8px;
+}
+.movie-source-row>a{
+  flex:0 0 auto;
+  color:#a9ba94;
+  font-size:10px;
+  text-decoration:none;
+}
+.movie-source-empty{
+  margin:12px 0 2px;
+}
 .admin-technical,.admin-legacy{
   margin-top:16px;
   border:1px solid rgba(234,229,220,.11);
@@ -1916,6 +2002,12 @@ body{text-transform:lowercase}
   }
   .movie-preflight-list button{
     display:grid;
+  }
+  .movie-source-panel .row,.movie-source-row{
+    display:grid;
+  }
+  .movie-source-panel .row .btn,.movie-source-row>a{
+    width:100%;
   }
 }
 
