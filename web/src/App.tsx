@@ -403,6 +403,9 @@ function MovieCatalogAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(act
   const sources=selectedMovie?.sourceCandidates||[]
   const selectedSource=sources.find(s=>s.selected)||sources.find(s=>s.sourceUrl===selectedMovie?.sourceUrl)
   const sourceLabel=(s:any)=>s.useMode==='fragment'?(s.sourceType==='full_film'?'фрагмент из полного фильма':'фрагмент'):(s.sourceType==='teaser'?'тизер':'трейлер')
+  const rightsLabel=(v:string)=>({allowed:'можно использовать',unknown:'права не подтверждены',restricted:'есть ограничения',blocked:'заблокировано'} as Record<string,string>)[v]||v
+  const availabilityLabel=(v:string)=>({ready:'готов',candidate:'кандидат',dead:'не работает',blocked:'заблокирован'} as Record<string,string>)[v]||v
+  const platformLabel=(v:string)=>({youtube:'youtube',internet_archive:'internet archive',wikimedia_commons:'wikimedia commons',direct:'прямая ссылка'} as Record<string,string>)[v]||v
   return <Card className="movie-catalog-admin">
     <div className="section-title">каталог видео · проверка перед началом</div>
     <p className="muted">животина сначала ищет фрагменты по всем подключённым источникам. трейлеры и тизеры используются только как запасной вариант.</p>
@@ -418,7 +421,7 @@ function MovieCatalogAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(act
         <div>
           <div className="section-title">источники · {selectedMovie.title}</div>
           <p className="muted">{selectedSource
-            ?<>сейчас выбрано: <b>{sourceLabel(selectedSource)}</b> · {selectedSource.sourcePlatform}{selectedSource.manualSelected?' · вручную':' · автоматически'}</>
+            ?<>сейчас выбрано: <b>{sourceLabel(selectedSource)}</b> · {platformLabel(selectedSource.sourcePlatform)}{selectedSource.manualSelected?' · вручную':' · автоматически'}</>
             :'подходящий источник пока не выбран'}</p>
         </div>
         <Button kind="secondary" disabled={busy} onClick={()=>run('admin-discover-movie-sources',{movieId:selectedMovie.id})}>перепроверить источники</Button>
@@ -432,15 +435,15 @@ function MovieCatalogAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(act
               <b>{sourceLabel(s)}</b>
               {s.selected&&<span className="movie-source-selected">выбран</span>}
               {s.manualSelected&&<span className="movie-source-manual">ручной выбор</span>}
-              <span>{s.sourcePlatform}</span>
+              <span>{platformLabel(s.sourcePlatform)}</span>
             </div>
             <small>{s.title||s.sourceChannel||s.sourceUrl}</small>
             <div className="movie-source-flags">
               <span>уверенность {Math.round(Number(s.confidence||0)*100)}%</span>
               <span>{s.verified?'проверен':'не проверен'}</span>
               <span>{s.embeddable?'встраивается':'не встраивается'}</span>
-              <span>{s.rightsStatus}</span>
-              <span>{s.availabilityStatus}</span>
+              <span>{rightsLabel(s.rightsStatus)}</span>
+              <span>{availabilityLabel(s.availabilityStatus)}</span>
               {s.official&&<span>официальный источник</span>}
             </div>
           </div>
@@ -456,7 +459,7 @@ function MovieCatalogAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(act
     <div className="movie-editor">
       <Field label="фильм"><input value={draft.title} onChange={e=>setDraft((v:any)=>({...v,title:e.target.value}))} placeholder="название"/></Field>
       <div className="inline"><Field label="год"><input type="number" value={draft.year} onChange={e=>setDraft((v:any)=>({...v,year:e.target.value}))}/></Field><Field label="жанр"><input value={draft.genre} onChange={e=>setDraft((v:any)=>({...v,genre:e.target.value}))}/></Field></div>
-      <Field label="id видео на youtube"><input value={draft.videoId} onChange={e=>setDraft((v:any)=>({...v,videoId:e.target.value}))} placeholder="без полного url"/></Field>
+      <Field label="id видео на youtube"><input value={draft.videoId} onChange={e=>setDraft((v:any)=>({...v,videoId:e.target.value}))} placeholder="только id, без полной ссылки"/></Field>
       <Field label="или ссылка на видео"><input value={draft.sourceUrl} onChange={e=>setDraft((v:any)=>({...v,sourceUrl:e.target.value}))}/></Field>
       <div className="inline"><Field label="начало, сек"><input type="number" min="0" value={draft.startSec} onChange={e=>setDraft((v:any)=>({...v,startSec:Number(e.target.value)}))}/></Field><Field label="конец, сек"><input type="number" min="0" value={draft.endSec} onChange={e=>setDraft((v:any)=>({...v,endSec:e.target.value}))}/></Field></div>
       <Field label="статус"><select value={draft.usageStatus} onChange={e=>setDraft((v:any)=>({...v,usageStatus:e.target.value}))}><option value="needs_review">нужно проверить</option><option value="ready">готово</option><option value="partial">готово частично</option><option value="no_video">без видео</option><option value="blocked">заблокировано</option></select></Field>
@@ -612,16 +615,17 @@ function Admin(){
     {actionError&&<div className="form-error">{actionError}</div>}
     <Card className="projector-access-card"><div className="section-title">общий экран / проектор</div><p className="muted">откройте эту ссылку на ноутбуке, подключённом к проектору, и разверните браузер на весь экран. экран обновляется сам.</p><div className="inline"><Button kind="secondary" disabled={busy} onClick={async()=>{const x:any=await run('admin-screen-link');if(x?.screenUrl)setProjectorLink(String(x.screenUrl))}}>получить ссылку экрана</Button>{projectorLink&&<><Button onClick={()=>window.open(projectorLink,'_blank','noopener,noreferrer')}>открыть экран ↗</Button><Button kind="secondary" onClick={()=>window.open(projectorLink+'&demo=animals','_blank','noopener,noreferrer')}>репетиция животин ↗</Button><Button kind="secondary" onClick={async()=>{try{await navigator.clipboard.writeText(projectorLink)}catch{window.prompt('скопируйте ссылку',projectorLink)}}}>скопировать</Button></>}</div>{projectorLink&&<input className="share-link" readOnly value={projectorLink}/>}</Card>
     <Card className="event-preflight-card">
-      <div className="row spread"><div><div className="section-title">preflight перед мероприятием</div><h3>{preflight?preflight.ready?'технически готово':'есть блокеры':'проверка одним нажатием'}</h3></div>{preflight&&<Pill>{preflight.summary?.failed?preflight.summary.failed+' блокер(а)':'готово'}</Pill>}</div>
-      <p className="muted">проверяет projector, telegram, программу, runtime, film packages, 5 вопросов, video sources, права, площадку и текущую посещаемость.</p>
+      <div className="row spread"><div><div className="section-title">проверка перед началом</div><h3>{preflight?preflight.ready?'технически готово':'есть блокеры':'проверка одним нажатием'}</h3></div>{preflight&&<Pill>{preflight.summary?.failed?preflight.summary.failed+' блокер(а)':'готово'}</Pill>}</div>
+      <p className="muted">проверяет большой экран, telegram, программу, состояние мероприятия, подготовленные фильмы, вопросы, видео, права на источники, площадку и участников.</p>
       <Button disabled={busy} onClick={runPreflight}>{busy?'проверяем…':'проверить вечер'}</Button>
       {preflight&&<div className="event-preflight-list">
         {(preflight.checks||[]).map((x:any)=><div className={'event-preflight-row '+x.status} key={x.key}><span className="event-preflight-dot"/><div><b>{x.label}</b><small>{x.detail}</small></div><em>{x.status==='pass'?'готово':x.status==='fail'?'мешает запуску':x.status==='warn'?'проверить':'информация'}</em></div>)}
-        {artCheck&&<div className={'event-preflight-row '+(artCheck.loaded===artCheck.total?'pass':'warn')}><span className="event-preflight-dot"/><div><b>финальный art pack животин</b><small>{artCheck.loaded}/{artCheck.total} custom stage sprites загружено{artCheck.missing.length?' · fallback работает · не хватает: '+artCheck.missing.join(', '):''}</small></div><em>{artCheck.loaded===artCheck.total?'ok':'warning'}</em></div>}
+        {artCheck&&<div className={'event-preflight-row '+(artCheck.loaded===artCheck.total?'pass':'warn')}><span className="event-preflight-dot"/><div><b>финальные рисунки животин</b><small>{artCheck.loaded} из {artCheck.total} финальных рисунков загружено{artCheck.missing.length?' · пока используются временные картинки':''}</small></div><em>{artCheck.loaded===artCheck.total?'готово':'проверить'}</em></div>}
       </div>}
       {preflight?.checkedAt&&<small className="event-preflight-time">проверено {new Date(preflight.checkedAt).toLocaleString('ru-RU')}</small>}
     </Card>
     <ShowControl data={data} busy={busy} run={run}/>
+    <IdeaSubmissionAdmin data={data} busy={busy} run={run}/>
     <ShowRoundControl data={data} busy={busy} run={run}/>
     <FilmPackagePrepAdmin data={data} busy={busy} run={run}/>
     <FilmMechanicAdmin data={data} busy={busy} run={run}/>
@@ -639,6 +643,18 @@ function Admin(){
     </div></details>
     <details className="admin-legacy"><summary>старый экспериментальный пайплайн</summary><SmartAdmin data={data} reload={reload} adminToken={privileged.token}/></details>
   </div>
+}
+
+function IdeaSubmissionAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(action:string,payload?:Record<string,unknown>)=>Promise<any>}){
+  const s=data.event.status
+  const p=data.ideaProgress||{submitted:0,attended:0,ready:false}
+  if(s==='CHECKIN')return <Card className="idea-random-admin"><div className="section-title">придумай фильм</div><h3>задание для всех участников</h3><p className="muted">у каждого в телефоне откроются два поля: название фильма и короткое описание. когда все закончат, здесь появится кнопка рандома.</p><Button disabled={busy||!data.event.nonexistentFilmEnabled} onClick={()=>run('admin-stage',{status:'IDEAS_OPEN'})}>открыть задание участникам</Button></Card>
+  if(s==='IDEAS_OPEN'){
+    const remaining=Math.max(0,p.attended-p.submitted)
+    return <Card className="idea-random-admin"><div className="section-title">придумай фильм</div><div className="idea-random-progress"><b>{p.submitted}</b><span>из {p.attended} пришедших отправили фильм</span></div>{p.attended===0?<p className="muted">сначала отметьте гостей как пришедших</p>:p.ready?<div className="success">все на месте. можно запускать рандом.</div>:<p className="muted">ждём ещё {remaining}. большой экран обновляется сам.</p>}<Button disabled={busy||!p.ready||p.submitted<2} onClick={()=>run('admin-draw-all-ideas')}>{busy?'крутим…':'запустить рандом'}</Button>{p.submitted<2&&p.attended>0&&<p className="muted">для рандома нужно минимум две идеи</p>}</Card>
+  }
+  if(['IDEA_RANDOMIZED','MOVIE_SEARCH'].includes(s)&&data.selectedIdea)return <Card className="idea-random-admin"><div className="section-title">рандом завершён</div><h2>{data.selectedIdea.title}</h2><p>{data.selectedIdea.plot}</p><div className="success">эта идея сейчас показана на большом экране</div></Card>
+  return null
 }
 
 function AdminParticipants({data,reload,adminToken=''}:{data:DemoState;reload:()=>void;adminToken?:string}){
