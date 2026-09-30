@@ -1518,13 +1518,17 @@ export async function handleApi(req:Request){
       const fragments=(Array.isArray(body.fragments)?body.fragments:[]).slice(0,6).map((f:any,index:number)=>({
         index,
         label:String(f?.label||`фрагмент ${index+1}`).slice(0,80),
+        sourcePlatform:String(f?.sourcePlatform||((f?.videoId)?'youtube':'')).trim().slice(0,80),
         videoId:String(f?.videoId||'').trim().slice(0,120),
-        sourceUrl:String(f?.sourceUrl||'').trim().slice(0,500),
+        sourceUrl:String(f?.sourceUrl||'').trim().slice(0,1000),
         startSec:Math.max(0,Math.round(Number(f?.startSec)||0)),
         endSec:f?.endSec===null||f?.endSec===undefined||f?.endSec===''?null:Math.max(0,Math.round(Number(f.endSec)||0))
       }))
       if(fragments.length!==6)return err('для готового киноблока нужно ровно 6 фрагментов',422)
-      if(fragments.some((f:any)=>!f.videoId||f.endSec===null||f.endSec<=f.startSec))return err('у каждого фрагмента нужны video id и корректные start/end',422)
+      if(fragments.some((f:any)=>{
+        const playable=(f.sourcePlatform==='youtube'&&!!f.videoId)||(['internet_archive','wikimedia_commons','direct'].includes(f.sourcePlatform)&&!!f.sourceUrl)
+        return !playable||f.endSec===null||f.endSec<=f.startSec
+      }))return err('у каждого фрагмента нужен youtube video id или прямой video url и корректные start/end',422)
       const incomingQuestions=Array.isArray(body.questions)?body.questions:[]
       if(incomingQuestions.length!==5)return err('для готового киноблока нужно ровно 5 вопросов',422)
       const questions=incomingQuestions.map((q:any,index:number)=>({
