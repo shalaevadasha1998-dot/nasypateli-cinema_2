@@ -418,30 +418,40 @@ function MovieCatalogAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(act
         <div>
           <div className="section-title">источники · {selectedMovie.title}</div>
           <p className="muted">{selectedSource
-            ?<>сейчас выбрано: <b>{sourceLabel(selectedSource)}</b> · {selectedSource.sourcePlatform}</>
+            ?<>сейчас выбрано: <b>{sourceLabel(selectedSource)}</b> · {selectedSource.sourcePlatform}{selectedSource.manualSelected?' · вручную':' · автоматически'}</>
             :'подходящий источник пока не выбран'}</p>
         </div>
         <Button kind="secondary" disabled={busy} onClick={()=>run('admin-discover-movie-sources',{movieId:selectedMovie.id})}>перепроверить источники</Button>
       </div>
-      {sources.length?<div className="movie-source-list">{sources.map(s=><div className={'movie-source-row'+(s.selected?' selected':'')+(s.availabilityStatus==='dead'||s.availabilityStatus==='blocked'?' unavailable':'')} key={s.id}>
-        <div className="movie-source-main">
-          <div className="movie-source-title">
-            <b>{sourceLabel(s)}</b>
-            {s.selected&&<span className="movie-source-selected">выбран</span>}
-            <span>{s.sourcePlatform}</span>
+      {sources.length?<div className="movie-source-list">{sources.map(s=>{
+        const unavailable=s.availabilityStatus==='dead'||s.availabilityStatus==='blocked'
+        const canSelect=!unavailable&&s.verified&&s.embeddable&&s.rightsStatus!=='blocked'
+        return <div className={'movie-source-row'+(s.selected?' selected':'')+(unavailable?' unavailable':'')} key={s.id}>
+          <div className="movie-source-main">
+            <div className="movie-source-title">
+              <b>{sourceLabel(s)}</b>
+              {s.selected&&<span className="movie-source-selected">выбран</span>}
+              {s.manualSelected&&<span className="movie-source-manual">ручной выбор</span>}
+              <span>{s.sourcePlatform}</span>
+            </div>
+            <small>{s.title||s.sourceChannel||s.sourceUrl}</small>
+            <div className="movie-source-flags">
+              <span>{Math.round(Number(s.confidence||0)*100)}% confidence</span>
+              <span>{s.verified?'verified':'не проверен'}</span>
+              <span>{s.embeddable?'встраивается':'не встраивается'}</span>
+              <span>{s.rightsStatus}</span>
+              <span>{s.availabilityStatus}</span>
+              {s.official&&<span>official</span>}
+            </div>
           </div>
-          <small>{s.title||s.sourceChannel||s.sourceUrl}</small>
-          <div className="movie-source-flags">
-            <span>{Math.round(Number(s.confidence||0)*100)}% confidence</span>
-            <span>{s.verified?'verified':'не проверен'}</span>
-            <span>{s.embeddable?'встраивается':'не встраивается'}</span>
-            <span>{s.rightsStatus}</span>
-            <span>{s.availabilityStatus}</span>
-            {s.official&&<span>official</span>}
+          <div className="movie-source-actions">
+            <a href={s.sourceUrl} target="_blank" rel="noreferrer">открыть ↗</a>
+            <Button kind="secondary" disabled={busy||!canSelect||s.manualSelected} onClick={()=>run('admin-movie-source-action',{sourceId:s.id,op:'select'})}>{s.manualSelected?'выбран вручную':'выбрать этот'}</Button>
+            <Button kind="secondary" disabled={busy||s.availabilityStatus==='dead'} onClick={()=>{if(window.confirm('пометить источник как мёртвый? животина сразу выберет следующий доступный.'))void run('admin-movie-source-action',{sourceId:s.id,op:'dead'})}}>источник умер</Button>
+            <Button kind="danger" disabled={busy||s.availabilityStatus==='blocked'} onClick={()=>{if(window.confirm('заблокировать этот источник? он больше не будет участвовать в автоматическом выборе.'))void run('admin-movie-source-action',{sourceId:s.id,op:'block'})}}>заблокировать</Button>
           </div>
         </div>
-        <a href={s.sourceUrl} target="_blank" rel="noreferrer">открыть ↗</a>
-      </div>)}</div>:<p className="muted movie-source-empty">источников ещё нет. нажмите «перепроверить источники».</p>}
+      })}</div>:<p className="muted movie-source-empty">источников ещё нет. нажмите «перепроверить источники».</p>}
     </div>}
     <div className="movie-editor">
       <Field label="фильм"><input value={draft.title} onChange={e=>setDraft((v:any)=>({...v,title:e.target.value}))} placeholder="название"/></Field>
