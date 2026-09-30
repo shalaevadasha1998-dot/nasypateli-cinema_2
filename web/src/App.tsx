@@ -43,14 +43,13 @@ function RabbitMain({className=''}:{className?:string}){
 
 function RabbitLoop({kind,className=''}:{kind:'boy'|'girl'|'splash';className?:string}){
   const [failed,setFailed]=useState(false)
-  const file=kind==='boy'?'rabbit-boy.webm':kind==='girl'?'rabbit-girl.webm':'rabbit-splash-back.webm'
-  const fallback='assets/rabbit-main-front.webp'
+  const file=kind==='boy'?'rabbit-boy-animated.webp':kind==='girl'?'rabbit-girl-animated.webp':'rabbit-splash-back-animated.webp'
   return <div className={`rabbit-loop rabbit-loop-${kind} ${className}`.trim()} aria-hidden>
-    {!failed?<video src={`${import.meta.env.BASE_URL}assets/${file}`} autoPlay muted loop playsInline preload="auto" onError={()=>setFailed(true)}/>:<img src={`${import.meta.env.BASE_URL}${fallback}`} alt="" draggable={false}/>}
+    {!failed?<img src={`${import.meta.env.BASE_URL}assets/${file}`} alt="" draggable={false} onError={()=>setFailed(true)}/>:<img src={`${import.meta.env.BASE_URL}assets/rabbit-main-front.webp`} alt="" draggable={false}/>}
   </div>
 }
 
-function Loading({error}:{error?:string}){const initMissing=String(error||'').toLowerCase().includes('initdata');if(initMissing)return <div className="telegram-gate"><div className="telegram-gate-noise"/><RabbitMain className="telegram-gate-rabbit"/><div className="eyebrow">мини-приложение</div><h1>откройте нас<br/>из telegram</h1><p>браузер не передаёт ваш telegram-профиль. внутри бота всё откроется нормально</p><a className="btn telegram-gate-btn" href="https://t.me/nasipateli_v_kinobot">открыть бота</a></div>;return <div className="page loading-page"><div className="loading-stage"><RabbitMain className="loading-rabbit"/><div className="loading-brand">насыпатели <span>в кино</span></div>{error?<><div className="loading-error">не загрузилось</div><p>{error}</p><Button kind="secondary" onClick={()=>location.reload()}>попробовать ещё раз</Button></>:<><div className="loading-track"><i/></div><div className="loading-words" aria-live="polite"><span>собираем кинопрофиль</span><span>будим животину</span><span>открываем клуб</span></div></>}</div></div>}
+function Loading({error}:{error?:string}){const initMissing=String(error||'').toLowerCase().includes('initdata');if(initMissing)return <div className="telegram-gate"><div className="telegram-gate-noise"/><RabbitLoop kind="splash" className="telegram-gate-rabbit"/><div className="eyebrow">мини-приложение</div><h1>откройте нас<br/>из telegram</h1><p>браузер не передаёт ваш telegram-профиль. внутри бота всё откроется нормально</p><a className="btn telegram-gate-btn" href="https://t.me/nasipateli_v_kinobot">открыть бота</a></div>;return <div className="page loading-page"><div className="loading-stage"><RabbitLoop kind="splash" className="loading-rabbit"/><div className="loading-brand">насыпатели <span>в кино</span></div>{error?<><div className="loading-error">не загрузилось</div><p>{error}</p><Button kind="secondary" onClick={()=>location.reload()}>попробовать ещё раз</Button></>:<><div className="loading-track"><i/></div><div className="loading-words" aria-live="polite"><span>собираем кинопрофиль</span><span>будим животину</span><span>открываем клуб</span></div></>}</div></div>}
 function parseLines(v:string){return v.split(/\n+/).map(x=>x.trim()).filter(Boolean)}
 function parseCommaList(v:string){return v.split(/[\n,]+/).map(x=>x.trim()).filter(Boolean)}
 function eventDate(iso:string){try{return new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long',timeZone:'Europe/Moscow'}).format(new Date(iso))}catch{return iso}}
@@ -219,7 +218,13 @@ function Home(){
     <ParticipantShow data={data} reload={reload}/>
     {!['DRAFT','SALES_OPEN','CHECKIN'].includes(e.status)&&<NextAction data={data} onOpen={()=>nav(`/event/${e.slug}`)} onBuy={buy} onClaim={claimTicket} buyBusy={buyBusy} claimBusy={claimBusy} reserveCountdown={reserveCountdown}/>} 
     <section className="zhivotina-portal">
-      <div className="zhivotina-portrait" aria-hidden><img src={`${import.meta.env.BASE_URL}assets/rabbit-main-front.webp`} alt="" draggable={false}/></div><div><div className="eyebrow">чат с животиной</div><div className="zhivotina-portal-name">{data.creature.name||'животина'}</div><p>спросите про свой вкус, попросите рекомендацию или обсудите фильм</p></div><Button kind="secondary" onClick={()=>nav('/zhivotina')}>поговорить с {data.creature.name||'животиной'}</Button>
+      <div className="zhivotina-portrait" aria-hidden><img src={`${import.meta.env.BASE_URL}assets/rabbit-main-front.webp`} alt="" draggable={false}/></div>
+      <div className="zhivotina-portal-copy">
+        <div className="eyebrow">чат с животиной</div>
+        <div className="zhivotina-portal-name">{data.creature.name||'животина'}</div>
+        <p>можно говорить о чём угодно. кино она подключит, когда оно правда к месту</p>
+      </div>
+      <Button kind="secondary" onClick={()=>nav('/zhivotina')}>поговорить с {data.creature.name||'животиной'}</Button>
     </section>
     {data.isAdmin&&<button type="button" className="admin-entry-link" onClick={()=>nav(`/admin/event/${e.slug}`)}>админка шоу ↗</button>}
     {demoMode&&<Card className="dev"><b>демо</b><span>админка: <a href={`${import.meta.env.BASE_URL}#/admin/${e.slug}`}>/admin/{e.slug}</a>. экран: <a href={`${import.meta.env.BASE_URL}#/screen/${e.slug}`}>/screen/{e.slug}</a></span></Card>}
@@ -317,13 +322,13 @@ function ZhivotinaPage(){
   useEffect(()=>{window.requestAnimationFrame(()=>threadEnd.current?.scrollIntoView({behavior:'smooth',block:'end'}))},[localMessages.length,busy])
   if(!data)return <Loading error={error}/>;const requested=search.get('mode')||'general';const mode=requested==='post_film'?'post_film':requested==='taste'?'taste':'general'
   const send=async(raw=text,forcedMode=mode)=>{const messageText=raw.trim();if(!messageText||busy)return;const optimistic={id:`local-${Date.now()}`,role:'user',text:messageText,mode:forcedMode,createdAt:new Date().toISOString()};setLocalMessages(prev=>[...prev,optimistic]);setText('');setBusy(true);setMessage('');try{const r:any=await callApi('jipitina-chat',{slug:data.event.slug,mode:forcedMode,message:messageText});setLocalMessages(prev=>[...prev,{id:`local-a-${Date.now()}`,role:'assistant',text:cleanAiText(String(r.reply||'')),mode:forcedMode,createdAt:new Date().toISOString()}]);void reload()}catch(e:any){setLocalMessages(prev=>prev.filter(m=>m.id!==optimistic.id));setText(messageText);setMessage(e.message||'чат временно недоступен. попробуйте ещё раз')}finally{setBusy(false)}}
-  const suggestions=mode==='post_film'?['почему мне это могло понравиться?','что в моих прогнозах сильнее всего разошлось с фильмом?','задай мне один неприятно точный вопрос про фильм']:mode==='taste'?['какой у меня сейчас кинопортрет?','где мой вкус противоречит сам себе?','что мне стоит попробовать посмотреть вне привычного?']:['что посмотреть сегодня?','какой у меня вообще вкус?','разбери мои любимые фильмы']
+  const suggestions=mode==='post_film'?['что у меня осталось после фильма?','где я вообще с ним разминулась?','давай просто обсудим']:mode==='taste'?['что ты уже поняла про мой вкус?','где я сама себе противоречу?','что мне попробовать непривычного?']:['у меня странный день','поговорим?','что посмотреть сегодня?']
   const creatureName=data.creature?.name||'животина'
   return <div className="page chat-page">
-    <div className="chat-head"><div className="chat-creature-identity"><div className="chat-creature-portrait" aria-hidden><img src={`${import.meta.env.BASE_URL}assets/rabbit-main-front.webp`} alt="" draggable={false}/></div><div><div className="eyebrow">ваша животина</div><h2>{creatureName}</h2></div></div><p className="muted">помогает только с кино. подбирает фильмы, разбирает ваш вкус и обсуждает просмотренное</p></div>
+    <div className="chat-head"><div className="chat-creature-identity"><div className="chat-creature-portrait" aria-hidden><img src={`${import.meta.env.BASE_URL}assets/rabbit-main-front.webp`} alt="" draggable={false}/></div><div><div className="eyebrow">ваша животина</div><h2>{creatureName}</h2></div></div><p className="muted">с ней можно говорить о чём угодно. фильмы — её способ иногда попасть ровно в нужное состояние</p></div>
     <div className="chips chat-suggestions">{suggestions.map(s=><button type="button" disabled={busy} key={s} onClick={()=>send(s,mode)}>{s}</button>)}</div>
     {message&&<div className="form-error chat-error">{message}</div>}
-    <div className="chat-thread">{localMessages.length===0&&<div className="zhivotina-reply">начни изучать кино. расскажи, что тебе нравится, или спроси, что посмотреть</div>}{localMessages.map(m=><div key={m.id} className={`chat-msg ${m.role}`}>{m.role==='assistant'?cleanAiText(m.text):m.text}</div>)}{busy&&<div className="chat-msg assistant typing"><i/><i/><i/></div>}<div ref={threadEnd}/></div>
+    <div className="chat-thread">{localMessages.length===0&&<div className="zhivotina-reply">ну, рассказывай. что сегодня происходит?</div>}{localMessages.map(m=><div key={m.id} className={`chat-msg ${m.role}`}>{m.role==='assistant'?cleanAiText(m.text):m.text}</div>)}{busy&&<div className="chat-msg assistant typing"><i/><i/><i/></div>}<div ref={threadEnd}/></div>
     {typeof document!=='undefined'&&createPortal(<div className="chat-compose chat-compose-portal"><textarea value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();void send()}}} placeholder="сообщение"/><button className="send" disabled={busy||!text.trim()} onClick={()=>send()}>{busy?'…':'→'}</button></div>,document.body)}
   </div>
 }
