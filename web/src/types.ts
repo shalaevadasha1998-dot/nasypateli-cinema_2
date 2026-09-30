@@ -244,6 +244,14 @@ export type ShowState = {
   myVote?:any
 }
 
+export type ScreenCreature = {
+  id:string
+  name:string
+  stage:CreatureState['stage']
+  crumbs:number
+  growthProgress:number
+}
+
 export type DemoState = {
   isAdmin?:boolean
   event: EventInfo
@@ -273,6 +281,7 @@ export type DemoState = {
   datingMatches:DatingMatch[]
   notificationPrefs:NotificationPrefs
   show?:ShowState
+  screenCreatures?:ScreenCreature[]
   movieCatalog?:MovieCandidate[]
   showLog?:{id:string;action:string;createdAt:string}[]
   creatureTaskCompletions?:Record<string,string>
