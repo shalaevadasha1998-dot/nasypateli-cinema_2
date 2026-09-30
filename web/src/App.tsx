@@ -401,6 +401,43 @@ function MovieCatalogAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(act
 }
 
 
+function FilmPackagePrepAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(action:string,payload?:Record<string,unknown>)=>Promise<any>}){
+  const catalog=(data.movieCatalog||[]).filter(m=>m.enabledForEvent!==false)
+  const [movieId,setMovieId]=useState(()=>catalog[0]?.id||'')
+  const movie=catalog.find(m=>m.id===movieId)
+  const pack=movie?(data.filmPackages||[]).find(x=>x.movieCandidateId===movie.id):undefined
+  const makeFragments=()=>Array.from({length:6},(_,i)=>({label:i===0?'первый фрагмент':'продолжение '+i,videoId:'',startSec:0,endSec:'' as any}))
+  const makeQuestions=()=>Array.from({length:5},(_,i)=>({prompt:'',options:'',correctAnswer:'',revealText:'',position:i+1}))
+  const [fragments,setFragments]=useState<any[]>(makeFragments)
+  const [questions,setQuestions]=useState<any[]>(makeQuestions)
+  useEffect(()=>{if(!movieId&&catalog[0]?.id)setMovieId(catalog[0].id)},[catalog.length,movieId])
+  useEffect(()=>{
+    if(pack){
+      const fs=makeFragments();(pack.fragments||[]).slice(0,6).forEach((f:any,i:number)=>{fs[i]={...fs[i],...f,endSec:f?.endSec??''}});setFragments(fs)
+      const qs=makeQuestions();(pack.questions||[]).forEach((q:any)=>{const i=Math.max(0,Number(q.position)-1);if(i<5)qs[i]={position:i+1,prompt:q.prompt||'',options:Array.isArray(q.options)?q.options.join(', '):'',correctAnswer:answerText(q.correctAnswer),revealText:q.revealText||''}});setQuestions(qs)
+    }else{setFragments(makeFragments());setQuestions(makeQuestions())}
+  },[pack?.id,movieId])
+  if(!catalog.length)return <Card className="film-prep-card"><div className="section-title">пул киноблоков</div><p className="muted">сначала добавьте фильмы в каталог. после этого здесь можно заранее подготовить 6 фрагментов и 5 вопросов для каждого фильма.</p></Card>
+  const patchFragment=(i:number,p:any)=>setFragments(v=>v.map((x,n)=>n===i?{...x,...p}:x))
+  const patchQuestion=(i:number,p:any)=>setQuestions(v=>v.map((x,n)=>n===i?{...x,...p}:x))
+  const ready=(data.filmPackages||[]).filter(p=>p.status==='ready').length
+  const save=()=>movie&&run('admin-film-package-save',{
+    movieCandidateId:movie.id,
+    fragments:fragments.map((f,i)=>({label:f.label||('фрагмент '+(i+1)),videoId:String(f.videoId||'').trim(),startSec:Number(f.startSec)||0,endSec:f.endSec===''?null:Number(f.endSec)||null})),
+    questions:questions.map((q,i)=>({prompt:q.prompt,options:String(q.options||'').split(',').map((x:string)=>x.trim()).filter(Boolean),correctAnswer:q.correctAnswer,revealText:q.revealText,revealFragment:{...fragments[i+1],index:i+1}}))
+  })
+  return <Card className="film-prep-card">
+    <div className="row spread"><div><div className="section-title">пул киноблоков до мероприятия</div><h2>готово {ready} из {catalog.length}</h2></div>{pack&&<Pill>{pack.questions.length===5?'5/5 вопросов':'неполный'}</Pill>}</div>
+    <Field label="фильм"><select value={movieId} onChange={e=>setMovieId(e.target.value)}>{catalog.map(m=><option value={m.id} key={m.id}>{m.title}{(data.filmPackages||[]).some(p=>p.movieCandidateId===m.id)?' · готовится/готов':''}</option>)}</select></Field>
+    {movie&&<details open={!pack}><summary>{pack?'изменить пакет заранее':'подготовить пакет заранее'}</summary>
+      <p className="muted">это подготовка до шоу. во время мероприятия останется только нажимать «показать фрагмент», «открыть вопрос» и «выбрать животинку».</p>
+      <div className="film-fragment-editor">{fragments.map((f,i)=><div className="film-config-row" key={i}><div className="section-title">{i===0?'01. первый фрагмент':'0'+(i+1)+'. reveal после вопроса '+i}</div><Field label="youtube video id"><input value={f.videoId||''} onChange={e=>patchFragment(i,{videoId:e.target.value})}/></Field><div className="inline"><Field label="start sec"><input type="number" min="0" value={f.startSec||0} onChange={e=>patchFragment(i,{startSec:Number(e.target.value)})}/></Field><Field label="end sec"><input type="number" min="0" value={f.endSec??''} onChange={e=>patchFragment(i,{endSec:e.target.value})}/></Field></div></div>)}</div>
+      <div className="film-question-editor">{questions.map((q,i)=><div className="film-config-row" key={i}><div className="section-title">вопрос {i+1}/5</div><Field label="что будет дальше?"><textarea value={q.prompt} onChange={e=>patchQuestion(i,{prompt:e.target.value})}/></Field><Field label="варианты через запятую"><input value={q.options} onChange={e=>patchQuestion(i,{options:e.target.value})}/></Field><Field label="правильный вариант"><input value={q.correctAnswer} onChange={e=>patchQuestion(i,{correctAnswer:e.target.value})}/></Field><Field label="что реально произошло"><textarea value={q.revealText} onChange={e=>patchQuestion(i,{revealText:e.target.value})}/></Field></div>)}</div>
+      <Button disabled={busy} onClick={save}>{pack?'сохранить пакет':'создать пакет'}</Button>
+    </details>}
+  </Card>
+}
+
 function FilmMechanicAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(action:string,payload?:Record<string,unknown>)=>Promise<any>}){
   const round=data.show?.currentRound
   const movie=round?.movie
@@ -481,6 +518,7 @@ function Admin(){
     <Card className="projector-access-card"><div className="section-title">общий экран / проектор</div><p className="muted">откройте эту ссылку на ноутбуке, подключённом к проектору, и разверните браузер на весь экран. экран обновляется сам.</p><div className="inline"><Button kind="secondary" disabled={busy} onClick={async()=>{const x:any=await run('admin-screen-link');if(x?.screenUrl)setProjectorLink(String(x.screenUrl))}}>получить ссылку экрана</Button>{projectorLink&&<><Button onClick={()=>window.open(projectorLink,'_blank','noopener,noreferrer')}>открыть экран ↗</Button><Button kind="secondary" onClick={async()=>{try{await navigator.clipboard.writeText(projectorLink)}catch{window.prompt('скопируйте ссылку',projectorLink)}}}>скопировать</Button></>}</div>{projectorLink&&<input className="share-link" readOnly value={projectorLink}/>}</Card>
     <ShowControl data={data} busy={busy} run={run}/>
     <ShowRoundControl data={data} busy={busy} run={run}/>
+    <FilmPackagePrepAdmin data={data} busy={busy} run={run}/>
     <FilmMechanicAdmin data={data} busy={busy} run={run}/>
     <AdminParticipants data={data} reload={reload} adminToken={privileged.token}/>
     <ReviewQueueAdmin data={data} busy={busy} run={run}/>
