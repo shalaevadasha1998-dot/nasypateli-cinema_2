@@ -352,6 +352,7 @@ export type DemoState = {
   queuePosition?: number
   reservationExpiresAt?: string
   idea?: FilmIdea
+  ideaProgress?:{submitted:number;attended:number;ready:boolean}
   ideaFinalists: FilmIdea[]
   selectedIdea?: FilmIdea
   movieFinalists: MovieCandidate[]
