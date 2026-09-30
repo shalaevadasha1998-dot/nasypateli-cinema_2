@@ -6,7 +6,7 @@ import { structuredResponse, transcribeAudio } from '../_shared/openai.ts'
 import { creatureState, emitStoryTrigger, ensureCreature } from '../_shared/stories.ts'
 import { allowedGender, connectionKind, datingState, intentsCompatible } from '../_shared/dating.ts'
 import { JIPITINA, jipitinaInstructions } from '../_shared/jipitina.ts'
-import { discoverMovieSources, preferredMovieSource, validateMovieTitle } from '../_shared/movies.ts'
+import { discoverMovieSources, validateMovieTitle } from '../_shared/movies.ts'
 import { buildEventState, buildShowState, eventBySlug, nextEvent, nonexistentFilmEnabled } from '../_shared/state.ts'
 
 const manualTransitions:Record<string,string>={
@@ -63,16 +63,17 @@ async function discoverAndPersistMovieSources(db:any,event:any,movie:any){
     const ins=await db.from('movie_source_candidates').insert(rows)
     if(ins.error)throw ins.error
   }
-  const all=await db.from('movie_source_candidates').select('*').eq('event_id',event.id).eq('movie_candidate_id',movie.id)
-  if(all.error)throw all.error
-  const preferred=preferredMovieSource((all.data||[]).map((x:any)=>({
-    useMode:x.use_mode,sourceType:x.source_type,sourcePlatform:x.source_platform,sourceUrl:x.source_url,
-    videoId:x.video_id||undefined,title:x.title||undefined,sourceChannel:x.source_channel||undefined,
-    startSec:Number(x.start_sec||0),endSec:x.end_sec==null?null:Number(x.end_sec),verified:x.verified===true,
-    embeddable:x.embeddable===true,official:x.official===true,rightsStatus:x.rights_status,
-    confidence:Number(x.confidence||0),metadata:x.metadata||{}
-  })))
-  if(!preferred)return {discovery,preferred:null}
+  const resolved=await db.rpc('resolve_movie_source',{p_movie_candidate_id:movie.id})
+  if(resolved.error)throw resolved.error
+  const raw=resolved.data?.[0]
+  if(!raw)return {discovery,preferred:null}
+  const preferred:any={
+    useMode:raw.use_mode,sourceType:raw.source_type,sourcePlatform:raw.source_platform,sourceUrl:raw.source_url,
+    videoId:raw.video_id||undefined,title:raw.title||undefined,sourceChannel:raw.source_channel||undefined,
+    startSec:Number(raw.start_sec||0),endSec:raw.end_sec==null?null:Number(raw.end_sec),
+    verified:raw.verified===true,embeddable:raw.embeddable===true,official:raw.official===true,
+    rightsStatus:raw.rights_status,confidence:Number(raw.confidence||0),metadata:raw.metadata||{}
+  }
   const now=new Date().toISOString()
   const patch:any={
     source_type:preferred.sourceType,
