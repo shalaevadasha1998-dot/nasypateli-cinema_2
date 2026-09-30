@@ -599,7 +599,7 @@ function Admin(){
   if(!data)return <Loading error={error}/>
   const run=async(action:string,payload:Record<string,unknown>={})=>{try{setBusy(true);setActionError('');const result=await callAdminApi<any>(action,{slug:data.event.slug,...payload},privileged.token);await reload();return result}catch(e:any){setActionError(e.message||'не получилось выполнить действие');return null}finally{setBusy(false)}}
   const probeProjectorArt=async()=>{
-    const names=['projector-stage-0.webp','projector-stage-1.webp','projector-stage-2.webp','projector-stage-3.webp','projector-stage-4.webp']
+    const names=Array.from({length:5},(_,i)=>['projector','stage',String(i)].join('-')+'.webp')
     const results=await Promise.all(names.map(async name=>{try{const r=await fetch(`${import.meta.env.BASE_URL}assets/${name}`,{method:'HEAD',cache:'no-store'});return {name,ok:r.ok}}catch{return {name,ok:false}}}))
     const missing=results.filter(x=>!x.ok).map(x=>x.name)
     const next={loaded:results.length-missing.length,total:results.length,missing}
