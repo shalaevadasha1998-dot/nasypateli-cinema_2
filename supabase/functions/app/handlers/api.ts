@@ -2112,7 +2112,7 @@ export async function handleApi(req:Request){
       if(movie.error)throw movie.error
       if(!movie.data)return err('фильм не найден',404)
       const resolved=await discoverAndPersistMovieSources(db,event,movie.data)
-      return json({ok:true,fallbackUsed:resolved.discovery.fallbackUsed,candidates:resolved.discovery.candidates,preferred:resolved.preferred})
+      return json({ok:true,fallbackUsed:resolved.discovery.fallbackUsed,trace:resolved.discovery.trace,candidates:resolved.discovery.candidates,preferred:resolved.preferred})
     }
 
     if(action==='admin-movie-save'){
