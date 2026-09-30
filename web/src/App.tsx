@@ -658,9 +658,11 @@ function ShowVoteResults({data}:{data:DemoState}){
 
 function DirectVideoPlayer({src,title,startSec=0,endSec}:{src:string;title:string;startSec?:number;endSec?:number}){
   const ref=useRef<HTMLVideoElement|null>(null)
+  const initialized=useRef(false)
   const start=Math.max(0,Number(startSec||0))
   const end=endSec&&Number(endSec)>start?Number(endSec):undefined
-  const seekAndPlay=()=>{const el=ref.current;if(!el)return;try{if(Math.abs(el.currentTime-start)>.6)el.currentTime=start}catch{}void el.play().catch(()=>{})}
+  useEffect(()=>{initialized.current=false},[src,start])
+  const seekAndPlay=()=>{const el=ref.current;if(!el)return;if(!initialized.current){try{el.currentTime=start}catch{}initialized.current=true}void el.play().catch(()=>{})}
   const stopAtEnd=()=>{const el=ref.current;if(!el||!end)return;if(el.currentTime>=end){el.pause();try{el.currentTime=end}catch{}}}
   return <div className="screen-video-wrap"><video ref={ref} title={title} src={src} autoPlay playsInline preload="auto" onLoadedMetadata={seekAndPlay} onCanPlay={seekAndPlay} onTimeUpdate={stopAtEnd}/></div>
 }
@@ -698,8 +700,10 @@ function ScreenCreatureWall({data}:{data:DemoState}){
 
 function ProjectorFragment({fragment,title}:{fragment:any;title:string}){
   if(!fragment?.videoId&&!fragment?.sourceUrl)return <><div className="eyebrow">фрагмент</div><h1>{title}</h1><p>для этого фрагмента пока не указан источник видео</p></>
-  const media=<ProjectorMedia media={fragment} title={title}/>
-  return media||<><div className="eyebrow">фрагмент</div><h1>{title}</h1><p>этот формат источника пока нельзя показать на проекторе</p></>
+  const platform=String(fragment?.sourcePlatform||((fragment?.videoId)?'youtube':''))
+  const playable=(!!fragment?.videoId&&(platform==='youtube'||!platform))||(!!fragment?.sourceUrl&&['internet_archive','wikimedia_commons','direct'].includes(platform))
+  if(!playable)return <><div className="eyebrow">фрагмент</div><h1>{title}</h1><p>этот формат источника пока нельзя показать на проекторе</p></>
+  return <ProjectorMedia media={fragment} title={title}/>
 }
 
 function ScreenWordWall({groups,collecting=false}:{groups:any[];collecting?:boolean}){
