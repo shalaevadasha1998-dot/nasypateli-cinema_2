@@ -9,7 +9,7 @@ import { initTelegram, telegramUser } from './lib/telegram'
 import { useVoiceInput } from './hooks/useVoiceInput'
 import { ArchivePage, BirthPage, CreatureProfilePage, DatingPage, NotificationPage, RulesPage } from './ProductPages'
 import { emptyProfile, stages } from './demo'
-import type { AdminParticipant, CinemaProfile, DemoState, EventStatus, PostFilmReaction, TasteVector } from './types'
+import type { AdminParticipant, CinemaProfile, DemoState, EventStatus, PostFilmReaction, ScreenCreature, TasteVector } from './types'
 import './styles.css'
 
 function downloadText(name:string,text:string,type:string){const blob=new Blob([text],{type});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();window.setTimeout(()=>URL.revokeObjectURL(url),0)}
