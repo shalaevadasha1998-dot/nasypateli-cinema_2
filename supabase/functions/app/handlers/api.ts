@@ -688,7 +688,13 @@ export async function handleApi(req:Request){
         crumbs:Number(x.crumbs||0),growthProgress:Number(x.growth_progress||0)
       }))
       const projector=await projectorPublicState(db,event)
-      return json({...state,screenCreatures,projector})
+      return json({
+        event:state.event,
+        show:state.show,
+        screenMessage:state.screenMessage||'',
+        screenCreatures,
+        projector
+      })
     }
     if(action==='admin-bootstrap'){
       if(!adminTokenOk){
