@@ -1502,6 +1502,37 @@ export async function handleApi(req:Request){
       return json({ok:true,assignment:{animalName:winner.animal_name,filmTitle:pack.data.title_snapshot,dueAt:winner.due_at},projector:await projectorPublicState(db,event)})
     }
 
+    if(action==='admin-project-review'){
+      const reviewId=String(body.reviewId||'')
+      if(!isUuid(reviewId))return err('рецензия не найдена',404)
+      const review=await db.from('submitted_reviews').select('*').eq('id',reviewId).maybeSingle()
+      if(review.error)throw review.error
+      if(!review.data||!['approved','published'].includes(String(review.data.status||'')))return err('на экран можно вернуть только одобренную или опубликованную рецензию',409)
+      const assignment=await db.from('film_assignments').select('*').eq('id',review.data.assignment_id).maybeSingle()
+      if(assignment.error)throw assignment.error
+      if(!assignment.data)return err('назначение не найдено',404)
+      const pack=await db.from('film_packages').select('title_snapshot').eq('id',assignment.data.film_package_id).maybeSingle()
+      if(pack.error)throw pack.error
+      const snapshot:any=review.data.snapshot||{}
+      const current=await db.from('event_projector_state').select('revision').eq('event_id',event.id).maybeSingle()
+      if(current.error)throw current.error
+      const payload={
+        animalName:String(assignment.data.animal_name_snapshot||snapshot.animalName||'животина'),
+        filmTitle:String(pack.data?.title_snapshot||snapshot.filmTitle||'фильм'),
+        beforeWord:String(snapshot.beforeWord||assignment.data.before_word||''),
+        afterWord:String(snapshot.afterWord||assignment.data.after_word||''),
+        crumbs:Number(snapshot.crumbs||0),
+        animalTake:String(snapshot.animalTake||''),
+        publishText:String(snapshot.publishText||'')
+      }
+      const saved=await db.from('event_projector_state').upsert({
+        event_id:event.id,state:'past_review_card',film_package_id:null,round_id:null,payload,
+        revision:Number(current.data?.revision||0)+1,updated_at:new Date().toISOString()
+      },{onConflict:'event_id'})
+      if(saved.error)throw saved.error
+      return json({ok:true,projector:await projectorPublicState(db,event)})
+    }
+
     if(action==='admin-review-action'){
       const reviewId=String(body.reviewId||'')
       const op=String(body.op||'')
