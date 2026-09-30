@@ -2132,6 +2132,35 @@ body{text-transform:lowercase}
   font-size:15px;
   text-transform:lowercase;
 }
+.screen-creature-arrival-callout{
+  position:fixed;
+  z-index:7;
+  top:4vh;
+  right:4vw;
+  display:grid;
+  gap:2px;
+  min-width:260px;
+  max-width:min(520px,52vw);
+  padding:14px 18px;
+  border:1px solid rgba(234,229,220,.12);
+  border-radius:18px;
+  background:rgba(12,13,11,.9);
+  backdrop-filter:blur(14px);
+  animation:screen-creature-callout 4.1s ease both;
+}
+.screen-creature-arrival-callout span{
+  color:#74776f;
+  font-size:11px;
+  text-transform:uppercase;
+  letter-spacing:.09em;
+}
+.screen-creature-arrival-callout b{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:clamp(24px,3vw,46px);
+  line-height:1;
+}
 .screen-creature-grid{
   display:grid;
   grid-template-columns:repeat(auto-fit,minmax(86px,1fr));
@@ -2147,7 +2176,9 @@ body{text-transform:lowercase}
   border:1px solid rgba(234,229,220,.09);
   border-radius:16px;
   background:rgba(17,18,15,.78);
-  animation:screen-creature-arrive .55s cubic-bezier(.2,.8,.2,1) both;
+}
+.screen-creature-card.arrived{
+  animation:screen-creature-arrive .72s cubic-bezier(.18,.86,.22,1) both;
 }
 .screen-creature-art{
   height:82px;
@@ -2162,6 +2193,11 @@ body{text-transform:lowercase}
   object-position:center bottom;
   filter:drop-shadow(0 8px 12px rgba(0,0,0,.32));
 }
+.screen-creature-card:not(.arrived) .screen-creature-art img{
+  animation:screen-creature-breathe 3.8s ease-in-out infinite;
+}
+.screen-creature-card:nth-child(3n+2) .screen-creature-art img{animation-delay:-1.2s}
+.screen-creature-card:nth-child(3n) .screen-creature-art img{animation-delay:-2.4s}
 .screen-creature-card.stage_0 .screen-creature-art{transform:scale(.84);transform-origin:center bottom}
 .screen-creature-card.stage_2 .screen-creature-art{transform:scale(1.04);transform-origin:center bottom}
 .screen-creature-card.stage_3 .screen-creature-art{transform:scale(1.08);transform-origin:center bottom}
@@ -2182,6 +2218,15 @@ body{text-transform:lowercase}
 @keyframes screen-creature-arrive{
   from{opacity:0;transform:translateY(22px) scale(.9)}
   to{opacity:1;transform:none}
+}
+@keyframes screen-creature-breathe{
+  0%,100%{transform:translateY(0) rotate(0)}
+  50%{transform:translateY(-3px) rotate(-1deg)}
+}
+@keyframes screen-creature-callout{
+  0%{opacity:0;transform:translateY(-12px) scale(.96)}
+  10%,82%{opacity:1;transform:none}
+  100%{opacity:0;transform:translateY(-7px)}
 }
 
 
