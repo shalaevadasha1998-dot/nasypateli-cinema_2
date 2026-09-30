@@ -400,6 +400,72 @@ function MovieCatalogAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(act
   return <Card className="movie-catalog-admin"><div className="section-title">каталог видео. preflight</div><p className="muted">рандом берёт только ready / partial / no_video и исключает уже выпавшее</p><div className="movie-preflight-list">{catalog.map(m=><button type="button" onClick={()=>edit(m)} key={m.id}><b>{m.title}</b><span>{m.usageStatus||'needs_review'}. {m.videoId?'video id есть':'без video id'}</span></button>)}</div><div className="movie-editor"><Field label="фильм"><input value={draft.title} onChange={e=>setDraft((v:any)=>({...v,title:e.target.value}))} placeholder="название"/></Field><div className="inline"><Field label="год"><input type="number" value={draft.year} onChange={e=>setDraft((v:any)=>({...v,year:e.target.value}))}/></Field><Field label="жанр"><input value={draft.genre} onChange={e=>setDraft((v:any)=>({...v,genre:e.target.value}))}/></Field></div><Field label="youtube video id"><input value={draft.videoId} onChange={e=>setDraft((v:any)=>({...v,videoId:e.target.value}))} placeholder="без полного url"/></Field><Field label="или source url"><input value={draft.sourceUrl} onChange={e=>setDraft((v:any)=>({...v,sourceUrl:e.target.value}))}/></Field><div className="inline"><Field label="start sec"><input type="number" min="0" value={draft.startSec} onChange={e=>setDraft((v:any)=>({...v,startSec:Number(e.target.value)}))}/></Field><Field label="end sec"><input type="number" min="0" value={draft.endSec} onChange={e=>setDraft((v:any)=>({...v,endSec:e.target.value}))}/></Field></div><Field label="статус"><select value={draft.usageStatus} onChange={e=>setDraft((v:any)=>({...v,usageStatus:e.target.value}))}><option value="needs_review">needs_review</option><option value="ready">ready</option><option value="partial">partial</option><option value="no_video">no_video</option><option value="blocked">blocked</option></select></Field><Field label="fallback животины"><textarea value={draft.animalComment} onChange={e=>setDraft((v:any)=>({...v,animalComment:e.target.value}))} placeholder="что сказать, если видео нет"/></Field><label className="toggle-row"><span>источник проверен вручную</span><button type="button" className={draft.sourceVerified?'switch on':'switch'} onClick={()=>setDraft((v:any)=>({...v,sourceVerified:!v.sourceVerified}))}><i/></button></label><Button disabled={busy||!draft.title.trim()} onClick={save}>{draft.movieId?'сохранить фильм':'добавить фильм'}</Button>{draft.movieId&&<Button kind="secondary" onClick={()=>setDraft(empty)}>новый фильм</Button>}</div></Card>
 }
 
+
+function FilmMechanicAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(action:string,payload?:Record<string,unknown>)=>Promise<any>}){
+  const round=data.show?.currentRound
+  const movie=round?.movie
+  const pack=movie?(data.filmPackages||[]).find(x=>x.movieCandidateId===movie.id):undefined
+  const makeFragments=()=>Array.from({length:6},(_,i)=>({label:i===0?'первый фрагмент':'продолжение '+i,videoId:'',startSec:0,endSec:'' as any}))
+  const makeQuestions=()=>Array.from({length:5},(_,i)=>({prompt:'',options:'',correctAnswer:'',revealText:'',position:i+1}))
+  const [fragments,setFragments]=useState<any[]>(makeFragments)
+  const [questions,setQuestions]=useState<any[]>(makeQuestions)
+  useEffect(()=>{
+    if(pack){
+      const fs=makeFragments();(pack.fragments||[]).slice(0,6).forEach((f:any,i:number)=>{fs[i]={...fs[i],...f,endSec:f?.endSec??''}});setFragments(fs)
+      const qs=makeQuestions();(pack.questions||[]).forEach((q:any)=>{const i=Math.max(0,Number(q.position)-1);if(i<5)qs[i]={position:i+1,prompt:q.prompt||'',options:Array.isArray(q.options)?q.options.join(', '):'',correctAnswer:answerText(q.correctAnswer),revealText:q.revealText||''}});setQuestions(qs)
+    }else{setFragments(makeFragments());setQuestions(makeQuestions())}
+  },[pack?.id,movie?.id])
+  if(!round||!movie)return <Card className="film-admin-card"><div className="section-title">киноблок нового формата</div><p className="muted">сначала запустите кинораунд и выберите фильм. после этого здесь появятся фрагменты, 5 вопросов и управление projector.</p></Card>
+  const patchFragment=(i:number,p:any)=>setFragments(v=>v.map((x,n)=>n===i?{...x,...p}:x))
+  const patchQuestion=(i:number,p:any)=>setQuestions(v=>v.map((x,n)=>n===i?{...x,...p}:x))
+  const save=()=>run('admin-film-package-save',{
+    movieCandidateId:movie.id,
+    fragments:fragments.map((f,i)=>({label:f.label||('фрагмент '+(i+1)),videoId:String(f.videoId||'').trim(),startSec:Number(f.startSec)||0,endSec:f.endSec===''?null:Number(f.endSec)||null})),
+    questions:questions.map((q,i)=>({prompt:q.prompt,options:String(q.options||'').split(',').map((x:string)=>x.trim()).filter(Boolean),correctAnswer:q.correctAnswer,revealText:q.revealText,revealFragment:{...fragments[i+1],index:i+1}}))
+  })
+  const project=(op:string,extra:Record<string,unknown>={})=>pack&&run('admin-film-projector',{filmPackageId:pack.id,roundId:round.id,op,...extra})
+  return <Card className="film-admin-card">
+    <div className="row spread"><div><div className="section-title">киноблок нового формата</div><h2>{movie.title}</h2></div><Pill>{data.projector?.state||'не на экране'}</Pill></div>
+    <details open={!pack} className="film-package-editor"><summary>{pack?'изменить 6 фрагментов и 5 вопросов':'подготовить 6 фрагментов и 5 вопросов'}</summary>
+      <div className="film-fragment-editor">{fragments.map((f,i)=><div className="film-config-row" key={i}><div className="section-title">{i===0?'01. первый фрагмент':'0'+(i+1)+'. reveal после вопроса '+i}</div><Field label="youtube video id"><input value={f.videoId||''} onChange={e=>patchFragment(i,{videoId:e.target.value})}/></Field><div className="inline"><Field label="start sec"><input type="number" min="0" value={f.startSec||0} onChange={e=>patchFragment(i,{startSec:Number(e.target.value)})}/></Field><Field label="end sec"><input type="number" min="0" value={f.endSec??''} onChange={e=>patchFragment(i,{endSec:e.target.value})}/></Field></div></div>)}</div>
+      <div className="film-question-editor">{questions.map((q,i)=><div className="film-config-row" key={i}><div className="section-title">вопрос {i+1}/5</div><Field label="что будет дальше?"><textarea value={q.prompt} onChange={e=>patchQuestion(i,{prompt:e.target.value})}/></Field><Field label="варианты через запятую"><input value={q.options} onChange={e=>patchQuestion(i,{options:e.target.value})}/></Field><Field label="правильный вариант"><input value={q.correctAnswer} onChange={e=>patchQuestion(i,{correctAnswer:e.target.value})}/></Field><Field label="что реально произошло"><textarea value={q.revealText} onChange={e=>patchQuestion(i,{revealText:e.target.value})}/></Field></div>)}</div>
+      <Button disabled={busy} onClick={save}>{pack?'сохранить киноблок':'создать киноблок'}</Button>
+    </details>
+    {pack&&<div className="film-live-console">
+      <div className="section-title">режиссура projector</div>
+      <div className="film-live-step"><b>0. первый фрагмент</b><Button kind="secondary" disabled={busy} onClick={()=>project('film_intro')}>показать первый фрагмент</Button></div>
+      <div className="film-live-step"><b>слово зала</b><div className="inline"><Button disabled={busy} onClick={()=>project('one_word_open')}>собирать одно слово</Button><Button kind="secondary" disabled={busy} onClick={()=>project('one_word_results')}>зафиксировать стену слов</Button></div></div>
+      {(pack.questions||[]).map(q=><div className="film-live-step" key={q.id}><b>{q.position}/5. {q.prompt}</b><div className="film-control-three"><Button disabled={busy} onClick={()=>project('question_open',{position:q.position})}>открыть вопрос</Button><Button kind="secondary" disabled={busy} onClick={()=>project('question_results',{position:q.position})}>результаты</Button><Button kind="secondary" disabled={busy} onClick={()=>project('question_reveal',{position:q.position})}>правильное + фрагмент</Button></div></div>)}
+      <div className="film-live-step assignment-step"><b>после 5/5</b><div className="inline"><Button kind="secondary" disabled={busy} onClick={()=>project('assignment_randomizing')}>запустить рандом на экране</Button><Button disabled={busy} onClick={()=>run('admin-film-assign',{filmPackageId:pack.id,roundId:round.id})}>выбрать животинку</Button></div><p className="muted">выбор делается на сервере один раз. повторное нажатие вернёт того же победителя.</p></div>
+    </div>}
+  </Card>
+}
+
+function ReviewQueueAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(action:string,payload?:Record<string,unknown>)=>Promise<any>}){
+  const [filter,setFilter]=useState('new')
+  const rows=data.reviewQueue||[]
+  const filtered=rows.filter(row=>{
+    if(filter==='all')return true
+    if(filter==='new')return row.reviewStatus==='submitted'
+    if(filter==='overdue')return row.assignmentStatus==='overdue'
+    return row.reviewStatus===filter
+  })
+  const action=async(row:any,op:string)=>{
+    if(!row.reviewId)return
+    if(op==='changes_requested'){
+      const comment=window.prompt('что нужно уточнить в рецензии?','')
+      if(!comment?.trim())return
+      await run('admin-review-action',{reviewId:row.reviewId,op,comment:comment.trim()})
+      return
+    }
+    await run('admin-review-action',{reviewId:row.reviewId,op})
+  }
+  const copy=async(row:any)=>{const text=String(row.snapshot?.publishText||row.snapshot?.userReview||'');if(!text)return;try{await navigator.clipboard.writeText(text)}catch{window.prompt('скопируйте текст',text)}}
+  return <Card className="review-queue-card"><div className="row spread"><div><div className="section-title">рецензии</div><h2>очередь животинок</h2></div><select value={filter} onChange={e=>setFilter(e.target.value)}><option value="new">новые</option><option value="changes_requested">на доработке</option><option value="approved">одобрено</option><option value="published">опубликовано</option><option value="overdue">просроченные назначения</option><option value="all">все</option></select></div>
+    {!filtered.length?<p className="muted">в этом фильтре пока пусто</p>:<div className="review-admin-list">{filtered.map(row=><div className="review-admin-item" key={row.assignmentId}><div className="row spread"><div><b>{row.animalName} × {row.filmTitle}</b><small>{missionStatusLabel(row.assignmentStatus)}{row.reviewStatus?' · '+row.reviewStatus:''}</small></div><Pill>{row.correctCount}/{row.totalQuestions}</Pill></div><p className="review-service-line">служебно: {row.user.displayName||'без имени'}{row.user.telegramUsername?' @'+row.user.telegramUsername:''}</p><div className="review-before-after compact"><span><small>до</small>«{row.beforeWord}»</span><span><small>после</small>«{row.afterWord||'—'}»</span></div>{row.snapshot&&<><p><b>{row.snapshot.crumbs}/5 крошек</b></p><p>{row.snapshot.userReview}</p><p className="muted">животинка: {row.snapshot.animalTake}</p></>}{row.adminComment&&<div className="review-admin-comment">{row.adminComment}</div>}<div className="review-admin-actions">{row.reviewId&&<Button kind="secondary" disabled={busy} onClick={()=>copy(row)}>скопировать текст</Button>}{row.reviewStatus==='submitted'&&<><Button disabled={busy} onClick={()=>action(row,'approve')}>одобрить</Button><Button kind="danger" disabled={busy} onClick={()=>action(row,'changes_requested')}>вернуть на доработку</Button></>}{row.reviewStatus==='approved'&&<Button disabled={busy} onClick={()=>action(row,'publish')}>отметить опубликованной</Button>}</div></div>)}</div>}
+  </Card>
+}
+
 function Admin(){
   const {slug}=useParams()
   const privileged=usePrivilegedState('admin',slug)
@@ -415,7 +481,9 @@ function Admin(){
     <Card className="projector-access-card"><div className="section-title">общий экран / проектор</div><p className="muted">откройте эту ссылку на ноутбуке, подключённом к проектору, и разверните браузер на весь экран. экран обновляется сам.</p><div className="inline"><Button kind="secondary" disabled={busy} onClick={async()=>{const x:any=await run('admin-screen-link');if(x?.screenUrl)setProjectorLink(String(x.screenUrl))}}>получить ссылку экрана</Button>{projectorLink&&<><Button onClick={()=>window.open(projectorLink,'_blank','noopener,noreferrer')}>открыть экран ↗</Button><Button kind="secondary" onClick={async()=>{try{await navigator.clipboard.writeText(projectorLink)}catch{window.prompt('скопируйте ссылку',projectorLink)}}}>скопировать</Button></>}</div>{projectorLink&&<input className="share-link" readOnly value={projectorLink}/>}</Card>
     <ShowControl data={data} busy={busy} run={run}/>
     <ShowRoundControl data={data} busy={busy} run={run}/>
+    <FilmMechanicAdmin data={data} busy={busy} run={run}/>
     <AdminParticipants data={data} reload={reload} adminToken={privileged.token}/>
+    <ReviewQueueAdmin data={data} busy={busy} run={run}/>
     <ProgramEditor data={data} busy={busy} run={run}/>
     <MovieCatalogAdmin data={data} busy={busy} run={run}/>
     <details className="admin-technical"><summary>технические настройки события</summary><div className="admin-tech-grid">
