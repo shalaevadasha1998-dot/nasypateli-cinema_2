@@ -252,6 +252,73 @@ export type ScreenCreature = {
   growthProgress:number
 }
 
+export type FilmProjectorState =
+  | 'idle'|'arrival'|'film_intro'|'one_word_collecting'|'one_word_results'
+  | 'question_open'|'question_results'|'question_reveal'
+  | 'assignment_randomizing'|'assignment_winner'|'past_review_card'
+
+export type FilmMission = {
+  id:string
+  filmPackageId:string
+  filmTitle:string
+  status:'assigned'|'watching'|'watched'|'review_in_progress'|'review_ready'|'submitted'|'approved'|'changes_requested'|'published'|'overdue'
+  assignedAt:string
+  dueAt:string
+  daysLeft:number
+  beforeWord:string
+  afterWord?:string
+  correctCount:number
+  totalQuestions:number
+  watchedAt?:string
+  submittedAt?:string
+}
+
+export type FilmLiveState = {
+  state:FilmProjectorState
+  revision:number
+  roundId?:string
+  filmPackageId?:string
+  filmTitle?:string
+  payload:Record<string,any>
+  myWord?:string
+  myAnswers:{question_id:string;answer:any;is_correct:boolean}[]
+}
+
+export type FilmPackageAdmin = {
+  id:string
+  movieCandidateId:string
+  title:string
+  fragments:any[]
+  status:string
+  questions:{id:string;position:number;prompt:string;options:any[];correctAnswer:any;revealText:string;revealFragment:any}[]
+}
+
+export type ReviewQueueItem = {
+  assignmentId:string
+  animalName:string
+  filmTitle:string
+  assignedAt:string
+  dueAt:string
+  assignmentStatus:string
+  beforeWord:string
+  afterWord?:string
+  correctCount:number
+  totalQuestions:number
+  reviewId?:string
+  reviewStatus?:string
+  submittedAt?:string
+  snapshot?:Record<string,any>
+  adminComment?:string
+  user:{displayName:string;telegramUsername:string}
+}
+
+export type ProjectorState = {
+  state:FilmProjectorState
+  revision:number
+  payload:Record<string,any>
+  updatedAt?:string
+}
+
 export type DemoState = {
   isAdmin?:boolean
   event: EventInfo
@@ -281,6 +348,11 @@ export type DemoState = {
   datingMatches:DatingMatch[]
   notificationPrefs:NotificationPrefs
   show?:ShowState
+  filmAssignments?:FilmMission[]
+  filmLive?:FilmLiveState
+  filmPackages?:FilmPackageAdmin[]
+  reviewQueue?:ReviewQueueItem[]
+  projector?:ProjectorState
   screenCreatures?:ScreenCreature[]
   movieCatalog?:MovieCandidate[]
   showLog?:{id:string;action:string;createdAt:string}[]
