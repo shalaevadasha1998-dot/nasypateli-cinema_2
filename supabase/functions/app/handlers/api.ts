@@ -1328,6 +1328,7 @@ export async function handleApi(req:Request){
       }
       if(session.data.status==='draft_ready'||assignment.data.status==='review_ready')return json({ok:true,status:'draft_ready',draft:session.data.draft,adminComment:session.data.admin_comment||undefined})
       if(session.data.status==='submitted'&&assignment.data.status!=='changes_requested')return err('рецензия уже отправлена',409)
+      const previousDraft=session.data.status==='changes_requested'?session.data.draft:undefined
       if(session.data.status==='changes_requested'){
         const reopened=await db.from('review_sessions').update({status:'active',step:0,updated_at:new Date().toISOString()}).eq('id',session.data.id).select('*').single()
         if(reopened.error)throw reopened.error
@@ -1335,7 +1336,7 @@ export async function handleApi(req:Request){
       }
       await db.from('film_assignments').update({status:'review_in_progress',updated_at:new Date().toISOString()}).eq('id',assignmentId).eq('user_id',user.id)
       const nextQuestion=await reviewQuestionForStep(db,assignment.data,Number(session.data.step||0))
-      return json({ok:true,status:'active',sessionId:session.data.id,step:Number(session.data.step||0),nextQuestion,answers:session.data.answers||{},messages:Array.isArray(session.data.messages)?session.data.messages:[],adminComment:session.data.admin_comment||undefined})
+      return json({ok:true,status:'active',sessionId:session.data.id,step:Number(session.data.step||0),nextQuestion,answers:session.data.answers||{},messages:Array.isArray(session.data.messages)?session.data.messages:[],adminComment:session.data.admin_comment||undefined,previousDraft})
     }
 
     if(action==='film-review-answer'){
