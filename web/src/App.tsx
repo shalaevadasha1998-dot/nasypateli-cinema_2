@@ -442,8 +442,16 @@ function FilmPackagePrepAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(
 
 function FilmMechanicAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(action:string,payload?:Record<string,unknown>)=>Promise<any>}){
   const round=data.show?.currentRound
-  const movie=round?.movie
+  const liveMovie=round?.movie
+  const catalog=data.movieCatalog||[]
+  const [prepMovieId,setPrepMovieId]=useState('')
+  useEffect(()=>{
+    if(liveMovie?.id){setPrepMovieId(liveMovie.id);return}
+    if(!prepMovieId&&catalog.length)setPrepMovieId(catalog[0].id)
+  },[liveMovie?.id,catalog.length])
+  const movie=catalog.find(x=>x.id===prepMovieId)||liveMovie
   const pack=movie?(data.filmPackages||[]).find(x=>x.movieCandidateId===movie.id):undefined
+  const liveReady=!!round&&!!liveMovie&&!!movie&&liveMovie.id===movie.id
   const makeFragments=()=>Array.from({length:6},(_,i)=>({label:i===0?'первый фрагмент':'продолжение '+i,videoId:'',startSec:0,endSec:'' as any}))
   const makeQuestions=()=>Array.from({length:5},(_,i)=>({prompt:'',options:'',correctAnswer:'',revealText:'',position:i+1}))
   const [fragments,setFragments]=useState<any[]>(makeFragments)
@@ -454,7 +462,8 @@ function FilmMechanicAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(act
       const qs=makeQuestions();(pack.questions||[]).forEach((q:any)=>{const i=Math.max(0,Number(q.position)-1);if(i<5)qs[i]={position:i+1,prompt:q.prompt||'',options:Array.isArray(q.options)?q.options.join(', '):'',correctAnswer:answerText(q.correctAnswer),revealText:q.revealText||''}});setQuestions(qs)
     }else{setFragments(makeFragments());setQuestions(makeQuestions())}
   },[pack?.id,movie?.id])
-  if(!round||!movie)return <Card className="film-admin-card"><div className="section-title">киноблок нового формата</div><p className="muted">сначала запустите кинораунд и выберите фильм. после этого здесь появятся фрагменты, 5 вопросов и управление projector.</p></Card>
+  if(!catalog.length)return <Card className="film-admin-card"><div className="section-title">киноблок нового формата</div><h2>сначала добавьте фильмы</h2><p className="muted">в production-каталоге пока нет ни одного movie candidate. добавьте фильм ниже в каталоге, затем здесь появится подготовка 6 фрагментов и 5 вопросов.</p></Card>
+  if(!movie)return null
   const patchFragment=(i:number,p:any)=>setFragments(v=>v.map((x,n)=>n===i?{...x,...p}:x))
   const patchQuestion=(i:number,p:any)=>setQuestions(v=>v.map((x,n)=>n===i?{...x,...p}:x))
   const save=()=>run('admin-film-package-save',{
@@ -462,21 +471,24 @@ function FilmMechanicAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(act
     fragments:fragments.map((f,i)=>({label:f.label||('фрагмент '+(i+1)),videoId:String(f.videoId||'').trim(),startSec:Number(f.startSec)||0,endSec:f.endSec===''?null:Number(f.endSec)||null})),
     questions:questions.map((q,i)=>({prompt:q.prompt,options:String(q.options||'').split(',').map((x:string)=>x.trim()).filter(Boolean),correctAnswer:q.correctAnswer,revealText:q.revealText,revealFragment:{...fragments[i+1],index:i+1}}))
   })
-  const project=(op:string,extra:Record<string,unknown>={})=>pack&&run('admin-film-projector',{filmPackageId:pack.id,roundId:round.id,op,...extra})
+  const project=(op:string,extra:Record<string,unknown>={})=>pack&&round&&liveReady&&run('admin-film-projector',{filmPackageId:pack.id,roundId:round.id,op,...extra})
   return <Card className="film-admin-card">
-    <div className="row spread"><div><div className="section-title">киноблок нового формата</div><h2>{movie.title}</h2></div><Pill>{data.projector?.state||'не на экране'}</Pill></div>
+    <div className="row spread"><div><div className="section-title">подготовка киноблоков</div><h2>{movie.title}</h2></div><Pill>{pack?.status==='ready'?'готов к рандому':'не готов'}</Pill></div>
+    <Field label="какой фильм готовим"><select value={movie.id} onChange={e=>setPrepMovieId(e.target.value)}>{catalog.map(m=><option value={m.id} key={m.id}>{m.title}{(data.filmPackages||[]).some(p=>p.movieCandidateId===m.id&&p.status==='ready')?' · ready':' · без пакета'}</option>)}</select></Field>
+    <p className="muted">готовый пакет = первый фрагмент + 5 продолжений/reveal + ровно 5 проверенных вопросов. только такие фильмы попадают в live-рандом.</p>
     <details open={!pack} className="film-package-editor"><summary>{pack?'изменить 6 фрагментов и 5 вопросов':'подготовить 6 фрагментов и 5 вопросов'}</summary>
       <div className="film-fragment-editor">{fragments.map((f,i)=><div className="film-config-row" key={i}><div className="section-title">{i===0?'01. первый фрагмент':'0'+(i+1)+'. reveal после вопроса '+i}</div><Field label="youtube video id"><input value={f.videoId||''} onChange={e=>patchFragment(i,{videoId:e.target.value})}/></Field><div className="inline"><Field label="start sec"><input type="number" min="0" value={f.startSec||0} onChange={e=>patchFragment(i,{startSec:Number(e.target.value)})}/></Field><Field label="end sec"><input type="number" min="0" value={f.endSec??''} onChange={e=>patchFragment(i,{endSec:e.target.value})}/></Field></div></div>)}</div>
       <div className="film-question-editor">{questions.map((q,i)=><div className="film-config-row" key={i}><div className="section-title">вопрос {i+1}/5</div><Field label="что будет дальше?"><textarea value={q.prompt} onChange={e=>patchQuestion(i,{prompt:e.target.value})}/></Field><Field label="варианты через запятую"><input value={q.options} onChange={e=>patchQuestion(i,{options:e.target.value})}/></Field><Field label="правильный вариант"><input value={q.correctAnswer} onChange={e=>patchQuestion(i,{correctAnswer:e.target.value})}/></Field><Field label="что реально произошло"><textarea value={q.revealText} onChange={e=>patchQuestion(i,{revealText:e.target.value})}/></Field></div>)}</div>
       <Button disabled={busy} onClick={save}>{pack?'сохранить киноблок':'создать киноблок'}</Button>
     </details>
-    {pack&&<div className="film-live-console">
-      <div className="section-title">режиссура projector</div>
+    {pack&&liveReady&&<div className="film-live-console">
+      <div className="row spread"><div className="section-title">режиссура projector · текущий раунд</div><Pill>{data.projector?.state||'не на экране'}</Pill></div>
       <div className="film-live-step"><b>0. первый фрагмент</b><Button kind="secondary" disabled={busy} onClick={()=>project('film_intro')}>показать первый фрагмент</Button></div>
       <div className="film-live-step"><b>слово зала</b><div className="inline"><Button disabled={busy} onClick={()=>project('one_word_open')}>собирать одно слово</Button><Button kind="secondary" disabled={busy} onClick={()=>project('one_word_results')}>зафиксировать стену слов</Button></div></div>
       {(pack.questions||[]).map(q=><div className="film-live-step" key={q.id}><b>{q.position}/5. {q.prompt}</b><div className="film-control-three"><Button disabled={busy} onClick={()=>project('question_open',{position:q.position})}>открыть вопрос</Button><Button kind="secondary" disabled={busy} onClick={()=>project('question_results',{position:q.position})}>результаты</Button><Button kind="secondary" disabled={busy} onClick={()=>project('question_reveal',{position:q.position})}>правильное + фрагмент</Button></div></div>)}
       <div className="film-live-step assignment-step"><b>после 5/5</b><div className="inline"><Button kind="secondary" disabled={busy} onClick={()=>project('assignment_randomizing')}>запустить рандом на экране</Button><Button disabled={busy} onClick={()=>run('admin-film-assign',{filmPackageId:pack.id,roundId:round.id})}>выбрать животинку</Button></div><p className="muted">выбор делается на сервере один раз. повторное нажатие вернёт того же победителя.</p></div>
     </div>}
+    {pack&&!liveReady&&<div className="success">киноблок готов. он появится в live-пульте автоматически, когда этот фильм выпадет в текущем раунде.</div>}
   </Card>
 }
 
