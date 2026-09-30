@@ -594,9 +594,19 @@ function Admin(){
   const [busy,setBusy]=useState(false),[actionError,setActionError]=useState('')
   const [cap,setCap]=useState(50),[startsAt,setStartsAt]=useState(''),[ticketPrice,setTicketPrice]=useState(0),[runtimeCap,setRuntimeCap]=useState(150),[venueName,setVenueName]=useState(''),[venueAddress,setVenueAddress]=useState(''),[message,setMessage]=useState(''),[checkinLink,setCheckinLink]=useState(''),[projectorLink,setProjectorLink]=useState('')
   const [preflight,setPreflight]=useState<any>(null)
+  const [artCheck,setArtCheck]=useState<{loaded:number;total:number;missing:string[]}|null>(null)
   useEffect(()=>{if(data){setCap(data.event.capacity);setStartsAt(moscowInputValue(data.event.startsAt));setTicketPrice(Number(data.event.ticketPriceRub||0));setRuntimeCap(Number(data.event.maxMovieRuntimeMin||150));setVenueName(data.event.venueName||'');setVenueAddress(data.event.venueAddress||'')}},[data?.event.capacity,data?.event.startsAt,data?.event.ticketPriceRub,data?.event.maxMovieRuntimeMin,data?.event.venueName,data?.event.venueAddress])
   if(!data)return <Loading error={error}/>
   const run=async(action:string,payload:Record<string,unknown>={})=>{try{setBusy(true);setActionError('');const result=await callAdminApi<any>(action,{slug:data.event.slug,...payload},privileged.token);await reload();return result}catch(e:any){setActionError(e.message||'не получилось выполнить действие');return null}finally{setBusy(false)}}
+  const probeProjectorArt=async()=>{
+    const names=['projector-stage-0.webp','projector-stage-1.webp','projector-stage-2.webp','projector-stage-3.webp','projector-stage-4.webp']
+    const results=await Promise.all(names.map(async name=>{try{const r=await fetch(`${import.meta.env.BASE_URL}assets/${name}`,{method:'HEAD',cache:'no-store'});return {name,ok:r.ok}}catch{return {name,ok:false}}}))
+    const missing=results.filter(x=>!x.ok).map(x=>x.name)
+    const next={loaded:results.length-missing.length,total:results.length,missing}
+    setArtCheck(next)
+    return next
+  }
+  const runPreflight=async()=>{const [x]=await Promise.all([run('admin-event-preflight'),probeProjectorArt()]);if(x)setPreflight(x)}
   return <div className="admin-page">
     <div className="row spread admin-title-row"><div><div className="eyebrow">админка. экран ведущего</div><h2>{data.event.title}</h2></div><Pill>{data.show?showRunStatusLabel(data.show.runtime.runStatus):statusLabel(data.event.status)}</Pill></div>
     {actionError&&<div className="form-error">{actionError}</div>}
@@ -604,8 +614,11 @@ function Admin(){
     <Card className="event-preflight-card">
       <div className="row spread"><div><div className="section-title">preflight перед мероприятием</div><h3>{preflight?preflight.ready?'технически готово':'есть блокеры':'проверка одним нажатием'}</h3></div>{preflight&&<Pill>{preflight.summary?.failed?preflight.summary.failed+' блокер(а)':'готово'}</Pill>}</div>
       <p className="muted">проверяет projector, telegram, программу, runtime, film packages, 5 вопросов, video sources, права, площадку и текущую посещаемость.</p>
-      <Button disabled={busy} onClick={async()=>{const x:any=await run('admin-event-preflight');if(x)setPreflight(x)}}>{busy?'проверяем…':'проверить вечер'}</Button>
-      {preflight&&<div className="event-preflight-list">{(preflight.checks||[]).map((x:any)=><div className={'event-preflight-row '+x.status} key={x.key}><span className="event-preflight-dot"/><div><b>{x.label}</b><small>{x.detail}</small></div><em>{x.status==='pass'?'ok':x.status==='fail'?'block':x.status==='warn'?'warning':'info'}</em></div>)}</div>}
+      <Button disabled={busy} onClick={runPreflight}>{busy?'проверяем…':'проверить вечер'}</Button>
+      {preflight&&<div className="event-preflight-list">
+        {(preflight.checks||[]).map((x:any)=><div className={'event-preflight-row '+x.status} key={x.key}><span className="event-preflight-dot"/><div><b>{x.label}</b><small>{x.detail}</small></div><em>{x.status==='pass'?'ok':x.status==='fail'?'block':x.status==='warn'?'warning':'info'}</em></div>)}
+        {artCheck&&<div className={'event-preflight-row '+(artCheck.loaded===artCheck.total?'pass':'warn')}><span className="event-preflight-dot"/><div><b>финальный art pack животин</b><small>{artCheck.loaded}/{artCheck.total} custom stage sprites загружено{artCheck.missing.length?' · fallback работает · не хватает: '+artCheck.missing.join(', '):''}</small></div><em>{artCheck.loaded===artCheck.total?'ok':'warning'}</em></div>}
+      </div>}
       {preflight?.checkedAt&&<small className="event-preflight-time">проверено {new Date(preflight.checkedAt).toLocaleString('ru-RU')}</small>}
     </Card>
     <ShowControl data={data} busy={busy} run={run}/>
