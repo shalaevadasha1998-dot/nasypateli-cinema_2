@@ -137,7 +137,7 @@ async function searchYoutubePublic(movie:any,mode:'fragment'|'trailer'):Promise<
         const looksTrailer=/(trailer|трейлер)/i.test(title)
         if(mode==='trailer'&&!looksTrailer&&!looksTeaser)continue
         const official=/\bofficial\b|официальн/i.test(title)
-        const confidence=clamp01(.45+match*.35+(official?.12:0)+(looksClip||looksTrailer||looksTeaser?.08:0))
+        const confidence=clamp01(.45+match*.35+(official?0.12:0)+((looksClip||looksTrailer||looksTeaser)?0.08:0))
         rows.push({
           useMode:mode,
           sourceType:mode==='fragment'?'clip':looksTeaser?'teaser':'trailer',
@@ -201,7 +201,7 @@ async function searchInternetArchive(movie:any,mode:'fragment'|'trailer'):Promis
           embeddable:false,
           official:false,
           rightsStatus:license?'allowed':'unknown',
-          confidence:clamp01(.35+match*.45+(license?.1:0)),
+          confidence:clamp01(.35+match*.45+(license?0.1:0)),
           metadata:{identifier,licenseUrl:license||undefined,discoveredBy:'internet_archive',query:q}
         })
       }catch{}
@@ -246,7 +246,7 @@ async function searchWikimediaCommons(movie:any,mode:'fragment'|'trailer'):Promi
         embeddable:false,
         official:false,
         rightsStatus:licenseName?'allowed':'unknown',
-        confidence:clamp01(.35+match*.45+(licenseName?.1:0)),
+        confidence:clamp01(.35+match*.45+(licenseName?0.1:0)),
         metadata:{pageId:page?.pageid,license:licenseName||undefined,discoveredBy:'wikimedia_commons',query}
       })
     }
