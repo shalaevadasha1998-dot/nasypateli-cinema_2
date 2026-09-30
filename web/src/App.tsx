@@ -593,6 +593,7 @@ function Admin(){
   const data=privileged.data,error=privileged.error,reload=privileged.reload
   const [busy,setBusy]=useState(false),[actionError,setActionError]=useState('')
   const [cap,setCap]=useState(50),[startsAt,setStartsAt]=useState(''),[ticketPrice,setTicketPrice]=useState(0),[runtimeCap,setRuntimeCap]=useState(150),[venueName,setVenueName]=useState(''),[venueAddress,setVenueAddress]=useState(''),[message,setMessage]=useState(''),[checkinLink,setCheckinLink]=useState(''),[projectorLink,setProjectorLink]=useState('')
+  const [preflight,setPreflight]=useState<any>(null)
   useEffect(()=>{if(data){setCap(data.event.capacity);setStartsAt(moscowInputValue(data.event.startsAt));setTicketPrice(Number(data.event.ticketPriceRub||0));setRuntimeCap(Number(data.event.maxMovieRuntimeMin||150));setVenueName(data.event.venueName||'');setVenueAddress(data.event.venueAddress||'')}},[data?.event.capacity,data?.event.startsAt,data?.event.ticketPriceRub,data?.event.maxMovieRuntimeMin,data?.event.venueName,data?.event.venueAddress])
   if(!data)return <Loading error={error}/>
   const run=async(action:string,payload:Record<string,unknown>={})=>{try{setBusy(true);setActionError('');const result=await callAdminApi<any>(action,{slug:data.event.slug,...payload},privileged.token);await reload();return result}catch(e:any){setActionError(e.message||'не получилось выполнить действие');return null}finally{setBusy(false)}}
@@ -600,6 +601,13 @@ function Admin(){
     <div className="row spread admin-title-row"><div><div className="eyebrow">админка. экран ведущего</div><h2>{data.event.title}</h2></div><Pill>{data.show?showRunStatusLabel(data.show.runtime.runStatus):statusLabel(data.event.status)}</Pill></div>
     {actionError&&<div className="form-error">{actionError}</div>}
     <Card className="projector-access-card"><div className="section-title">общий экран / проектор</div><p className="muted">откройте эту ссылку на ноутбуке, подключённом к проектору, и разверните браузер на весь экран. экран обновляется сам.</p><div className="inline"><Button kind="secondary" disabled={busy} onClick={async()=>{const x:any=await run('admin-screen-link');if(x?.screenUrl)setProjectorLink(String(x.screenUrl))}}>получить ссылку экрана</Button>{projectorLink&&<><Button onClick={()=>window.open(projectorLink,'_blank','noopener,noreferrer')}>открыть экран ↗</Button><Button kind="secondary" onClick={()=>window.open(projectorLink+'&demo=animals','_blank','noopener,noreferrer')}>репетиция животин ↗</Button><Button kind="secondary" onClick={async()=>{try{await navigator.clipboard.writeText(projectorLink)}catch{window.prompt('скопируйте ссылку',projectorLink)}}}>скопировать</Button></>}</div>{projectorLink&&<input className="share-link" readOnly value={projectorLink}/>}</Card>
+    <Card className="event-preflight-card">
+      <div className="row spread"><div><div className="section-title">preflight перед мероприятием</div><h3>{preflight?preflight.ready?'технически готово':'есть блокеры':'проверка одним нажатием'}</h3></div>{preflight&&<Pill>{preflight.summary?.failed?preflight.summary.failed+' блокер(а)':'готово'}</Pill>}</div>
+      <p className="muted">проверяет projector, telegram, программу, runtime, film packages, 5 вопросов, video sources, права, площадку и текущую посещаемость.</p>
+      <Button disabled={busy} onClick={async()=>{const x:any=await run('admin-event-preflight');if(x)setPreflight(x)}}>{busy?'проверяем…':'проверить вечер'}</Button>
+      {preflight&&<div className="event-preflight-list">{(preflight.checks||[]).map((x:any)=><div className={'event-preflight-row '+x.status} key={x.key}><span className="event-preflight-dot"/><div><b>{x.label}</b><small>{x.detail}</small></div><em>{x.status==='pass'?'ok':x.status==='fail'?'block':x.status==='warn'?'warning':'info'}</em></div>)}</div>}
+      {preflight?.checkedAt&&<small className="event-preflight-time">проверено {new Date(preflight.checkedAt).toLocaleString('ru-RU')}</small>}
+    </Card>
     <ShowControl data={data} busy={busy} run={run}/>
     <ShowRoundControl data={data} busy={busy} run={run}/>
     <FilmPackagePrepAdmin data={data} busy={busy} run={run}/>
