@@ -245,6 +245,7 @@ export type ShowState = {
 }
 
 export type DemoState = {
+  isAdmin?:boolean
   event: EventInfo
   profile: CinemaProfile
   onboardingComplete:boolean

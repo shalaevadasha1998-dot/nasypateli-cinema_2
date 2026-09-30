@@ -162,6 +162,7 @@ function Home(){
     <section className="zhivotina-portal">
       <div className="zhivotina-portrait" aria-hidden><img src={`${import.meta.env.BASE_URL}assets/rabbit-baby.png`} alt="" draggable={false}/></div><div><div className="eyebrow">чат с животиной</div><div className="zhivotina-portal-name">{data.creature.name||'животина'}</div><p>спросите про свой вкус, попросите рекомендацию или обсудите фильм</p></div><Button kind="secondary" onClick={()=>nav('/zhivotina')}>поговорить с {data.creature.name||'животиной'}</Button>
     </section>
+    {data.isAdmin&&<button type="button" className="admin-entry-link" onClick={()=>nav(`/admin/event/${e.slug}`)}>админка шоу ↗</button>}
     {demoMode&&<Card className="dev"><b>демо</b><span>админка: <a href={`${import.meta.env.BASE_URL}#/admin/${e.slug}`}>/admin/{e.slug}</a>. экран: <a href={`${import.meta.env.BASE_URL}#/screen/${e.slug}`}>/screen/{e.slug}</a></span></Card>}
   </div>
 }
