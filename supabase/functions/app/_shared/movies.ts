@@ -184,7 +184,8 @@ async function searchInternetArchive(movie:any,mode:'fragment'|'trailer'):Promis
         if(!mr.ok)continue
         const meta=await mr.json()
         const files=Array.isArray(meta?.files)?meta.files:[]
-        const file=files.find((x:any)=>/\.(mp4|webm|ogv)$/i.test(String(x?.name||''))&&String(x?.source||'').toLowerCase()!=='metadata')
+        const playable=files.filter((x:any)=>/\.(mp4|webm)$/i.test(String(x?.name||''))&&String(x?.source||'').toLowerCase()!=='metadata')
+        const file=playable.find((x:any)=>/\.mp4$/i.test(String(x?.name||'')))||playable.find((x:any)=>/\.webm$/i.test(String(x?.name||'')))
         if(!file?.name)continue
         const sourceUrl='https://archive.org/download/'+encodeURIComponent(identifier)+'/'+String(file.name).split('/').map(encodeURIComponent).join('/')
         const license=String(doc?.licenseurl||meta?.metadata?.licenseurl||'')
@@ -198,7 +199,7 @@ async function searchInternetArchive(movie:any,mode:'fragment'|'trailer'):Promis
           startSec:0,
           endSec:null,
           verified:true,
-          embeddable:false,
+          embeddable:true,
           official:false,
           rightsStatus:license?'allowed':'unknown',
           confidence:clamp01(.35+match*.45+(license?0.1:0)),
@@ -225,7 +226,7 @@ async function searchWikimediaCommons(movie:any,mode:'fragment'|'trailer'):Promi
     for(const page of pages){
       const info=page?.imageinfo?.[0]
       const mime=String(info?.mime||'')
-      if(!mime.startsWith('video/'))continue
+      if(!['video/mp4','video/webm'].includes(mime))continue
       const title=String(page?.title||'').replace(/^File:/,'')
       const match=sourceTitleMatch(title,movie)
       if(match<.4)continue
@@ -243,7 +244,7 @@ async function searchWikimediaCommons(movie:any,mode:'fragment'|'trailer'):Promi
         startSec:0,
         endSec:null,
         verified:!!info?.url,
-        embeddable:false,
+        embeddable:true,
         official:false,
         rightsStatus:licenseName?'allowed':'unknown',
         confidence:clamp01(.35+match*.45+(licenseName?0.1:0)),
