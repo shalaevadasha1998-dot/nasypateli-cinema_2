@@ -599,7 +599,7 @@ function Admin(){
   return <div className="admin-page">
     <div className="row spread admin-title-row"><div><div className="eyebrow">админка. экран ведущего</div><h2>{data.event.title}</h2></div><Pill>{data.show?showRunStatusLabel(data.show.runtime.runStatus):statusLabel(data.event.status)}</Pill></div>
     {actionError&&<div className="form-error">{actionError}</div>}
-    <Card className="projector-access-card"><div className="section-title">общий экран / проектор</div><p className="muted">откройте эту ссылку на ноутбуке, подключённом к проектору, и разверните браузер на весь экран. экран обновляется сам.</p><div className="inline"><Button kind="secondary" disabled={busy} onClick={async()=>{const x:any=await run('admin-screen-link');if(x?.screenUrl)setProjectorLink(String(x.screenUrl))}}>получить ссылку экрана</Button>{projectorLink&&<><Button onClick={()=>window.open(projectorLink,'_blank','noopener,noreferrer')}>открыть экран ↗</Button><Button kind="secondary" onClick={async()=>{try{await navigator.clipboard.writeText(projectorLink)}catch{window.prompt('скопируйте ссылку',projectorLink)}}}>скопировать</Button></>}</div>{projectorLink&&<input className="share-link" readOnly value={projectorLink}/>}</Card>
+    <Card className="projector-access-card"><div className="section-title">общий экран / проектор</div><p className="muted">откройте эту ссылку на ноутбуке, подключённом к проектору, и разверните браузер на весь экран. экран обновляется сам.</p><div className="inline"><Button kind="secondary" disabled={busy} onClick={async()=>{const x:any=await run('admin-screen-link');if(x?.screenUrl)setProjectorLink(String(x.screenUrl))}}>получить ссылку экрана</Button>{projectorLink&&<><Button onClick={()=>window.open(projectorLink,'_blank','noopener,noreferrer')}>открыть экран ↗</Button><Button kind="secondary" onClick={()=>window.open(projectorLink+'&demo=animals','_blank','noopener,noreferrer')}>репетиция животин ↗</Button><Button kind="secondary" onClick={async()=>{try{await navigator.clipboard.writeText(projectorLink)}catch{window.prompt('скопируйте ссылку',projectorLink)}}}>скопировать</Button></>}</div>{projectorLink&&<input className="share-link" readOnly value={projectorLink}/>}</Card>
     <ShowControl data={data} busy={busy} run={run}/>
     <ShowRoundControl data={data} busy={busy} run={run}/>
     <FilmPackagePrepAdmin data={data} busy={busy} run={run}/>
@@ -802,7 +802,27 @@ function showTimerText(data:DemoState,now:number){
 }
 
 function projectorStateLabel(state:string){const m:Record<string,string>={film_intro:'фрагмент',one_word_collecting:'одно слово',one_word_results:'слова зала',question_open:'вопрос открыт',question_results:'результаты',question_reveal:'продолжение',assignment_randomizing:'рандом',assignment_winner:'фильм назначен',past_review_card:'из архива'};return m[state]||state}
-function Screen(){const {slug}=useParams();const {data,error}=usePrivilegedState('screen',slug);const [now,setNow]=useState(()=>Date.now());useEffect(()=>{const t=window.setInterval(()=>setNow(Date.now()),1000);return()=>window.clearInterval(t)},[]);if(!data)return <Loading error={error}/>;const content=screenContent(data);const timer=showTimerText(data,now);const status=data.projector&&!['idle','arrival'].includes(data.projector.state)?projectorStateLabel(data.projector.state):data.show?.runtime.currentBlock?.type==='arrival'?'сбор гостей':data.show?.runtime.runStatus!=='idle'?data.show?.runtime.currentBlock?.title:statusLabel(data.event.status);return <div className="screen-page"><div className="screen-brand">насыпатели в кино</div><div className="screen-status">{status}{timer&&<b>{timer}</b>}</div>{data.screenMessage&&<div className="screen-message">{data.screenMessage}</div>}<div className="screen-content">{content}</div><div className="screen-footer">{eventDate(data.event.startsAt)}. насыпатели в кино</div></div>}
+const projectorDemoCreatures:ScreenCreature[]=[
+  {id:'demo-01',name:'животина 01',stage:'stage_0',crumbs:0,growthProgress:0},
+  {id:'demo-02',name:'животина 02',stage:'stage_1',crumbs:4,growthProgress:18},
+  {id:'demo-03',name:'животина 03',stage:'stage_2',crumbs:9,growthProgress:38},
+  {id:'demo-04',name:'животина 04',stage:'stage_3',crumbs:14,growthProgress:62},
+  {id:'demo-05',name:'животина 05',stage:'stage_4',crumbs:22,growthProgress:92},
+  {id:'demo-06',name:'животина с длинным именем',stage:'stage_1',crumbs:3,growthProgress:15},
+  {id:'demo-07',name:'животина 07',stage:'stage_2',crumbs:8,growthProgress:35},
+  {id:'demo-08',name:'животина 08',stage:'stage_3',crumbs:13,growthProgress:58},
+  {id:'demo-09',name:'животина 09',stage:'stage_0',crumbs:1,growthProgress:5},
+  {id:'demo-10',name:'животина 10',stage:'stage_4',crumbs:24,growthProgress:96},
+  {id:'demo-11',name:'животина 11',stage:'stage_2',crumbs:7,growthProgress:31},
+  {id:'demo-12',name:'животина 12',stage:'stage_1',crumbs:5,growthProgress:21}
+]
+
+function ScreenCreatureDemo({data}:{data:DemoState}){
+  const [count,setCount]=useState(0)
+  useEffect(()=>{setCount(0);const t=window.setInterval(()=>setCount(x=>x>=projectorDemoCreatures.length?x:x+1),650);return()=>window.clearInterval(t)},[])
+  return <ScreenCreatureWall data={{...data,screenCreatures:projectorDemoCreatures.slice(0,count)}}/>
+}
+function Screen(){const {slug}=useParams();const [search]=useSearchParams();const {data,error}=usePrivilegedState('screen',slug);const [now,setNow]=useState(()=>Date.now());useEffect(()=>{const t=window.setInterval(()=>setNow(Date.now()),1000);return()=>window.clearInterval(t)},[]);if(!data)return <Loading error={error}/>;const animalDemo=search.get('demo')==='animals';const content=animalDemo?<ScreenCreatureDemo data={data}/>:screenContent(data);const timer=animalDemo?'':showTimerText(data,now);const status=animalDemo?'репетиция животин':data.projector&&!['idle','arrival'].includes(data.projector.state)?projectorStateLabel(data.projector.state):data.show?.runtime.currentBlock?.type==='arrival'?'сбор гостей':data.show?.runtime.runStatus!=='idle'?data.show?.runtime.currentBlock?.title:statusLabel(data.event.status);return <div className="screen-page"><div className="screen-brand">насыпатели в кино</div><div className="screen-status">{status}{timer&&<b>{timer}</b>}</div>{!animalDemo&&data.screenMessage&&<div className="screen-message">{data.screenMessage}</div>}<div className="screen-content">{content}</div><div className="screen-footer">{animalDemo?'demo · база не меняется':eventDate(data.event.startsAt)+'. насыпатели в кино'}</div></div>}
 
 function statusLabel(s:EventStatus){const m:Record<EventStatus,string>={DRAFT:'черновик',SALES_OPEN:'регистрация открыта',CHECKIN:'сбор гостей',IDEAS_OPEN:'идеи открыты',IDEAS_LOCKED:'идеи закрыты',TOP3_READY:'три идеи',IDEA_RANDOMIZED:'идея выбрана',MOVIE_SEARCH:'поиск фильма',MOVIE_FINALISTS:'три фильма',MOVIE_SELECTED:'фильм выбран',PREDICTIONS_OPEN:'прогнозы',PREDICTIONS_LOCKED:'прогнозы закрыты',WATCHING:'просмотр',PREDICTIONS_SCORED:'результаты',DISCUSSION:'реакции',FINAL_REVIEW:'финальная фраза',FEEDBACK:'исследование',CLOSED:'закрыто'};return m[s]}
 
