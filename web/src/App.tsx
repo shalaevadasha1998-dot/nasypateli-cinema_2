@@ -91,6 +91,50 @@ function RequireProfile({children}:{children:ReactNode}){const {data,error}=useS
 
 function answerText(value:any){if(value===null||value===undefined)return '';if(typeof value==='string'||typeof value==='number'||typeof value==='boolean')return String(value);if(typeof value==='object'&&'label' in value)return String(value.label);try{return JSON.stringify(value)}catch{return String(value)}}
 
+
+function missionStatusLabel(status:string){
+  const labels:Record<string,string>={assigned:'назначено',watching:'смотрю',watched:'просмотрено',review_in_progress:'разговор идёт',review_ready:'черновик готов',submitted:'отправлено',approved:'одобрено',changes_requested:'нужно уточнить',published:'опубликовано',overdue:'просрочено'}
+  return labels[status]||status
+}
+
+function FilmLiveParticipant({data,reload}:{data:DemoState;reload:(fresh?:boolean)=>Promise<DemoState|undefined>}){
+  const live=data.filmLive
+  const [word,setWord]=useState(live?.myWord||'')
+  const [busy,setBusy]=useState(false)
+  const [message,setMessage]=useState('')
+  useEffect(()=>{setWord(live?.myWord||'')},[live?.myWord,live?.revision])
+  if(!live||!data.show||data.registration!=='attended')return null
+  const state=live.state
+  const questionId=String(live.payload?.questionId||'')
+  const mine=(live.myAnswers||[]).find(x=>x.question_id===questionId)
+  const submitWord=async()=>{try{setBusy(true);setMessage('');await callApi('film-one-word',{slug:data.event.slug,word});setMessage('слово ушло на экран');await reload(true)}catch(e:any){setMessage(e.message||'не получилось отправить слово')}finally{setBusy(false)}}
+  const predict=async(answer:any)=>{try{setBusy(true);setMessage('');await callApi('film-prediction',{slug:data.event.slug,questionId,answer});setMessage('ответ принят');await reload(true)}catch(e:any){setMessage(e.message||'не получилось отправить ответ')}finally{setBusy(false)}}
+  if(state==='film_intro')return <section className="participant-show film-live"><div className="eyebrow">киноблок</div><h2>{live.filmTitle||'смотрите на экран'}</h2><p>первый фрагмент идёт на общем экране. телефон пока вниз.</p></section>
+  if(state==='one_word_collecting')return <section className="participant-show film-live"><div className="eyebrow">животина спрашивает</div><h2>одно слово. что это за фильм?</h2><div className="film-one-word"><input maxLength={80} value={word} placeholder="одно слово" onChange={e=>{setWord(e.target.value);setMessage('')}}/><Button disabled={busy||!word.trim()} onClick={submitWord}>{busy?'отправляем…':live.myWord?'обновить слово':'отправить слово'}</Button></div>{live.myWord&&<p className="muted">сейчас на стене: «{live.myWord}»</p>}{message&&<div className={message.includes('ушло')?'success':'form-error'}>{message}</div>}</section>
+  if(state==='one_word_results')return <section className="participant-show film-live"><div className="eyebrow">зал сказал</div><h2>слова уже на экране</h2><p>{live.myWord?'твоя животина сказала «'+live.myWord+'».':'если ты не успел отправить слово, в рандом этого фильма не попадёшь.'}</p></section>
+  if(state==='question_open')return <section className="participant-show film-live"><div className="row spread participant-show-head"><div><div className="eyebrow">что будет дальше</div><h2>{String(live.payload?.prompt||'выбери ответ')}</h2></div><Pill>{Number(live.payload?.position||0)}/5</Pill></div><div className="participant-votes">{(Array.isArray(live.payload?.options)?live.payload.options:[]).map((option:any)=>{const selected=JSON.stringify(mine?.answer)===JSON.stringify(option);return <button type="button" className={selected?'selected':''} disabled={busy} key={String(option)} onClick={()=>predict(option)}>{answerText(option)}</button>})}</div>{mine&&<p className="muted">ответ можно поменять, пока вопрос открыт</p>}{message&&<div className={message==='ответ принят'?'success':'form-error'}>{message}</div>}</section>
+  if(state==='question_results')return <section className="participant-show film-live"><div className="eyebrow">зал решил</div><h2>{String(live.payload?.prompt||'результаты')}</h2><p>распределение ответов сейчас на проекторе.</p></section>
+  if(state==='question_reveal')return <section className="participant-show film-live"><div className="eyebrow">что случилось</div><h2>{answerText(live.payload?.correctAnswer)}</h2>{live.payload?.revealText&&<p>{String(live.payload.revealText)}</p>}<p className="muted">смотрите продолжение на большом экране</p></section>
+  if(state==='assignment_randomizing')return <section className="participant-show film-live"><div className="eyebrow">рандом</div><h2>кому достанется фильм?</h2><p>участвуют только животинки, которые дошли до конца этого киноблока.</p></section>
+  if(state==='assignment_winner'){
+    const winner=String(live.payload?.animalName||'животина')
+    const mineWinner=winner.trim().toLowerCase()===String(data.creature.name||'').trim().toLowerCase()
+    const assignment=(data.filmAssignments||[]).find(x=>x.filmPackageId===live.filmPackageId)
+    return <section className={mineWinner?'participant-show film-live film-winner':'participant-show film-live'}><div className="eyebrow">{mineWinner?'это ты':'фильм достался'}</div><h2>{winner}</h2><p>{mineWinner?'этот фильм твой. досмотри его за 7 дней. потом животина спросит.':'у '+winner+' теперь есть неделя на полный просмотр.'}</p>{mineWinner&&assignment&&<Button onClick={()=>{location.hash='#/mission/'+assignment.id}}>открыть задание</Button>}</section>
+  }
+  return null
+}
+
+function FilmMissionCards({data,onOpen}:{data:DemoState;onOpen:(id:string)=>void}){
+  const missions=(data.filmAssignments||[]).filter(x=>x.status!=='published').slice(0,4)
+  if(!missions.length)return null
+  return <section className="home-missions"><div className="eyebrow">фильмы животины</div>{missions.map(m=>{
+    const overdue=m.status==='overdue'||m.daysLeft<0
+    const left=overdue?'срок прошёл':m.daysLeft===0?'сегодня дедлайн':m.daysLeft===1?'остался 1 день':'осталось '+m.daysLeft+' дн.'
+    return <Card className={overdue?'mission-card overdue':'mission-card'} key={m.id}><div className="row spread"><div><small>{missionStatusLabel(m.status)}</small><h3>{data.creature.name||'животина'}, у тебя фильм.</h3></div><Pill>{overdue?'overdue':left}</Pill></div><div className="mission-film-title">{m.filmTitle}</div><p>посмотреть до {eventDate(m.dueAt)}. {left}</p><div className="mission-before">до просмотра: «{m.beforeWord}» · прогнозы {m.correctCount}/{m.totalQuestions}</div><Button onClick={()=>onOpen(m.id)}>{['assigned','watching','overdue'].includes(m.status)?'открыть задание':m.status==='watched'?'поговорить с животинкой':m.status==='review_ready'?'посмотреть черновик':m.status==='changes_requested'?'уточнить рецензию':'открыть'}</Button></Card>
+  })}</section>
+}
+
 function ParticipantShow({data,reload}:{data:DemoState;reload:(fresh?:boolean)=>Promise<DemoState|undefined>}){
   const show=data.show
   const [busy,setBusy]=useState(false)
