@@ -337,17 +337,29 @@ async function reviewQuestionForStep(db:any,assignment:any,step:number){
 async function buildReviewDraft(db:any,assignment:any,answers:any){
   const pack=await db.from('film_packages').select('title_snapshot').eq('id',assignment.film_package_id).single()
   if(pack.error)throw pack.error
-  const impressions=await db.from('film_impressions').select('word,normalized_word').eq('event_id',assignment.event_id).eq('round_id',assignment.round_id)
+  const [impressions,preds]=await Promise.all([
+    db.from('film_impressions').select('word,normalized_word').eq('event_id',assignment.event_id).eq('round_id',assignment.round_id),
+    db.from('film_predictions').select('question_id,answer,is_correct').eq('event_id',assignment.event_id).eq('round_id',assignment.round_id).eq('film_package_id',assignment.film_package_id).eq('user_id',assignment.user_id)
+  ])
   if(impressions.error)throw impressions.error
+  if(preds.error)throw preds.error
   const counts=new Map<string,number>()
   for(const x of impressions.data||[]){const k=String(x.normalized_word||'');if(k)counts.set(k,(counts.get(k)||0)+1)}
   const collectiveWords=[...counts.entries()].sort((a,b)=>b[1]-a[1]).slice(0,5).map(([word,count])=>({word,count}))
+  const questionIds=(preds.data||[]).map((x:any)=>String(x.question_id))
+  const questions=questionIds.length?await db.from('film_questions').select('id,position,prompt,correct_answer,reveal_text').in('id',questionIds):{data:[],error:null} as any
+  if(questions.error)throw questions.error
+  const questionMap=new Map((questions.data||[]).map((x:any)=>[String(x.id),x]))
+  const predictionContext=(preds.data||[]).map((x:any)=>{
+    const q:any=questionMap.get(String(x.question_id))||{}
+    return {position:Number(q.position||0),prompt:String(q.prompt||''),answer:x.answer,isCorrect:x.is_correct===true,correctAnswer:q.correct_answer,revealText:String(q.reveal_text||'')}
+  }).sort((a:any,b:any)=>a.position-b.position)
   const deterministic={
     animalName:String(assignment.animal_name_snapshot),filmTitle:String(pack.data.title_snapshot),
     beforeWord:String(assignment.before_word||''),afterWord:String(answers.after_word||''),
     crumbs:Math.max(1,Math.min(5,Number(answers.crumbs)||1)),whatStayed:String(answers.memorable||''),
     worked:String(answers.worked||''),didntWork:String(answers.didnt_work||''),recommendTo:String(answers.recommend||''),
-    correctCount:Number(assignment.correct_count||0),totalQuestions:Number(assignment.total_questions||5),collectiveWords
+    correctCount:Number(assignment.correct_count||0),totalQuestions:Number(assignment.total_questions||5),collectiveWords,predictions:predictionContext
   }
   try{
     const ai=await structuredResponse<any>({
@@ -356,7 +368,7 @@ async function buildReviewDraft(db:any,assignment:any,answers:any){
         userReview:{type:'string'},animalTake:{type:'string'},publishText:{type:'string'}
       },required:['userReview','animalTake','publishText']},
       instructions:'Собери короткую русскую рецензию для киноклуба. Не выдумывай факты фильма. Не спорь со вкусом человека. Сохраняй его лексику. Публичная версия без спойлеров. userReview — 2–4 предложения от лица пользователя. animalTake — 1–2 предложения от животинки. publishText — компактная готовая карточка без человеческого имени, только имя животинки.',
-      input:JSON.stringify({filmTitle:deterministic.filmTitle,beforeWord:deterministic.beforeWord,answers,collectiveWords,correctCount:deterministic.correctCount,totalQuestions:deterministic.totalQuestions}),
+      input:JSON.stringify({filmTitle:deterministic.filmTitle,beforeWord:deterministic.beforeWord,answers,collectiveWords,predictions:predictionContext,correctCount:deterministic.correctCount,totalQuestions:deterministic.totalQuestions}),
       maxOutputTokens:900,
       reasoningEffort:'minimal'
     })
