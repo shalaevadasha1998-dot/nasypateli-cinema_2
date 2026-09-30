@@ -1748,11 +1748,15 @@ export async function handleApi(req:Request){
       return await withEventOperation(db,event.id,'show-movie',async()=>{
         const show=await buildShowState(db,event)
         if(!show.currentRound?.id||show.currentRound.status!=='active')return err('сначала запустите раунд',409)
-        const [cand,used]=await Promise.all([
-          db.from('movie_candidates').select('*').eq('event_id',event.id).eq('enabled_for_event',true).in('usage_status',['ready','partial','no_video']),
+        const [packages,used]=await Promise.all([
+          db.from('film_packages').select('movie_candidate_id').eq('event_id',event.id).eq('status','ready'),
           db.from('event_rounds').select('movie_candidate_id').eq('event_id',event.id).not('movie_candidate_id','is',null)
         ])
-        if(cand.error)throw cand.error;if(used.error)throw used.error
+        if(packages.error)throw packages.error;if(used.error)throw used.error
+        const readyIds=[...new Set((packages.data||[]).map((x:any)=>String(x.movie_candidate_id)))]
+        if(!readyIds.length)return err('нет готовых киноблоков · сначала подготовьте фильм, 6 фрагментов и 5 вопросов',409)
+        const cand=await db.from('movie_candidates').select('*').eq('event_id',event.id).eq('enabled_for_event',true).in('id',readyIds)
+        if(cand.error)throw cand.error
         const usedIds=new Set((used.data||[]).map((x:any)=>String(x.movie_candidate_id)))
         const pool=(cand.data||[]).filter((x:any)=>!usedIds.has(String(x.id)))
         if(!pool.length)return err('нет подготовленных неиспользованных фильмов · добавьте материал или выберите фильм вручную',409)
@@ -1770,8 +1774,13 @@ export async function handleApi(req:Request){
     if(action==='admin-round-set-movie'){
       const movieId=String(body.movieId||'')
       if(!isUuid(movieId))return err('выберите фильм',422)
-      const movie=await db.from('movie_candidates').select('id').eq('id',movieId).eq('event_id',event.id).maybeSingle();if(movie.error)throw movie.error
+      const [movie,pack]=await Promise.all([
+        db.from('movie_candidates').select('id').eq('id',movieId).eq('event_id',event.id).maybeSingle(),
+        db.from('film_packages').select('id,status').eq('movie_candidate_id',movieId).eq('event_id',event.id).eq('status','ready').maybeSingle()
+      ])
+      if(movie.error)throw movie.error;if(pack.error)throw pack.error
       if(!movie.data)return err('фильм не найден в каталоге события',404)
+      if(!pack.data)return err('для этого фильма ещё нет готового киноблока из 6 фрагментов и 5 вопросов',409)
       const show=await buildShowState(db,event)
       if(!show.currentRound?.id||show.currentRound.status!=='active')return err('сначала запустите раунд',409)
       const now=new Date().toISOString()
