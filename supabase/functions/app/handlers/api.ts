@@ -451,6 +451,7 @@ async function notificationRelevance(db:any,n:any){
       if(!assignment.data)return {ok:false,reason:'film assignment missing'}
       const status=String(assignment.data.status||'')
       if(code==='overdue')return status==='overdue'?{ok:true,reason:''}:{ok:false,reason:'film assignment no longer overdue'}
+      if(code.startsWith('changes_'))return status==='changes_requested'?{ok:true,reason:''}:{ok:false,reason:'review changes no longer requested'}
       if(code==='3d'||code==='24h')return ['assigned','watching'].includes(status)?{ok:true,reason:''}:{ok:false,reason:'film already watched or review started'}
       return ['assigned','watching','overdue'].includes(status)?{ok:true,reason:''}:{ok:false,reason:'film assignment already progressed'}
     }
@@ -1286,7 +1287,7 @@ export async function handleApi(req:Request){
       }
       await db.from('film_assignments').update({status:'review_in_progress',updated_at:new Date().toISOString()}).eq('id',assignmentId).eq('user_id',user.id)
       const nextQuestion=await reviewQuestionForStep(db,assignment.data,Number(session.data.step||0))
-      return json({ok:true,status:'active',sessionId:session.data.id,step:Number(session.data.step||0),nextQuestion,answers:session.data.answers||{},adminComment:session.data.admin_comment||undefined})
+      return json({ok:true,status:'active',sessionId:session.data.id,step:Number(session.data.step||0),nextQuestion,answers:session.data.answers||{},messages:Array.isArray(session.data.messages)?session.data.messages:[],adminComment:session.data.admin_comment||undefined})
     }
 
     if(action==='film-review-answer'){
@@ -1316,7 +1317,7 @@ export async function handleApi(req:Request){
         const updated=await db.from('review_sessions').update({answers,messages,step:step+1,updated_at:new Date().toISOString()}).eq('id',session.data.id).select('*').single()
         if(updated.error)throw updated.error
         const nextQuestion=await reviewQuestionForStep(db,assignment.data,step+1)
-        return json({ok:true,status:'active',step:step+1,nextQuestion,answers})
+        return json({ok:true,status:'active',step:step+1,nextQuestion,answers,messages})
       }
       const draft=await buildReviewDraft(db,assignment.data,answers)
       const completed=await db.from('review_sessions').update({answers,messages,draft,status:'draft_ready',step:8,completed_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq('id',session.data.id).select('id').single()
