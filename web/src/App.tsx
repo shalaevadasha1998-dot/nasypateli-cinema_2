@@ -397,7 +397,8 @@ function MovieCatalogAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(act
   const catalog=data.movieCatalog||[]
   const empty={movieId:'',title:'',year:'',genre:'',videoId:'',sourceUrl:'',sourcePlatform:'youtube',startSec:0,endSec:'',usageStatus:'needs_review',sourceVerified:false,animalComment:''}
   const [draft,setDraft]=useState<any>(empty)
-  const edit=(m:any)=>setDraft({movieId:m.id,title:m.title,year:m.year||'',genre:m.genre||'',videoId:m.videoId||'',sourceUrl:m.sourceUrl||'',sourcePlatform:m.sourcePlatform||'youtube',startSec:m.startSec||0,endSec:m.endSec??'',usageStatus:m.usageStatus||'needs_review',sourceVerified:m.sourceVerified===true,animalComment:m.animalComment||''})
+  const [searchTrace,setSearchTrace]=useState<any>(null)
+  const edit=(m:any)=>{setSearchTrace(null);setDraft({movieId:m.id,title:m.title,year:m.year||'',genre:m.genre||'',videoId:m.videoId||'',sourceUrl:m.sourceUrl||'',sourcePlatform:m.sourcePlatform||'youtube',startSec:m.startSec||0,endSec:m.endSec??'',usageStatus:m.usageStatus||'needs_review',sourceVerified:m.sourceVerified===true,animalComment:m.animalComment||''})}
   const save=async()=>{const res=await run('admin-movie-save',draft);if(res)setDraft(empty)}
   const selectedMovie=draft.movieId?catalog.find(m=>m.id===draft.movieId):undefined
   const sources=selectedMovie?.sourceCandidates||[]
@@ -424,8 +425,12 @@ function MovieCatalogAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(act
             ?<>сейчас выбрано: <b>{sourceLabel(selectedSource)}</b> · {platformLabel(selectedSource.sourcePlatform)}{selectedSource.manualSelected?' · вручную':' · автоматически'}</>
             :'подходящий источник пока не выбран'}</p>
         </div>
-        <Button kind="secondary" disabled={busy} onClick={()=>run('admin-discover-movie-sources',{movieId:selectedMovie.id})}>перепроверить источники</Button>
+        <Button kind="secondary" disabled={busy} onClick={async()=>{setSearchTrace(null);const x:any=await run('admin-discover-movie-sources',{movieId:selectedMovie.id});if(x?.trace)setSearchTrace(x.trace)}}>перепроверить источники</Button>
       </div>
+      {searchTrace&&<div className="movie-search-trace">
+        <div><b>1. искали фрагменты</b><span>найдено: {Number(searchTrace.fragmentCount||0)} · пригодных: {Number(searchTrace.usableFragmentCount||0)}</span></div>
+        <div className={searchTrace.trailersSearched?'':'skipped'}><b>2. искали трейлеры</b><span>{searchTrace.trailersSearched?'да · найдено: '+Number(searchTrace.trailerCount||0):'нет · хороший фрагмент уже найден'}</span></div>
+      </div>}
       {sources.length?<div className="movie-source-list">{sources.map(s=>{
         const unavailable=s.availabilityStatus==='dead'||s.availabilityStatus==='blocked'
         const canSelect=!unavailable&&s.verified&&s.embeddable&&s.rightsStatus!=='blocked'
