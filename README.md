@@ -9,7 +9,7 @@
 - Telegram-бот: `@nasipateli_v_kinobot`
 - гостевая точка входа: `https://t.me/nasipateli_v_kinobot`
 - канонический production URL Mini App: `https://shalaevadasha1998-dot.github.io/nasypateli-cinema_2/`
-- пилот: `2026-10-03`, 30 мест, 500 ₽
+- пилот: `2026-10-03`, 50 мест, вход бесплатный
 
 ZIP-снимки версий не являются исходным кодом и не должны возвращаться в репозиторий.
 
