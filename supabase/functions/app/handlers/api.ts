@@ -1750,10 +1750,15 @@ export async function handleApi(req:Request){
 
       const packages=packagesR.data||[]
       const questions=questionsR.data||[]
+      const enabledMovies=(moviesR.data||[]).filter((x:any)=>x.enabled_for_event!==false)
+      const enabledMovieIds=new Set(enabledMovies.map((x:any)=>String(x.id)))
+      const packagesByMovie=new Map(packages.map((x:any)=>[String(x.movie_candidate_id),x]))
       const qCount=new Map<string,number>()
       for(const q of questions)qCount.set(String(q.film_package_id),(qCount.get(String(q.film_package_id))||0)+1)
       const packageProblems:string[]=[]
-      for(const p of packages){
+      for(const m of enabledMovies){
+        const p:any=packagesByMovie.get(String(m.id))
+        if(!p){packageProblems.push(String(m.title||m.id)+' · нет package');continue}
         const fragments=Array.isArray(p.fragments)?p.fragments:[]
         const fragmentsOk=fragments.length===6&&fragments.every((x:any)=>{
           const start=Math.max(0,Number(x?.startSec||0))
@@ -1763,12 +1768,12 @@ export async function handleApi(req:Request){
           return playable&&Number.isFinite(end)&&end>start
         })
         const questionsOk=(qCount.get(String(p.id))||0)===5
-        if(String(p.status)!=='ready'||!fragmentsOk||!questionsOk)packageProblems.push(String(p.title_snapshot||p.id))
+        if(String(p.status)!=='ready'||!fragmentsOk||!questionsOk)packageProblems.push(String(p.title_snapshot||m.title||p.id))
       }
-      add('film_packages','кинопакеты',packages.length>0&&packageProblems.length===0?'pass':'fail',
-        packages.length?`${packages.length-packageProblems.length}/${packages.length} готовы${packageProblems.length?' · проверить: '+packageProblems.join(', '):''}`:'кинопакетов нет')
+      const coveredPackages=enabledMovies.length-packageProblems.length
+      add('film_packages','кинопакеты',enabledMovies.length>0&&packageProblems.length===0?'pass':'fail',
+        enabledMovies.length?`${coveredPackages}/${enabledMovies.length} enabled-фильмов полностью готовы${packageProblems.length?' · проверить: '+packageProblems.join(', '):''}`:'enabled-фильмов нет')
 
-      const enabledMovies=(moviesR.data||[]).filter((x:any)=>x.enabled_for_event!==false)
       const sources=sourcesR.data||[]
       const unavailableMovies=enabledMovies.filter((m:any)=>!sources.some((s:any)=>
         String(s.movie_candidate_id)===String(m.id)&&
