@@ -449,7 +449,21 @@ export async function handleApi(req:Request){
 
     if(action==='screen-bootstrap'){
       if(!screenTokenOk)return err('Доступ к экрану запрещён',401)
-      const event=await eventBySlug(db,String(body.slug||'2026-10-03'));return json(await buildEventState(db,event,{includeActuals:false}))
+      const event=await eventBySlug(db,String(body.slug||'2026-10-03'))
+      const [state,attended]=await Promise.all([
+        buildEventState(db,event,{includeActuals:false}),
+        db.from('registrations').select('user_id,created_at').eq('event_id',event.id).eq('status','attended').order('created_at')
+      ])
+      if(attended.error)throw attended.error
+      const ids=(attended.data||[]).map((x:any)=>String(x.user_id))
+      const creatures=ids.length?await db.from('creatures').select('user_id,name,stage,crumbs,growth_progress').in('user_id',ids):{data:[],error:null} as any
+      if(creatures.error)throw creatures.error
+      const creatureMap=new Map((creatures.data||[]).map((x:any)=>[String(x.user_id),x]))
+      const screenCreatures=ids.map(userId=>creatureMap.get(userId)).filter(Boolean).map((x:any)=>({
+        id:String(x.user_id),name:String(x.name||'животина'),stage:String(x.stage||'stage_0'),
+        crumbs:Number(x.crumbs||0),growthProgress:Number(x.growth_progress||0)
+      }))
+      return json({...state,screenCreatures})
     }
     if(action==='admin-bootstrap'){
       if(!adminTokenOk){
@@ -974,6 +988,13 @@ export async function handleApi(req:Request){
     }
 
     if(!adminTokenOk)await mustAdmin(db,user,tg)
+
+    if(action==='admin-screen-link'){
+      const screenToken=String(Deno.env.get('SCREEN_ACCESS_TOKEN')||'').trim()
+      const webAppUrl=String(Deno.env.get('TELEGRAM_WEBAPP_URL')||'').trim().replace(/\/+$/,'')
+      if(!screenToken||!webAppUrl)return err('Экран проектора не настроен',503)
+      return json({ok:true,screenUrl:`${webAppUrl}/#/screen/event/${event.slug}?token=${encodeURIComponent(screenToken)}`})
+    }
 
     if(action==='admin-program-save'){
       const blocks=sanitizeProgramBlocks(body.blocks)
