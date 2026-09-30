@@ -729,12 +729,16 @@ function projectorCreatureFallback(stage:string){
   return 'assets/rabbit-name-react.webp'
 }
 
-function ProjectorCreatureImage({stage}:{stage:string}){
-  const custom=`${import.meta.env.BASE_URL}assets/projector-${stage.replace('_','-')}.webp`
+function ProjectorCreatureImage({stage,visualVariant}:{stage:string;visualVariant?:number}){
+  const variant=Math.max(1,Math.min(50,Math.round(Number(visualVariant||0))))
+  const variantSrc=visualVariant?`${import.meta.env.BASE_URL}assets/animal-${String(variant).padStart(3,'0')}.webp`:''
+  const stageSrc=`${import.meta.env.BASE_URL}assets/projector-${stage.replace('_','-')}.webp`
   const fallback=`${import.meta.env.BASE_URL}${projectorCreatureFallback(stage)}`
-  const [src,setSrc]=useState(custom)
-  useEffect(()=>setSrc(custom),[custom])
-  return <img src={src} alt="" draggable={false} onError={()=>{if(src!==fallback)setSrc(fallback)}}/>
+  const candidates=[variantSrc,stageSrc,fallback].filter(Boolean)
+  const [index,setIndex]=useState(0)
+  useEffect(()=>setIndex(0),[variantSrc,stageSrc,fallback])
+  const src=candidates[Math.min(index,candidates.length-1)]||fallback
+  return <img src={src} alt="" draggable={false} onError={()=>setIndex(i=>Math.min(i+1,candidates.length-1))}/>
 }
 
 function ScreenCreatureWall({data}:{data:DemoState}){
@@ -756,7 +760,7 @@ function ScreenCreatureWall({data}:{data:DemoState}){
   return <div className="screen-creature-wall">
     <div className="screen-creature-count"><b>{creatures.length}</b><span>{creatures.length===1?'животина уже в зале':'животин уже в зале'}</span></div>
     {newest&&<div className="screen-creature-arrival-callout"><span>в зал заходит</span><b>{newest.name}</b></div>}
-    {creatures.length?<div className="screen-creature-grid">{creatures.map(c=><div className={`screen-creature-card ${c.stage}${arriving.has(c.id)?' arrived':''}`} key={c.id}><div className="screen-creature-art"><ProjectorCreatureImage stage={c.stage}/></div><span>{c.name}</span></div>)}</div>:<p className="screen-creature-empty">первая животина появится здесь после чек-ина</p>}
+    {creatures.length?<div className="screen-creature-grid">{creatures.map(c=><div className={`screen-creature-card ${c.stage}${arriving.has(c.id)?' arrived':''}`} key={c.id}><div className="screen-creature-art"><ProjectorCreatureImage stage={c.stage} visualVariant={c.visualVariant}/></div><span>{c.name}</span></div>)}</div>:<p className="screen-creature-empty">первая животина появится здесь после чек-ина</p>}
   </div>
 }
 
@@ -857,18 +861,18 @@ function showTimerText(data:DemoState,now:number){
 
 function projectorStateLabel(state:string){const m:Record<string,string>={film_intro:'фрагмент',one_word_collecting:'одно слово',one_word_results:'слова зала',question_open:'вопрос открыт',question_results:'результаты',question_reveal:'продолжение',assignment_randomizing:'рандом',assignment_winner:'фильм назначен',past_review_card:'из архива'};return m[state]||state}
 const projectorDemoCreatures:ScreenCreature[]=[
-  {id:'demo-01',name:'животина 01',stage:'stage_0',crumbs:0,growthProgress:0},
-  {id:'demo-02',name:'животина 02',stage:'stage_1',crumbs:4,growthProgress:18},
-  {id:'demo-03',name:'животина 03',stage:'stage_2',crumbs:9,growthProgress:38},
-  {id:'demo-04',name:'животина 04',stage:'stage_3',crumbs:14,growthProgress:62},
-  {id:'demo-05',name:'животина 05',stage:'stage_4',crumbs:22,growthProgress:92},
-  {id:'demo-06',name:'животина с длинным именем',stage:'stage_1',crumbs:3,growthProgress:15},
-  {id:'demo-07',name:'животина 07',stage:'stage_2',crumbs:8,growthProgress:35},
-  {id:'demo-08',name:'животина 08',stage:'stage_3',crumbs:13,growthProgress:58},
-  {id:'demo-09',name:'животина 09',stage:'stage_0',crumbs:1,growthProgress:5},
-  {id:'demo-10',name:'животина 10',stage:'stage_4',crumbs:24,growthProgress:96},
-  {id:'demo-11',name:'животина 11',stage:'stage_2',crumbs:7,growthProgress:31},
-  {id:'demo-12',name:'животина 12',stage:'stage_1',crumbs:5,growthProgress:21}
+  {id:'demo-01',visualVariant:1,name:'животина 01',stage:'stage_0',crumbs:0,growthProgress:0},
+  {id:'demo-02',visualVariant:2,name:'животина 02',stage:'stage_1',crumbs:4,growthProgress:18},
+  {id:'demo-03',visualVariant:3,name:'животина 03',stage:'stage_2',crumbs:9,growthProgress:38},
+  {id:'demo-04',visualVariant:4,name:'животина 04',stage:'stage_3',crumbs:14,growthProgress:62},
+  {id:'demo-05',visualVariant:5,name:'животина 05',stage:'stage_4',crumbs:22,growthProgress:92},
+  {id:'demo-06',visualVariant:6,name:'животина с длинным именем',stage:'stage_1',crumbs:3,growthProgress:15},
+  {id:'demo-07',visualVariant:7,name:'животина 07',stage:'stage_2',crumbs:8,growthProgress:35},
+  {id:'demo-08',visualVariant:8,name:'животина 08',stage:'stage_3',crumbs:13,growthProgress:58},
+  {id:'demo-09',visualVariant:9,name:'животина 09',stage:'stage_0',crumbs:1,growthProgress:5},
+  {id:'demo-10',visualVariant:10,name:'животина 10',stage:'stage_4',crumbs:24,growthProgress:96},
+  {id:'demo-11',visualVariant:11,name:'животина 11',stage:'stage_2',crumbs:7,growthProgress:31},
+  {id:'demo-12',visualVariant:12,name:'животина 12',stage:'stage_1',crumbs:5,growthProgress:21}
 ]
 
 function ScreenCreatureDemo({data}:{data:DemoState}){
