@@ -304,6 +304,7 @@ export type ReviewQueueItem = {
   afterWord?:string
   correctCount:number
   totalQuestions:number
+  oldPredictions?:{position:number;prompt:string;answer:any;isCorrect:boolean;correctAnswer:any;revealText:string}[]
   reviewId?:string
   reviewStatus?:string
   submittedAt?:string
