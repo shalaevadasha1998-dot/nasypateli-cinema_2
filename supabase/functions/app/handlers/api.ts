@@ -1719,6 +1719,82 @@ export async function handleApi(req:Request){
       return json({ok:true,reviewQueue:await filmAdminReviews(db,event.id)})
     }
 
+    if(action==='admin-event-preflight'){
+      const [programR,runtimeR,projectorR,packagesR,questionsR,moviesR,sourcesR,registrationsR,telegram] = await Promise.all([
+        db.from('event_programs').select('config').eq('event_id',event.id).maybeSingle(),
+        db.from('event_runtime').select('run_status,current_block_id,current_block_index,revision').eq('event_id',event.id).maybeSingle(),
+        db.from('event_projector_state').select('state,revision,updated_at').eq('event_id',event.id).maybeSingle(),
+        db.from('film_packages').select('id,movie_candidate_id,title_snapshot,fragments,status').eq('event_id',event.id),
+        db.from('film_questions').select('id,film_package_id,position'),
+        db.from('movie_candidates').select('id,title,enabled_for_event,source_url').eq('event_id',event.id),
+        db.from('movie_source_candidates').select('movie_candidate_id,availability_status,verified,embeddable,rights_status,metadata').eq('event_id',event.id),
+        db.from('registrations').select('status').eq('event_id',event.id),
+        telegramRuntimeReady()
+      ])
+      for(const r of [programR,runtimeR,projectorR,packagesR,questionsR,moviesR,sourcesR,registrationsR])if((r as any).error)throw (r as any).error
+
+      const checks:any[]=[]
+      const add=(key:string,label:string,status:'pass'|'warn'|'fail'|'info',detail:string)=>checks.push({key,label,status,detail})
+      const screenConfigured=!!String(Deno.env.get('SCREEN_ACCESS_TOKEN')||'').trim()&&!!String(Deno.env.get('TELEGRAM_WEBAPP_URL')||'').trim()
+      add('screen','projector access',screenConfigured?'pass':'fail',screenConfigured?'screen token и webapp url настроены':'не хватает SCREEN_ACCESS_TOKEN или TELEGRAM_WEBAPP_URL')
+      add('telegram','telegram bot',telegram?'pass':'fail',telegram?'бот и webhook отвечают корректно':'бот или webhook не прошёл runtime-проверку')
+
+      const blocks=Array.isArray(programR.data?.config?.blocks)?programR.data.config.blocks.filter((x:any)=>x?.enabled!==false):[]
+      const requiredTypes=['arrival','onboarding','warm_up','cinema_rounds','music_live','final_vote','finale']
+      const missingTypes=requiredTypes.filter(type=>!blocks.some((x:any)=>String(x?.type)===type))
+      const duration=blocks.reduce((sum:number,x:any)=>sum+Math.max(0,Number(x?.duration_min||0)),0)
+      add('program','программа вечера',blocks.length&&missingTypes.length===0?'pass':'fail',
+        blocks.length?(`${blocks.length} блоков · ${duration} мин${missingTypes.length?' · нет: '+missingTypes.join(', '):''}`):'программа пустая')
+      add('runtime','show runtime',runtimeR.data?'pass':'fail',runtimeR.data?`${runtimeR.data.run_status} · блок ${runtimeR.data.current_block_id}`:'runtime не создан')
+      add('projector_state','projector state',projectorR.data?'pass':'fail',projectorR.data?`${projectorR.data.state} · revision ${projectorR.data.revision}`:'projector state не создан')
+
+      const packages=packagesR.data||[]
+      const questions=questionsR.data||[]
+      const qCount=new Map<string,number>()
+      for(const q of questions)qCount.set(String(q.film_package_id),(qCount.get(String(q.film_package_id))||0)+1)
+      const packageProblems:string[]=[]
+      for(const p of packages){
+        const fragments=Array.isArray(p.fragments)?p.fragments:[]
+        const fragmentsOk=fragments.length===6&&fragments.every((x:any)=>{
+          const start=Math.max(0,Number(x?.startSec||0))
+          const end=x?.endSec==null?NaN:Number(x.endSec)
+          const platform=String(x?.sourcePlatform||((x?.videoId)?'youtube':''))
+          const playable=(platform==='youtube'&&!!String(x?.videoId||'').trim())||(['internet_archive','wikimedia_commons','direct'].includes(platform)&&!!String(x?.sourceUrl||'').trim())
+          return playable&&Number.isFinite(end)&&end>start
+        })
+        const questionsOk=(qCount.get(String(p.id))||0)===5
+        if(String(p.status)!=='ready'||!fragmentsOk||!questionsOk)packageProblems.push(String(p.title_snapshot||p.id))
+      }
+      add('film_packages','кинопакеты',packages.length>0&&packageProblems.length===0?'pass':'fail',
+        packages.length?`${packages.length-packageProblems.length}/${packages.length} готовы${packageProblems.length?' · проверить: '+packageProblems.join(', '):''}`:'кинопакетов нет')
+
+      const enabledMovies=(moviesR.data||[]).filter((x:any)=>x.enabled_for_event!==false)
+      const sources=sourcesR.data||[]
+      const unavailableMovies=enabledMovies.filter((m:any)=>!sources.some((s:any)=>
+        String(s.movie_candidate_id)===String(m.id)&&
+        String(s.availability_status)==='ready'&&s.verified===true&&s.embeddable===true&&
+        (String(s.rights_status)==='allowed'||String(s.metadata?.manual_selected||'false')==='true')
+      ))
+      add('video_sources','видеоисточники',enabledMovies.length>0&&unavailableMovies.length===0?'pass':'fail',
+        enabledMovies.length?`${enabledMovies.length-unavailableMovies.length}/${enabledMovies.length} фильмов имеют пригодный source${unavailableMovies.length?' · нет source: '+unavailableMovies.map((x:any)=>x.title).join(', '):''}`:'фильмов в пуле нет')
+
+      const venueName=String(event.venue_name||'').trim()
+      const venueAddress=String(event.venue_address||'').trim()
+      add('venue','площадка',venueName&&venueAddress?'pass':'fail',venueName&&venueAddress?`${venueName} · ${venueAddress}`:'не заполнено название или адрес площадки')
+      add('room','внутренний зал','warn','система знает общий адрес, но конкретный зал/строение нужно подтвердить вручную на площадке')
+
+      const regs=registrationsR.data||[]
+      const confirmed=regs.filter((x:any)=>['paid','attended'].includes(String(x.status))).length
+      const attended=regs.filter((x:any)=>String(x.status)==='attended').length
+      const waitlist=regs.filter((x:any)=>String(x.status)==='waitlist').length
+      add('attendance','участники','info',`confirmed ${confirmed} · attended ${attended} · waitlist ${waitlist} · capacity ${event.capacity}`)
+
+      const failed=checks.filter(x=>x.status==='fail').length
+      const warnings=checks.filter(x=>x.status==='warn').length
+      const passed=checks.filter(x=>x.status==='pass').length
+      return json({ok:true,ready:failed===0,summary:{passed,warnings,failed,total:checks.length},checks,checkedAt:new Date().toISOString()})
+    }
+
     if(action==='admin-screen-link'){
       const screenToken=String(Deno.env.get('SCREEN_ACCESS_TOKEN')||'').trim()
       const webAppUrl=String(Deno.env.get('TELEGRAM_WEBAPP_URL')||'').trim().replace(/\/+$/,'')
