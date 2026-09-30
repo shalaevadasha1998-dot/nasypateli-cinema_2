@@ -1297,7 +1297,34 @@ export async function handleApi(req:Request){
       const registrationId=String(body.registrationId||'').trim()
       const fix=String(body.fix||'').trim()
       if(!isUuid(registrationId))return err('Некорректная регистрация',422)
-      if(!['mark_attended','undo_attended','release_hold'].includes(fix))return err('Неизвестное ручное действие',422)
+      if(!['mark_attended','undo_attended','release_hold','cancel_registration'].includes(fix))return err('Неизвестное ручное действие',422)
+
+      if(fix==='cancel_registration'){
+        const current=await db.from('registrations').select('user_id,status,amount_rub,payment_provider').eq('id',registrationId).eq('event_id',event.id).maybeSingle()
+        if(current.error)throw current.error
+        if(!current.data)return err('Регистрация не найдена',404)
+        if(Number(current.data.amount_rub||0)>0||String(current.data.payment_provider||'')==='telegram')return err('Платный билет нельзя сбросить этой кнопкой. Для него нужен отдельный возврат.',409)
+        if(['cancelled','refunded'].includes(String(current.data.status||'')))return json({ok:true,registrationId,status:String(current.data.status),promoted:0})
+
+        const cancelled=await db.from('registrations').update({
+          status:'cancelled',
+          queue_position:null,
+          reservation_expires_at:null,
+          paid_at:null,
+          payment_provider:null,
+          provider_payment_id:null,
+          telegram_payment_charge_id:null,
+          amount_rub:0
+        }).eq('id',registrationId).eq('event_id',event.id).select('user_id,status').single()
+        if(cancelled.error)throw cancelled.error
+
+        await db.from('event_presence').delete().eq('event_id',event.id).eq('user_id',current.data.user_id)
+        await db.from('notification_queue').update({status:'cancelled',error:'registration cancelled by admin'}).eq('event_id',event.id).eq('user_id',current.data.user_id).eq('kind','tickets').eq('status','pending')
+        if(['SALES_OPEN','CHECKIN'].includes(String(event.status||'')))await db.rpc('promote_event_waitlist',{p_event_id:event.id})
+        await refreshLeaderboard(db,[String(current.data.user_id)])
+        return json({ok:true,registrationId,status:String(cancelled.data.status||'cancelled'),promoted:0})
+      }
+
       const r=await db.rpc('admin_fix_event_registration',{p_event_id:event.id,p_registration_id:registrationId,p_action:fix})
       if(r.error){
         const message=String(r.error.message||'')
