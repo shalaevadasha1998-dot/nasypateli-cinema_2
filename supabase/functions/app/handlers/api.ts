@@ -2361,6 +2361,36 @@ export async function handleApi(req:Request){
       const me=await telegramBot('getMe',{});return json({ok:true,bot:{id:me.id,username:me.username},webhook,menu,webAppUrl,webhookUrl})
     }
 
+    if(action==='admin-draw-all-ideas'){
+      return await withEventOperation(db,event.id,'draw-all-ideas',async()=>{
+        mechanicsRequired(event)
+        if(event.status!=='IDEAS_OPEN')return err('Рандом можно запускать только пока открыт приём идей',409)
+        const [ideas,attended]=await Promise.all([
+          db.from('film_ideas').select('id,title,plot').eq('event_id',event.id).order('id'),
+          db.from('registrations').select('*',{count:'exact',head:true}).eq('event_id',event.id).eq('status','attended')
+        ])
+        if(ideas.error)throw ideas.error
+        if(attended.error)throw attended.error
+        const list=(ideas.data||[]).map((x:any)=>String(x.id))
+        const attendedCount=Number(attended.count||0)
+        if(list.length<2)return err('Для рандома нужно хотя бы 2 идеи',409)
+        if(attendedCount>0&&list.length<attendedCount&&body.allowBeforeAll!==true){
+          return err(`Ещё не все закончили: готово ${list.length} из ${attendedCount}`,409)
+        }
+        const {index,randomBytesHex}=secureIndex(list.length)
+        const chosen=list[index]
+        const log=await db.from('random_draws').insert({event_id:event.id,draw_type:'idea_all',candidate_ids:list,chosen_id:chosen,random_bytes_hex:randomBytesHex})
+        if(log.error)throw log.error
+        const selected=await db.from('selected_idea').upsert({event_id:event.id,film_idea_id:chosen,revealed_author_user_id:null},{onConflict:'event_id'})
+        if(selected.error)throw selected.error
+        const moved=await db.from('events').update({status:'IDEA_RANDOMIZED'}).eq('id',event.id).eq('status','IDEAS_OPEN').select('id').maybeSingle()
+        if(moved.error)throw moved.error
+        if(!moved.data)return err('Этап уже изменился в другой вкладке. Обновите пульт.',409)
+        const idea=(ideas.data||[]).find((x:any)=>String(x.id)===chosen)
+        return json({ok:true,chosen,idea,submitted:list.length,attended:attendedCount,randomBytesHex})
+      },60)
+    }
+
     if(action==='ai-select-ideas'){
       return await withEventOperation(db,event.id,'ai-select-ideas',async()=>{
       mechanicsRequired(event);if(event.status!=='IDEAS_LOCKED')return err('Выбор идей доступен только после закрытия приёма',409)
