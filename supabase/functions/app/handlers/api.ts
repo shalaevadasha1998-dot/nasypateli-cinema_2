@@ -1282,6 +1282,21 @@ export async function handleApi(req:Request){
       return json({ok:true,answer:saved.data.answer})
     }
 
+    if(action==='film-mark-watching'){
+      const assignmentId=String(body.assignmentId||'')
+      if(!isUuid(assignmentId))return err('задание не найдено',404)
+      const assignment=await db.from('film_assignments').select('status,due_at').eq('id',assignmentId).eq('user_id',user.id).maybeSingle()
+      if(assignment.error)throw assignment.error
+      if(!assignment.data)return err('задание не найдено',404)
+      const current=String(assignment.data.status||'')
+      if(!['assigned','watching','overdue'].includes(current))return json({ok:true,status:current})
+      const overdue=new Date(assignment.data.due_at).getTime()<Date.now()
+      const status=overdue?'overdue':'watching'
+      const updated=await db.from('film_assignments').update({status,updated_at:new Date().toISOString()}).eq('id',assignmentId).eq('user_id',user.id)
+      if(updated.error)throw updated.error
+      return json({ok:true,status})
+    }
+
     if(action==='film-mark-watched'){
       const assignmentId=String(body.assignmentId||'')
       if(!isUuid(assignmentId))return err('задание не найдено',404)
