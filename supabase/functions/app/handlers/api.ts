@@ -800,7 +800,9 @@ export async function handleApi(req:Request){
         show:state.show,
         screenMessage:state.screenMessage||'',
         screenCreatures,
-        projector
+        projector,
+        ideaProgress:state.ideaProgress,
+        selectedIdea:state.selectedIdea
       })
     }
     if(action==='admin-bootstrap'){
