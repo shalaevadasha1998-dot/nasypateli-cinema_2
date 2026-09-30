@@ -5,18 +5,39 @@ function feedDayKey(v:any){
   catch{return ''}
 }
 
+async function ensureVisualVariant(db:any,creature:any,userId:string){
+  const current=Math.round(Number(creature?.settings?.visual_variant||0))
+  if(current>=1&&current<=50)return creature
+  const all=await db.from('creatures').select('settings')
+  if(all.error)throw all.error
+  const counts=Array.from({length:50},()=>0)
+  for(const row of all.data||[]){
+    const n=Math.round(Number(row?.settings?.visual_variant||0))
+    if(n>=1&&n<=50)counts[n-1]++
+  }
+  const min=Math.min(...counts)
+  const candidates=counts.map((n,i)=>n===min?i+1:0).filter(Boolean)
+  let hash=0
+  for(const ch of String(userId))hash=(hash*33+ch.charCodeAt(0))>>>0
+  const visualVariant=candidates[hash%candidates.length]||1
+  const settings={...(creature?.settings||{}),visual_variant:visualVariant}
+  const updated=await db.from('creatures').update({settings}).eq('user_id',userId).select('*').single()
+  if(updated.error)throw updated.error
+  return updated.data
+}
+
 export async function ensureCreature(db:any,userId:string){
   const existing=await db.from('creatures').select('*').eq('user_id',userId).maybeSingle();if(existing.error)throw existing.error
-  if(existing.data)return existing.data
+  if(existing.data)return await ensureVisualVariant(db,existing.data,userId)
   const made=await db.from('creatures').insert({user_id:userId,name:'Животина'}).select('*').single()
   if(made.error){
     if(String(made.error.code||'')==='23505'){
       const raced=await db.from('creatures').select('*').eq('user_id',userId).single();if(raced.error)throw raced.error
-      return raced.data
+      return await ensureVisualVariant(db,raced.data,userId)
     }
     throw made.error
   }
-  return made.data
+  return await ensureVisualVariant(db,made.data,userId)
 }
 
 export async function creatureState(db:any,userId:string){
@@ -54,7 +75,7 @@ export async function creatureState(db:any,userId:string){
     stage_4:Number(rawThresholds.stage_4??90)
   }
   const canFeedToday=!creature.last_fed_at||feedDayKey(creature.last_fed_at)!==feedDayKey(new Date())
-  return {born:!!creature.born_at,bornAt:creature.born_at||undefined,name:creature.name||'Животина',stage:(['stage_0','stage_1','stage_2','stage_3','stage_4'].includes(String(creature.stage))?creature.stage:(creature.stage==='grown'?'stage_4':creature.stage==='young'?'stage_2':'stage_0')),crumbs:Number(creature.crumbs||0),growthProgress:Number(creature.growth_progress||0),lastFedAt:creature.last_fed_at||undefined,feedingCost,stageThresholds,canFeedToday,storyCount:Number(stories.count??timeline.length),traits:{curiosity:0,argumentative:0,social:0,romantic:0,chaotic:0,cinephile:0,...(creature.traits||{})},cosmetics:cs,timeline}
+  return {born:!!creature.born_at,bornAt:creature.born_at||undefined,name:creature.name||'Животина',visualVariant:Math.max(1,Math.min(50,Math.round(Number(creature.settings?.visual_variant||1)))),stage:(['stage_0','stage_1','stage_2','stage_3','stage_4'].includes(String(creature.stage))?creature.stage:(creature.stage==='grown'?'stage_4':creature.stage==='young'?'stage_2':'stage_0')),crumbs:Number(creature.crumbs||0),growthProgress:Number(creature.growth_progress||0),lastFedAt:creature.last_fed_at||undefined,feedingCost,stageThresholds,canFeedToday,storyCount:Number(stories.count??timeline.length),traits:{curiosity:0,argumentative:0,social:0,romantic:0,chaotic:0,cinephile:0,...(creature.traits||{})},cosmetics:cs,timeline}
 }
 
 async function conditionPasses(db:any,userId:string,trigger:string,condition:any,context:any){
