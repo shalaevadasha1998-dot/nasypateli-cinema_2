@@ -6,7 +6,7 @@ import { structuredResponse, transcribeAudio } from '../_shared/openai.ts'
 import { creatureState, emitStoryTrigger, ensureCreature } from '../_shared/stories.ts'
 import { allowedGender, connectionKind, datingState, intentsCompatible } from '../_shared/dating.ts'
 import { JIPITINA, jipitinaInstructions } from '../_shared/jipitina.ts'
-import { validateMovieTitle } from '../_shared/movies.ts'
+import { discoverMovieSources, preferredMovieSource, validateMovieTitle } from '../_shared/movies.ts'
 import { buildEventState, buildShowState, eventBySlug, nextEvent, nonexistentFilmEnabled } from '../_shared/state.ts'
 
 const manualTransitions:Record<string,string>={
@@ -27,6 +27,71 @@ function splitList(x:any){
   return String(x||'').split(',').map((s:string)=>s.trim()).filter(Boolean).slice(0,30)
 }
 function clamp100(x:any){const n=Number(x);return Number.isFinite(n)?Math.max(0,Math.min(100,Math.round(n))):50}
+
+async function discoverAndPersistMovieSources(db:any,event:any,movie:any){
+  const discovery=await discoverMovieSources(movie)
+  const existing=await db.from('movie_source_candidates').select('source_url,start_sec,end_sec').eq('event_id',event.id).eq('movie_candidate_id',movie.id)
+  if(existing.error)throw existing.error
+  const seen=new Set((existing.data||[]).map((x:any)=>[String(x.source_url||''),Number(x.start_sec||0),x.end_sec==null?'':Number(x.end_sec)].join('|')))
+  const rows=(discovery.candidates||[]).filter((x:any)=>{
+    const key=[String(x.sourceUrl||''),Number(x.startSec||0),x.endSec==null?'':Number(x.endSec)].join('|')
+    if(seen.has(key))return false
+    seen.add(key);return true
+  }).map((x:any)=>({
+    event_id:event.id,
+    movie_candidate_id:movie.id,
+    use_mode:x.useMode,
+    source_type:x.sourceType,
+    source_platform:String(x.sourcePlatform||'unknown').slice(0,80),
+    source_url:String(x.sourceUrl||'').slice(0,1500),
+    video_id:x.videoId?String(x.videoId).slice(0,200):null,
+    title:x.title?String(x.title).slice(0,300):null,
+    source_channel:x.sourceChannel?String(x.sourceChannel).slice(0,300):null,
+    start_sec:Math.max(0,Math.round(Number(x.startSec)||0)),
+    end_sec:x.endSec==null?null:Math.max(0,Math.round(Number(x.endSec)||0)),
+    verified:x.verified===true,
+    embeddable:x.embeddable===true,
+    official:x.official===true,
+    rights_status:['unknown','allowed','restricted','blocked'].includes(String(x.rightsStatus))?String(x.rightsStatus):'unknown',
+    availability_status:x.verified===true&&x.embeddable===true&&Number(x.confidence)>=.60?'ready':'candidate',
+    confidence:Math.max(0,Math.min(1,Number(x.confidence)||0)),
+    metadata:x.metadata&&typeof x.metadata==='object'?x.metadata:{},
+    verified_at:x.verified===true?new Date().toISOString():null,
+    updated_at:new Date().toISOString()
+  }))
+  if(rows.length){
+    const ins=await db.from('movie_source_candidates').insert(rows)
+    if(ins.error)throw ins.error
+  }
+  const all=await db.from('movie_source_candidates').select('*').eq('event_id',event.id).eq('movie_candidate_id',movie.id)
+  if(all.error)throw all.error
+  const preferred=preferredMovieSource((all.data||[]).map((x:any)=>({
+    useMode:x.use_mode,sourceType:x.source_type,sourcePlatform:x.source_platform,sourceUrl:x.source_url,
+    videoId:x.video_id||undefined,title:x.title||undefined,sourceChannel:x.source_channel||undefined,
+    startSec:Number(x.start_sec||0),endSec:x.end_sec==null?null:Number(x.end_sec),verified:x.verified===true,
+    embeddable:x.embeddable===true,official:x.official===true,rightsStatus:x.rights_status,
+    confidence:Number(x.confidence||0),metadata:x.metadata||{}
+  })))
+  if(!preferred)return {discovery,preferred:null}
+  const now=new Date().toISOString()
+  const patch:any={
+    source_type:preferred.sourceType,
+    source_platform:preferred.sourcePlatform,
+    source_url:preferred.sourceUrl,
+    video_id:preferred.videoId||null,
+    start_sec:Math.max(0,Math.round(Number(preferred.startSec)||0)),
+    end_sec:preferred.endSec==null?null:Math.max(0,Math.round(Number(preferred.endSec)||0)),
+    source_channel:preferred.sourceChannel||null,
+    source_verified:true,
+    verified_at:now,
+    usage_status:'ready'
+  }
+  if(preferred.useMode==='fragment')patch.clip_status='ready'
+  else patch.trailer_status='ready'
+  const updated=await db.from('movie_candidates').update(patch).eq('id',movie.id).eq('event_id',event.id)
+  if(updated.error)throw updated.error
+  return {discovery,preferred}
+}
 function normalizeProfile(user:any,row:any,registration:any,tg:any){
   const j=row?.profile_json||{}
   const t=j.taste||{}
@@ -1851,6 +1916,16 @@ export async function handleApi(req:Request){
       return json({ok:true,show:await buildShowState(db,event)})
     }
 
+    if(action==='admin-discover-movie-sources'){
+      const movieId=String(body.movieId||'').trim()
+      if(!isUuid(movieId))return err('некорректный movie id',422)
+      const movie=await db.from('movie_candidates').select('*').eq('id',movieId).eq('event_id',event.id).maybeSingle()
+      if(movie.error)throw movie.error
+      if(!movie.data)return err('фильм не найден',404)
+      const resolved=await discoverAndPersistMovieSources(db,event,movie.data)
+      return json({ok:true,fallbackUsed:resolved.discovery.fallbackUsed,candidates:resolved.discovery.candidates,preferred:resolved.preferred})
+    }
+
     if(action==='admin-movie-save'){
       const movieId=String(body.movieId||'').trim()
       const title=String(body.title||'').trim().slice(0,180)
@@ -2137,9 +2212,22 @@ export async function handleApi(req:Request){
       await db.from('movie_candidates').delete().eq('event_id',event.id)
       const rows=validated.map(c=>({event_id:event.id,provider:'wikidata',provider_id:c.wikidataId,title:c.title,original_title:c.originalTitle||c.title,year:c.year||null,runtime_min:c.runtimeMin||null,validated:true,similarity_score:c.similarityScore,audience_fit_score:c.audienceFitScore,reason:c.reason,metadata:{wikidata_url:c.url,description:c.description}}))
       const ins=await db.from('movie_candidates').insert(rows).select('*');if(ins.error)throw ins.error
-      const top=(ins.data||[]).filter((x:any)=>x.runtime_min&&x.runtime_min<=event.max_movie_runtime_min).sort((a:any,b:any)=>Number(b.weighted_score)-Number(a.weighted_score)).slice(0,3);if(top.length<3)return err('Нужны 3 подтверждённых финалиста',422)
+      const ranked=(ins.data||[]).filter((x:any)=>x.runtime_min&&x.runtime_min<=event.max_movie_runtime_min).sort((a:any,b:any)=>Number(b.weighted_score)-Number(a.weighted_score))
+      const top:any[]=[];const sourceSearch:any[]=[]
+      for(const movie of ranked){
+        if(top.length>=3)break
+        const resolved=await discoverAndPersistMovieSources(db,event,movie)
+        sourceSearch.push({movieId:movie.id,title:movie.title,fallbackUsed:resolved.discovery.fallbackUsed,found:(resolved.discovery.candidates||[]).length,preferred:resolved.preferred})
+        if(resolved.preferred)top.push({...movie,
+          source_type:resolved.preferred.sourceType,source_platform:resolved.preferred.sourcePlatform,
+          source_url:resolved.preferred.sourceUrl,video_id:resolved.preferred.videoId||null,
+          start_sec:resolved.preferred.startSec,end_sec:resolved.preferred.endSec,
+          source_channel:resolved.preferred.sourceChannel||null,source_verified:true,usage_status:'ready'
+        })
+      }
+      if(top.length<3)return err('Животина не нашла пригодные фрагменты или трейлеры хотя бы для 3 подтверждённых фильмов',422)
       await db.from('movie_finalists').delete().eq('event_id',event.id);await db.from('movie_finalists').insert(top.map((x:any,i:number)=>({event_id:event.id,movie_candidate_id:x.id,rank:i+1})))
-      await db.from('events').update({status:'MOVIE_FINALISTS'}).eq('id',event.id);return json({ok:true,candidates:ins.data,finalists:top})
+      await db.from('events').update({status:'MOVIE_FINALISTS'}).eq('id',event.id);return json({ok:true,candidates:ins.data,finalists:top,sourceSearch})
 
       },600)
     }
