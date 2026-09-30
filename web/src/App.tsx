@@ -689,10 +689,18 @@ function ScreenVideo({data}:{data:DemoState}){
   return <ProjectorMedia media={movie} title={movie.title}/>
 }
 
-function projectorCreatureAsset(stage:string){
+function projectorCreatureFallback(stage:string){
   if(stage==='stage_0')return 'assets/rabbit-baby.png'
   if(stage==='stage_1'||stage==='stage_2')return 'assets/rabbit-idle.webp'
   return 'assets/rabbit-name-react.webp'
+}
+
+function ProjectorCreatureImage({stage}:{stage:string}){
+  const custom=`${import.meta.env.BASE_URL}assets/projector-${stage.replace('_','-')}.webp`
+  const fallback=`${import.meta.env.BASE_URL}${projectorCreatureFallback(stage)}`
+  const [src,setSrc]=useState(custom)
+  useEffect(()=>setSrc(custom),[custom])
+  return <img src={src} alt="" draggable={false} onError={()=>{if(src!==fallback)setSrc(fallback)}}/>
 }
 
 function ScreenCreatureWall({data}:{data:DemoState}){
@@ -714,7 +722,7 @@ function ScreenCreatureWall({data}:{data:DemoState}){
   return <div className="screen-creature-wall">
     <div className="screen-creature-count"><b>{creatures.length}</b><span>{creatures.length===1?'животина уже в зале':'животин уже в зале'}</span></div>
     {newest&&<div className="screen-creature-arrival-callout"><span>в зал заходит</span><b>{newest.name}</b></div>}
-    {creatures.length?<div className="screen-creature-grid">{creatures.map(c=><div className={`screen-creature-card ${c.stage}${arriving.has(c.id)?' arrived':''}`} key={c.id}><div className="screen-creature-art"><img src={`${import.meta.env.BASE_URL}${projectorCreatureAsset(c.stage)}`} alt="" draggable={false}/></div><span>{c.name}</span></div>)}</div>:<p className="screen-creature-empty">первая животина появится здесь после чек-ина</p>}
+    {creatures.length?<div className="screen-creature-grid">{creatures.map(c=><div className={`screen-creature-card ${c.stage}${arriving.has(c.id)?' arrived':''}`} key={c.id}><div className="screen-creature-art"><ProjectorCreatureImage stage={c.stage}/></div><span>{c.name}</span></div>)}</div>:<p className="screen-creature-empty">первая животина появится здесь после чек-ина</p>}
   </div>
 }
 
