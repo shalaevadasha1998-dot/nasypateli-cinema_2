@@ -19,6 +19,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
       - name: Convert decorative rabbit loops
         run: |
           ffmpeg -y -i web/public/assets/rabbit-boy.webm             -vf "fps=10,scale=160:224:flags=lanczos"             -loop 0 -c:v libwebp -q:v 45 -compression_level 6 -preset picture             web/public/assets/rabbit-boy-animated.webp
