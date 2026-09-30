@@ -186,6 +186,7 @@ function Home(){
       <Button onClick={()=>nav('/zhivotina')}>поговорить с {data.creature.name||'животиной'}</Button>
     </section>
     {encounterMsg&&<div className="success floating-success">{encounterMsg}</div>}
+    <FilmMissionCards data={data} onOpen={id=>nav('/mission/'+id)}/>
     <section className="home-event-hero">
       <div className="home-event-date"><div className="eyebrow">ближайший вечер</div><h1>{eventDate(e.startsAt)}</h1><p>{eventTime(e.startsAt)}. {e.venueName?e.venueName:'место объявим позже'}. москва{e.venueAddress&&<><br/>{e.venueAddress}</>}</p></div>
       <div className="home-event-ticket">
@@ -201,6 +202,7 @@ function Home(){
         {buyNotice&&<div className="success">{buyNotice}</div>}{buyError&&<div className="form-error">{buyError}</div>}{claimError&&<div className="form-error">{claimError}</div>}{cancelError&&<div className="form-error">{cancelError}</div>}
       </div>
     </section>
+    <FilmLiveParticipant data={data} reload={reload}/>
     <ParticipantShow data={data} reload={reload}/>
     {!['DRAFT','SALES_OPEN','CHECKIN'].includes(e.status)&&<NextAction data={data} onOpen={()=>nav(`/event/${e.slug}`)} onBuy={buy} onClaim={claimTicket} buyBusy={buyBusy} claimBusy={claimBusy} reserveCountdown={reserveCountdown}/>} 
     <section className="zhivotina-portal">
