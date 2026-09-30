@@ -328,13 +328,14 @@ function Admin(){
   const privileged=usePrivilegedState('admin',slug)
   const data=privileged.data,error=privileged.error,reload=privileged.reload
   const [busy,setBusy]=useState(false),[actionError,setActionError]=useState('')
-  const [cap,setCap]=useState(50),[startsAt,setStartsAt]=useState(''),[ticketPrice,setTicketPrice]=useState(0),[runtimeCap,setRuntimeCap]=useState(150),[venueName,setVenueName]=useState(''),[venueAddress,setVenueAddress]=useState(''),[message,setMessage]=useState(''),[checkinLink,setCheckinLink]=useState('')
+  const [cap,setCap]=useState(50),[startsAt,setStartsAt]=useState(''),[ticketPrice,setTicketPrice]=useState(0),[runtimeCap,setRuntimeCap]=useState(150),[venueName,setVenueName]=useState(''),[venueAddress,setVenueAddress]=useState(''),[message,setMessage]=useState(''),[checkinLink,setCheckinLink]=useState(''),[projectorLink,setProjectorLink]=useState('')
   useEffect(()=>{if(data){setCap(data.event.capacity);setStartsAt(moscowInputValue(data.event.startsAt));setTicketPrice(Number(data.event.ticketPriceRub||0));setRuntimeCap(Number(data.event.maxMovieRuntimeMin||150));setVenueName(data.event.venueName||'');setVenueAddress(data.event.venueAddress||'')}},[data?.event.capacity,data?.event.startsAt,data?.event.ticketPriceRub,data?.event.maxMovieRuntimeMin,data?.event.venueName,data?.event.venueAddress])
   if(!data)return <Loading error={error}/>
   const run=async(action:string,payload:Record<string,unknown>={})=>{try{setBusy(true);setActionError('');const result=await callAdminApi<any>(action,{slug:data.event.slug,...payload},privileged.token);await reload();return result}catch(e:any){setActionError(e.message||'не получилось выполнить действие');return null}finally{setBusy(false)}}
   return <div className="admin-page">
-    <div className="row spread admin-title-row"><div><div className="eyebrow">админка. экран ведущего</div><h2>{data.event.title}</h2></div><Pill>{data.show?.runtime.runStatus||data.event.status}</Pill></div>
+    <div className="row spread admin-title-row"><div><div className="eyebrow">админка. экран ведущего</div><h2>{data.event.title}</h2></div><Pill>{data.show?showRunStatusLabel(data.show.runtime.runStatus):statusLabel(data.event.status)}</Pill></div>
     {actionError&&<div className="form-error">{actionError}</div>}
+    <Card className="projector-access-card"><div className="section-title">общий экран / проектор</div><p className="muted">откройте эту ссылку на ноутбуке, подключённом к проектору, и разверните браузер на весь экран. экран обновляется сам.</p><div className="inline"><Button kind="secondary" disabled={busy} onClick={async()=>{const x:any=await run('admin-screen-link');if(x?.screenUrl)setProjectorLink(String(x.screenUrl))}}>получить ссылку экрана</Button>{projectorLink&&<><Button onClick={()=>window.open(projectorLink,'_blank','noopener,noreferrer')}>открыть экран ↗</Button><Button kind="secondary" onClick={async()=>{try{await navigator.clipboard.writeText(projectorLink)}catch{window.prompt('скопируйте ссылку',projectorLink)}}}>скопировать</Button></>}</div>{projectorLink&&<input className="share-link" readOnly value={projectorLink}/>}</Card>
     <ShowControl data={data} busy={busy} run={run}/>
     <ShowRoundControl data={data} busy={busy} run={run}/>
     <AdminParticipants data={data} reload={reload} adminToken={privileged.token}/>
@@ -402,8 +403,17 @@ function ScreenVideo({data}:{data:DemoState}){
   return null
 }
 
+function ScreenCreatureWall({data}:{data:DemoState}){
+  const creatures=data.screenCreatures||[]
+  return <div className="screen-creature-wall">
+    <div className="screen-creature-count"><b>{creatures.length}</b><span>{creatures.length===1?'животина уже в зале':'животин уже в зале'}</span></div>
+    {creatures.length?<div className="screen-creature-grid">{creatures.map(c=><div className={`screen-creature-card ${c.stage}`} key={c.id}><div className="screen-creature-art"><img src={`${import.meta.env.BASE_URL}assets/rabbit-baby.png`} alt="" draggable={false}/></div><span>{c.name}</span></div>)}</div>:<p className="screen-creature-empty">первая животина появится здесь после чек-ина</p>}
+  </div>
+}
+
 function screenContent(d:DemoState){
   const show=d.show
+  if(show&&show.runtime.currentBlock?.type==='arrival'&&!['paused','finished'].includes(show.runtime.runStatus))return <><div className="eyebrow">сбор гостей</div><h1>животины заходят в зал</h1><ScreenCreatureWall data={d}/></>
   if(show&&show.runtime.runStatus!=='idle'){
     const block=show.runtime.currentBlock
     const round=show.currentRound
@@ -440,7 +450,7 @@ function showTimerText(data:DemoState,now:number){
   return `${Math.floor(left/60)}:${String(left%60).padStart(2,'0')}`
 }
 
-function Screen(){const {slug}=useParams();const {data,error}=usePrivilegedState('screen',slug);const [now,setNow]=useState(()=>Date.now());useEffect(()=>{const t=window.setInterval(()=>setNow(Date.now()),1000);return()=>window.clearInterval(t)},[]);if(!data)return <Loading error={error}/>;const content=screenContent(data);const timer=showTimerText(data,now);const status=data.show?.runtime.runStatus!=='idle'?data.show?.runtime.currentBlock?.title:statusLabel(data.event.status);return <div className="screen-page"><div className="screen-brand">насыпатели в кино</div><div className="screen-status">{status}{timer&&<b>{timer}</b>}</div>{data.screenMessage&&<div className="screen-message">{data.screenMessage}</div>}<div className="screen-content">{content}</div><div className="screen-footer">{eventDate(data.event.startsAt)}. насыпатели в кино</div></div>}
+function Screen(){const {slug}=useParams();const {data,error}=usePrivilegedState('screen',slug);const [now,setNow]=useState(()=>Date.now());useEffect(()=>{const t=window.setInterval(()=>setNow(Date.now()),1000);return()=>window.clearInterval(t)},[]);if(!data)return <Loading error={error}/>;const content=screenContent(data);const timer=showTimerText(data,now);const status=data.show?.runtime.currentBlock?.type==='arrival'?'сбор гостей':data.show?.runtime.runStatus!=='idle'?data.show?.runtime.currentBlock?.title:statusLabel(data.event.status);return <div className="screen-page"><div className="screen-brand">насыпатели в кино</div><div className="screen-status">{status}{timer&&<b>{timer}</b>}</div>{data.screenMessage&&<div className="screen-message">{data.screenMessage}</div>}<div className="screen-content">{content}</div><div className="screen-footer">{eventDate(data.event.startsAt)}. насыпатели в кино</div></div>}
 
 function statusLabel(s:EventStatus){const m:Record<EventStatus,string>={DRAFT:'черновик',SALES_OPEN:'регистрация открыта',CHECKIN:'сбор гостей',IDEAS_OPEN:'идеи открыты',IDEAS_LOCKED:'идеи закрыты',TOP3_READY:'три идеи',IDEA_RANDOMIZED:'идея выбрана',MOVIE_SEARCH:'поиск фильма',MOVIE_FINALISTS:'три фильма',MOVIE_SELECTED:'фильм выбран',PREDICTIONS_OPEN:'прогнозы',PREDICTIONS_LOCKED:'прогнозы закрыты',WATCHING:'просмотр',PREDICTIONS_SCORED:'результаты',DISCUSSION:'реакции',FINAL_REVIEW:'финальная фраза',FEEDBACK:'исследование',CLOSED:'закрыто'};return m[s]}
 
