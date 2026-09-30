@@ -868,11 +868,18 @@ export async function handleApi(req:Request){
     }
 
     if(action==='bootstrap'){
-      const event=await nextEvent(db)
+      let event=await nextEvent(db)
+      if(!event){
+        const activeMission=await db.from('film_assignments').select('event_id').eq('user_id',user.id).neq('status','published').order('assigned_at',{ascending:false}).limit(1).maybeSingle()
+        if(activeMission.error)throw activeMission.error
+        if(activeMission.data?.event_id)event=await eventBySlug(db,String(activeMission.data.event_id))
+      }
       if(!event)return json({user,profile:null,event:null,onboardingComplete:false})
       if(event.status==='SALES_OPEN'){const promoted=await db.rpc('promote_event_waitlist',{p_event_id:event.id});if(promoted.error)throw promoted.error}
-      const presence=await db.from('event_presence').upsert({event_id:event.id,user_id:user.id,last_seen_at:new Date().toISOString()},{onConflict:'event_id,user_id'})
-      if(presence.error)console.error('presence heartbeat failed',presence.error)
+      if(event.status!=='CLOSED'){
+        const presence=await db.from('event_presence').upsert({event_id:event.id,user_id:user.id,last_seen_at:new Date().toISOString()},{onConflict:'event_id,user_id'})
+        if(presence.error)console.error('presence heartbeat failed',presence.error)
+      }
       const [common,profileRow,reg,idea,answers,thought,reaction,review,feedback,extras,creature,datingBundle,notif]=await Promise.all([
         buildEventState(db,event,{includeActuals:false}),
         db.from('cinema_profiles').select('*').eq('user_id',user.id).maybeSingle(),
