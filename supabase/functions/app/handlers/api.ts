@@ -171,6 +171,195 @@ async function activeSeatCount(db:any,eventId:string){
   if(reserved.error)throw reserved.error
   return Number(paid.count||0)+Number(reserved.count||0)
 }
+
+function normalizeFilmWord(value:any){
+  return String(value||'').trim().toLowerCase().replace(/[.,!?;:()[\]{}"'«»]+/g,'').replace(/\s+/g,' ').slice(0,80)
+}
+
+async function userFilmAssignments(db:any,userId:string){
+  const assignments=await db.from('film_assignments').select('*').eq('user_id',userId).order('assigned_at',{ascending:false}).limit(20)
+  if(assignments.error)throw assignments.error
+  const packageIds=[...new Set((assignments.data||[]).map((x:any)=>String(x.film_package_id)))]
+  const packages=packageIds.length?await db.from('film_packages').select('id,title_snapshot,movie_candidate_id').in('id',packageIds):{data:[],error:null} as any
+  if(packages.error)throw packages.error
+  const packageMap=new Map((packages.data||[]).map((x:any)=>[String(x.id),x]))
+  return (assignments.data||[]).map((a:any)=>{
+    const p:any=packageMap.get(String(a.film_package_id))||{}
+    const daysLeft=Math.ceil((new Date(a.due_at).getTime()-Date.now())/86400000)
+    return {
+      id:String(a.id),filmPackageId:String(a.film_package_id),filmTitle:String(p.title_snapshot||'фильм'),
+      status:String(a.status),assignedAt:a.assigned_at,dueAt:a.due_at,daysLeft,
+      beforeWord:String(a.before_word||''),afterWord:a.after_word||undefined,
+      correctCount:Number(a.correct_count||0),totalQuestions:Number(a.total_questions||5),
+      watchedAt:a.watched_at||undefined,submittedAt:a.submitted_at||undefined
+    }
+  })
+}
+
+async function filmLiveState(db:any,event:any,userId?:string){
+  const projector=await db.from('event_projector_state').select('*').eq('event_id',event.id).maybeSingle()
+  if(projector.error)throw projector.error
+  const p:any=projector.data
+  if(!p||['idle','arrival'].includes(String(p.state||'')))return undefined
+  let packageRow:any=null
+  if(p.film_package_id){
+    const r=await db.from('film_packages').select('id,title_snapshot,fragments,status').eq('id',p.film_package_id).eq('event_id',event.id).maybeSingle()
+    if(r.error)throw r.error
+    packageRow=r.data
+  }
+  let myWord:any=undefined,myAnswers:any[]=[]
+  if(userId&&p.round_id&&p.film_package_id){
+    const [impression,preds]=await Promise.all([
+      db.from('film_impressions').select('word').eq('round_id',p.round_id).eq('user_id',userId).maybeSingle(),
+      db.from('film_predictions').select('question_id,answer,is_correct').eq('round_id',p.round_id).eq('user_id',userId)
+    ])
+    if(impression.error)throw impression.error;if(preds.error)throw preds.error
+    myWord=impression.data?.word||undefined
+    myAnswers=preds.data||[]
+  }
+  return {
+    state:String(p.state),revision:Number(p.revision||0),roundId:p.round_id||undefined,filmPackageId:p.film_package_id||undefined,
+    filmTitle:packageRow?.title_snapshot||undefined,payload:p.payload||{},myWord,myAnswers
+  }
+}
+
+async function projectorPublicState(db:any,event:any){
+  const row=await db.from('event_projector_state').select('*').eq('event_id',event.id).maybeSingle()
+  if(row.error)throw row.error
+  const p:any=row.data
+  if(!p)return {state:'idle',revision:0,payload:{}}
+  let payload:any={...(p.payload||{})}
+  if(p.film_package_id){
+    const pack=await db.from('film_packages').select('title_snapshot,fragments').eq('id',p.film_package_id).eq('event_id',event.id).maybeSingle()
+    if(pack.error)throw pack.error
+    if(pack.data)payload={...payload,filmTitle:pack.data.title_snapshot}
+  }
+  if(p.round_id&&p.film_package_id&&['one_word_collecting','one_word_results'].includes(String(p.state))){
+    const impressions=await db.from('film_impressions').select('word,normalized_word,animal_name_snapshot').eq('event_id',event.id).eq('round_id',p.round_id).eq('film_package_id',p.film_package_id)
+    if(impressions.error)throw impressions.error
+    const groups=new Map<string,{word:string;count:number;animals:string[]}>()
+    for(const row of impressions.data||[]){
+      const key=String(row.normalized_word||'')
+      if(!key)continue
+      const current=groups.get(key)||{word:String(row.word||key),count:0,animals:[]}
+      current.count++
+      if(row.animal_name_snapshot)current.animals.push(String(row.animal_name_snapshot))
+      groups.set(key,current)
+    }
+    payload={...payload,wordGroups:[...groups.values()].sort((a,b)=>b.count-a.count||a.word.localeCompare(b.word,'ru')).slice(0,40)}
+  }
+  return {state:String(p.state||'idle'),revision:Number(p.revision||0),payload,updatedAt:p.updated_at}
+}
+
+async function filmAdminPackages(db:any,eventId:string){
+  const packages=await db.from('film_packages').select('*').eq('event_id',eventId).order('created_at')
+  if(packages.error)throw packages.error
+  const ids=(packages.data||[]).map((x:any)=>String(x.id))
+  const questions=ids.length?await db.from('film_questions').select('*').in('film_package_id',ids).order('position'):{data:[],error:null} as any
+  if(questions.error)throw questions.error
+  const byPackage=new Map<string,any[]>()
+  for(const q of questions.data||[]){const key=String(q.film_package_id);byPackage.set(key,[...(byPackage.get(key)||[]),q])}
+  return (packages.data||[]).map((p:any)=>({
+    id:String(p.id),movieCandidateId:String(p.movie_candidate_id),title:String(p.title_snapshot),
+    fragments:Array.isArray(p.fragments)?p.fragments:[],status:String(p.status),
+    questions:(byPackage.get(String(p.id))||[]).map((q:any)=>({
+      id:String(q.id),position:Number(q.position),prompt:String(q.prompt),options:q.options||[],
+      correctAnswer:q.correct_answer,revealText:String(q.reveal_text||''),revealFragment:q.reveal_fragment||{}
+    }))
+  }))
+}
+
+async function filmAdminReviews(db:any,eventId:string){
+  const assignments=await db.from('film_assignments').select('*').eq('event_id',eventId).order('assigned_at',{ascending:false})
+  if(assignments.error)throw assignments.error
+  const assignmentIds=(assignments.data||[]).map((x:any)=>String(x.id))
+  const userIds=[...new Set((assignments.data||[]).map((x:any)=>String(x.user_id)))]
+  const packageIds=[...new Set((assignments.data||[]).map((x:any)=>String(x.film_package_id)))]
+  const [reviews,users,packages,impressions,predictions]=await Promise.all([
+    assignmentIds.length?db.from('submitted_reviews').select('*').in('assignment_id',assignmentIds).order('submitted_at',{ascending:false}):Promise.resolve({data:[],error:null}),
+    userIds.length?db.from('users').select('id,display_name,telegram_username').in('id',userIds):Promise.resolve({data:[],error:null}),
+    packageIds.length?db.from('film_packages').select('id,title_snapshot').in('id',packageIds):Promise.resolve({data:[],error:null}),
+    assignmentIds.length?db.from('film_impressions').select('round_id,normalized_word,word').eq('event_id',eventId):Promise.resolve({data:[],error:null}),
+    assignmentIds.length?db.from('film_predictions').select('round_id,user_id,is_correct').eq('event_id',eventId):Promise.resolve({data:[],error:null})
+  ])
+  for(const x of [reviews,users,packages,impressions,predictions])if((x as any).error)throw (x as any).error
+  const reviewByAssignment=new Map<string,any>()
+  for(const x of (reviews as any).data||[]){if(!reviewByAssignment.has(String(x.assignment_id)))reviewByAssignment.set(String(x.assignment_id),x)}
+  const userMap=new Map(((users as any).data||[]).map((x:any)=>[String(x.id),x]))
+  const packageMap=new Map(((packages as any).data||[]).map((x:any)=>[String(x.id),x]))
+  return (assignments.data||[]).map((a:any)=>{
+    const review:any=reviewByAssignment.get(String(a.id));const u:any=userMap.get(String(a.user_id))||{};const p:any=packageMap.get(String(a.film_package_id))||{}
+    return {
+      assignmentId:String(a.id),animalName:String(a.animal_name_snapshot),filmTitle:String(p.title_snapshot||'фильм'),
+      assignedAt:a.assigned_at,dueAt:a.due_at,assignmentStatus:String(a.status),beforeWord:String(a.before_word||''),afterWord:a.after_word||undefined,
+      correctCount:Number(a.correct_count||0),totalQuestions:Number(a.total_questions||5),
+      reviewId:review?String(review.id):undefined,reviewStatus:review?.status||undefined,submittedAt:review?.submitted_at||undefined,
+      snapshot:review?.snapshot||undefined,adminComment:review?.admin_comment||undefined,
+      user:{displayName:String(u.display_name||''),telegramUsername:u.telegram_username?String(u.telegram_username):''}
+    }
+  })
+}
+
+async function reviewPersonalQuestion(db:any,assignment:any){
+  const preds=await db.from('film_predictions').select('answer,is_correct,question_id').eq('round_id',assignment.round_id).eq('user_id',assignment.user_id).eq('film_package_id',assignment.film_package_id)
+  if(preds.error)throw preds.error
+  const chosen=(preds.data||[]).find((x:any)=>x.is_correct===false)||(preds.data||[])[0]
+  if(!chosen)return 'какой из твоих прогнозов сильнее всего изменился после полного просмотра?'
+  const q=await db.from('film_questions').select('prompt,correct_answer,reveal_text').eq('id',chosen.question_id).maybeSingle()
+  if(q.error)throw q.error
+  const answer=typeof chosen.answer==='string'?chosen.answer:JSON.stringify(chosen.answer)
+  const actual=String(q.data?.reveal_text||'').trim()||(typeof q.data?.correct_answer==='string'?q.data.correct_answer:JSON.stringify(q.data?.correct_answer))
+  return `ты отвечал на «${String(q.data?.prompt||'вопрос')}» так: «${answer}». на самом деле ${actual}. после полного фильма это стало понятнее?`
+}
+
+async function reviewQuestionForStep(db:any,assignment:any,step:number){
+  const base=[
+    ['after_word','одно слово после полного просмотра. что это за фильм теперь?'],
+    ['expectations','он совпал с тем, чего ты ждал после первого фрагмента?'],
+    ['memorable','какой момент или образ сильнее всего остался в голове?'],
+    ['worked','что в фильме сработало лучше всего?'],
+    ['didnt_work','что не сработало или раздражало?'],
+    ['recommend','кому бы ты посоветовал этот фильм?'],
+    ['crumbs','сколько крошек из 5? напиши число от 1 до 5.']
+  ] as [string,string][]
+  if(step<base.length)return {key:base[step][0],text:base[step][1],kind:base[step][0]==='crumbs'?'rating':'text'}
+  return {key:'personal',text:await reviewPersonalQuestion(db,assignment),kind:'text'}
+}
+
+async function buildReviewDraft(db:any,assignment:any,answers:any){
+  const pack=await db.from('film_packages').select('title_snapshot').eq('id',assignment.film_package_id).single()
+  if(pack.error)throw pack.error
+  const impressions=await db.from('film_impressions').select('word,normalized_word').eq('event_id',assignment.event_id).eq('round_id',assignment.round_id)
+  if(impressions.error)throw impressions.error
+  const counts=new Map<string,number>()
+  for(const x of impressions.data||[]){const k=String(x.normalized_word||'');if(k)counts.set(k,(counts.get(k)||0)+1)}
+  const collectiveWords=[...counts.entries()].sort((a,b)=>b[1]-a[1]).slice(0,5).map(([word,count])=>({word,count}))
+  const deterministic={
+    animalName:String(assignment.animal_name_snapshot),filmTitle:String(pack.data.title_snapshot),
+    beforeWord:String(assignment.before_word||''),afterWord:String(answers.after_word||''),
+    crumbs:Math.max(1,Math.min(5,Number(answers.crumbs)||1)),whatStayed:String(answers.memorable||''),
+    worked:String(answers.worked||''),didntWork:String(answers.didnt_work||''),recommendTo:String(answers.recommend||''),
+    correctCount:Number(assignment.correct_count||0),totalQuestions:Number(assignment.total_questions||5),collectiveWords
+  }
+  try{
+    const ai=await structuredResponse<any>({
+      name:'film_review_draft',
+      schema:{type:'object',additionalProperties:false,properties:{
+        userReview:{type:'string'},animalTake:{type:'string'},publishText:{type:'string'}
+      },required:['userReview','animalTake','publishText']},
+      instructions:'Собери короткую русскую рецензию для киноклуба. Не выдумывай факты фильма. Не спорь со вкусом человека. Сохраняй его лексику. Публичная версия без спойлеров. userReview — 2–4 предложения от лица пользователя. animalTake — 1–2 предложения от животинки. publishText — компактная готовая карточка без человеческого имени, только имя животинки.',
+      input:JSON.stringify({filmTitle:deterministic.filmTitle,beforeWord:deterministic.beforeWord,answers,collectiveWords,correctCount:deterministic.correctCount,totalQuestions:deterministic.totalQuestions}),
+      maxOutputTokens:900,
+      reasoningEffort:'minimal'
+    })
+    return {...deterministic,...ai}
+  }catch{
+    const userReview=[deterministic.whatStayed,deterministic.worked,deterministic.didntWork].filter(Boolean).join(' ')
+    const animalTake=`до просмотра было «${deterministic.beforeWord}», после — «${deterministic.afterWord}». ${deterministic.correctCount}/${deterministic.totalQuestions} прогнозов совпали.`
+    return {...deterministic,userReview:userReview||String(answers.expectations||''),animalTake,publishText:`${deterministic.animalName} × ${deterministic.filmTitle}. до: «${deterministic.beforeWord}». после: «${deterministic.afterWord}». ${deterministic.crumbs}/5 крошек. ${userReview}`}
+  }
+}
+
 async function adminParticipantRows(db:any,eventId:string){
   const regs=await db.from('registrations').select('id,user_id,status,queue_position,photo_video_consent,paid_at,reservation_expires_at,created_at').eq('event_id',eventId).order('created_at')
   if(regs.error)throw regs.error
