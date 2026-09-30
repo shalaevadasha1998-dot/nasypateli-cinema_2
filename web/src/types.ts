@@ -78,6 +78,7 @@ export type MovieSourceCandidate = {
   confidence:number
   discoveredAt?:string
   selected?:boolean
+  manualSelected?:boolean
 }
 
 export type MovieCandidate = {
