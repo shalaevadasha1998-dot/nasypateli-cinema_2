@@ -93,6 +93,13 @@ export function CreatureProfilePage(){
       <Button onClick={()=>nav('/zhivotina')}>поговорить с {creatureName}</Button>
     </section>
 
+    {(data.filmAssignments||[]).length>0&&<Card className="cinema-passport-card">
+      <div className="eyebrow">кинопаспорт</div>
+      <h2>что животина уже унесла из кино</h2>
+      <div className="cinema-passport-stats"><span><b>{(data.filmAssignments||[]).reduce((sum,m)=>sum+Number(m.totalQuestions||0),0)}</b>прогнозов</span><span><b>{(data.filmAssignments||[]).reduce((sum,m)=>sum+Number(m.correctCount||0),0)}</b>угадано</span><span><b>{(data.filmAssignments||[]).length}</b>назначено</span></div>
+      <div className="cinema-passport-missions">{(data.filmAssignments||[]).map(m=><button type="button" key={m.id} onClick={()=>nav('/mission/'+m.id)}><div><b>{m.filmTitle}</b><small>до: «{m.beforeWord}»{m.afterWord?' → после: «'+m.afterWord+'»':''}</small></div><span>{m.correctCount}/{m.totalQuestions}</span></button>)}</div>
+    </Card>}
+
     <Card className="creature-coming-soon">
       <div className="eyebrow">скоро</div>
       <h2>кастомизация</h2>
