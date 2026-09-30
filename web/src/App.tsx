@@ -317,11 +317,44 @@ function Finalists({title,items}:{title:string;items:{name:string;sub:string}[]}
 
 function cleanAiText(text:string){return text.replace(/\*\*([^*]+)\*\*/g,'$1').replace(/__([^_]+)__/g,'$1').replace(/`([^`]+)`/g,'$1').replace(/^#{1,6}\s+/gm,'').replace(/^\s*[-*]\s+/gm,'— ')}
 function ZhivotinaPage(){
-  const {data,error,reload}=useStateData();const [search]=useSearchParams();const [text,setText]=useState('');const [busy,setBusy]=useState(false);const [message,setMessage]=useState('');const [localMessages,setLocalMessages]=useState<any[]>([]);const threadEnd=useRef<HTMLDivElement|null>(null)
+  const {data,error,reload}=useStateData();const [search]=useSearchParams();const [text,setText]=useState('');const [busy,setBusy]=useState(false);const [message,setMessage]=useState('');const [localMessages,setLocalMessages]=useState<any[]>([]);const [recording,setRecording]=useState(false);const [transcribing,setTranscribing]=useState(false);const threadEnd=useRef<HTMLDivElement|null>(null);const recorderRef=useRef<MediaRecorder|null>(null);const voiceChunks=useRef<Blob[]>([])
   useEffect(()=>{if(data&&!busy)setLocalMessages(data.jipitinaMessages||[])},[data?.jipitinaMessages,busy])
   useEffect(()=>{window.requestAnimationFrame(()=>threadEnd.current?.scrollIntoView({behavior:'smooth',block:'end'}))},[localMessages.length,busy])
   if(!data)return <Loading error={error}/>;const requested=search.get('mode')||'general';const mode=requested==='post_film'?'post_film':requested==='taste'?'taste':'general'
   const send=async(raw=text,forcedMode=mode)=>{const messageText=raw.trim();if(!messageText||busy)return;const optimistic={id:`local-${Date.now()}`,role:'user',text:messageText,mode:forcedMode,createdAt:new Date().toISOString()};setLocalMessages(prev=>[...prev,optimistic]);setText('');setBusy(true);setMessage('');try{const r:any=await callApi('jipitina-chat',{slug:data.event.slug,mode:forcedMode,message:messageText});setLocalMessages(prev=>[...prev,{id:`local-a-${Date.now()}`,role:'assistant',text:cleanAiText(String(r.reply||'')),mode:forcedMode,createdAt:new Date().toISOString()}]);void reload()}catch(e:any){setLocalMessages(prev=>prev.filter(m=>m.id!==optimistic.id));setText(messageText);setMessage(e.message||'чат временно недоступен. попробуйте ещё раз')}finally{setBusy(false)}}
+  const blobBase64=(blob:Blob)=>new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||'').split(',')[1]||'');reader.onerror=()=>reject(reader.error);reader.readAsDataURL(blob)})
+  const toggleVoice=async()=>{
+    if(recording){recorderRef.current?.stop();return}
+    if(busy||transcribing)return
+    if(!navigator.mediaDevices?.getUserMedia||typeof MediaRecorder==='undefined'){setMessage('на этом устройстве запись голоса не поддерживается');return}
+    try{
+      setMessage('')
+      const stream=await navigator.mediaDevices.getUserMedia({audio:true})
+      const supported=['audio/mp4','audio/webm;codecs=opus','audio/webm'].find(x=>MediaRecorder.isTypeSupported(x))
+      const recorder=new MediaRecorder(stream,supported?{mimeType:supported}:undefined)
+      recorderRef.current=recorder
+      voiceChunks.current=[]
+      recorder.ondataavailable=e=>{if(e.data.size)voiceChunks.current.push(e.data)}
+      recorder.onerror=()=>{stream.getTracks().forEach(t=>t.stop());setRecording(false);setMessage('не получилось записать голос')}
+      recorder.onstop=async()=>{
+        stream.getTracks().forEach(t=>t.stop())
+        setRecording(false)
+        const blob=new Blob(voiceChunks.current,{type:recorder.mimeType||supported||'audio/webm'})
+        voiceChunks.current=[]
+        if(!blob.size)return
+        try{
+          setTranscribing(true)
+          const audioBase64=await blobBase64(blob)
+          const x:any=await callApi('audio-transcribe',{audioBase64,mimeType:blob.type})
+          const transcript=String(x?.text||'').trim()
+          if(!transcript){setMessage('ничего не расслышала');return}
+          await send(transcript,mode)
+        }catch(e:any){setMessage(e.message||'не получилось разобрать голос')}finally{setTranscribing(false)}
+      }
+      recorder.start()
+      setRecording(true)
+    }catch(e:any){setRecording(false);setMessage(e?.name==='NotAllowedError'?'нужен доступ к микрофону':'не получилось включить микрофон')}
+  }
   const suggestions=mode==='post_film'?['что у меня осталось после фильма?','где я вообще с ним разминулась?','давай просто обсудим']:mode==='taste'?['что ты уже поняла про мой вкус?','где я сама себе противоречу?','что мне попробовать непривычного?']:['у меня странный день','поговорим?','что посмотреть сегодня?']
   const creatureName=data.creature?.name||'животина'
   return <div className="page chat-page">
@@ -329,7 +362,7 @@ function ZhivotinaPage(){
     <div className="chips chat-suggestions">{suggestions.map(s=><button type="button" disabled={busy} key={s} onClick={()=>send(s,mode)}>{s}</button>)}</div>
     {message&&<div className="form-error chat-error">{message}</div>}
     <div className="chat-thread">{localMessages.length===0&&<div className="zhivotina-reply">ну, рассказывай. что сегодня происходит?</div>}{localMessages.map(m=><div key={m.id} className={`chat-msg ${m.role}`}>{m.role==='assistant'?cleanAiText(m.text):m.text}</div>)}{busy&&<div className="chat-msg assistant typing"><i/><i/><i/></div>}<div ref={threadEnd}/></div>
-    {typeof document!=='undefined'&&createPortal(<div className="chat-compose chat-compose-portal"><textarea value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();void send()}}} placeholder="сообщение"/><button className="send" disabled={busy||!text.trim()} onClick={()=>send()}>{busy?'…':'→'}</button></div>,document.body)}
+    {typeof document!=='undefined'&&createPortal(<div className="chat-compose chat-compose-portal"><button type="button" className={recording?'mic recording':'mic'} disabled={busy||transcribing} onClick={toggleVoice} aria-label={recording?'остановить запись':'записать голос'} title={recording?'остановить запись':'голос'}><span>{transcribing?'…':''}</span></button><textarea value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();void send()}}} placeholder={recording?'говори…':transcribing?'разбираю голос…':'сообщение'}/><button className="send" disabled={busy||recording||transcribing||!text.trim()} onClick={()=>send()}>{busy?'…':'→'}</button></div>,document.body)}
   </div>
 }
 
