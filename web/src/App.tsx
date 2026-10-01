@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import type { ReactNode } from 'react'
 import { HashRouter, Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import Layout from './components/Layout'
@@ -327,7 +326,7 @@ function ZhivotinaPage(){
   const composer=useRef<HTMLTextAreaElement|null>(null)
   const voice=useVoiceInput(transcript=>{setText(prev=>[prev.trim(),transcript.trim()].filter(Boolean).join(prev.trim()?' ':'').trim());setMessage('')})
 
-  useEffect(()=>{if(data&&!busy)setLocalMessages(data.jipitinaMessages||[])},[data?.jipitinaMessages,busy])
+  useEffect(()=>{if(data)setLocalMessages(data.jipitinaMessages||[])},[data?.jipitinaMessages])
   const scrollThreadToEnd=(behavior:ScrollBehavior='auto')=>window.requestAnimationFrame(()=>{const el=threadRef.current;if(el)el.scrollTo({top:el.scrollHeight,behavior})})
   useEffect(()=>{scrollThreadToEnd('auto')},[localMessages.length,busy,voice.transcribing])
   useEffect(()=>{
@@ -440,18 +439,18 @@ function ZhivotinaPage(){
       {localMessages.length===0&&<div className="zhivotina-reply">ну, рассказывай. что сегодня происходит?</div>}
       {localMessages.map(m=><div key={m.id} className={`chat-message-group ${m.role}`}>
         <div className={`chat-msg ${m.role} ${m.deliveryStatus==='failed'?'failed':''}`}>{m.role==='assistant'?cleanAiText(m.text):m.text}</div>
+        {m.role==='user'&&m.deliveryStatus==='pending'&&<div className="chat-thinking chat-thinking-inline"><div className="chat-msg assistant typing"><i/><i/><i/></div><span>{creatureName} думает…</span></div>}
         {m.role==='user'&&m.deliveryStatus==='failed'&&m.requestId&&<button type="button" className="chat-retry" disabled={busy} onClick={()=>void send(m.text,m.mode,m.requestId)}>повторить</button>}
         {m.role==='user'&&m.deliveryStatus==='pending'&&!busy&&m.requestId&&<button type="button" className="chat-retry pending" onClick={()=>void send(m.text,m.mode,m.requestId)}>проверить ответ</button>}
       </div>)}
-      {busy&&<div className="chat-thinking"><div className="chat-msg assistant typing"><i/><i/><i/></div><span>{creatureName} отвечает…</span></div>}
       {voice.transcribing&&<div className="chat-thinking"><span>расшифровываю голос…</span></div>}
       <div ref={threadEnd}/>
     </div>
-    {typeof document!=='undefined'&&createPortal(<div className="chat-compose chat-compose-portal">
+    <div className="chat-compose chat-compose-inline">
       <button type="button" className={voice.recording?'mic recording':'mic'} disabled={busy||voice.transcribing} onClick={()=>void voice.toggle()} aria-label={voice.recording?'остановить запись':'записать голос'} title={voice.recording?'остановить запись':'голос'}>{voice.transcribing?<span className="mic-progress">…</span>:<svg className="mic-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="3" width="8" height="12" rx="4"/><path d="M5.5 11.5v.5a6.5 6.5 0 0 0 13 0v-.5M12 18.5V22M8.5 22h7"/></svg>}</button>
-      <textarea ref={composer} value={text} inputMode="text" enterKeyHint="enter" onFocus={()=>scrollThreadToEnd('auto')} onChange={e=>setText(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing&&!('ontouchstart' in window)){e.preventDefault();void send()}}} placeholder={voice.recording?'говори…':voice.transcribing?'расшифровываю…':busy?`${creatureName} отвечает…`:'сообщение'}/>
+      <textarea ref={composer} value={text} inputMode="text" enterKeyHint="enter" onFocus={()=>scrollThreadToEnd('auto')} onChange={e=>setText(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing&&!('ontouchstart' in window)){e.preventDefault();void send()}}} placeholder={voice.recording?'говори…':voice.transcribing?'расшифровываю…':busy?`${creatureName} думает…`:'сообщение'}/>
       <button className="send" disabled={busy||voice.recording||voice.transcribing||!text.trim()} onPointerDown={e=>e.preventDefault()} onClick={()=>void send()} aria-label="отправить">{busy?'…':'→'}</button>
-    </div>,document.body)}
+    </div>
   </div>
 }
 

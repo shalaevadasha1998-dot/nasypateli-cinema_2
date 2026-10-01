@@ -3140,3 +3140,95 @@ html.chat-keyboard-open .chat-head{
   transform:translateY(-6px)!important;
   transform-origin:center!important;
 }
+
+
+/* v0.11.0 — in-flow chat composer + durable thinking */
+.chat-thread{
+  padding:8px 2px 14px!important;
+  scroll-padding-bottom:24px!important;
+}
+html.chat-keyboard-open .chat-thread{
+  padding-bottom:12px!important;
+  scroll-padding-bottom:20px!important;
+}
+.chat-compose-inline{
+  position:relative!important;
+  left:auto!important;
+  right:auto!important;
+  bottom:auto!important;
+  width:100%!important;
+  max-width:none!important;
+  flex:0 0 auto!important;
+  margin:8px 0 calc(92px + env(safe-area-inset-bottom))!important;
+  display:grid!important;
+  grid-template-columns:50px minmax(0,1fr) 50px!important;
+  align-items:end!important;
+  gap:8px!important;
+  text-transform:lowercase!important;
+}
+html.chat-keyboard-open .chat-compose-inline{
+  margin-bottom:8px!important;
+}
+.chat-compose-inline .mic{
+  display:grid!important;
+  place-items:center!important;
+  visibility:visible!important;
+  opacity:1!important;
+  width:50px!important;
+  min-width:50px!important;
+  height:50px!important;
+  min-height:50px!important;
+  padding:0!important;
+  border:1px solid #3a3d35!important;
+  border-radius:14px!important;
+  background:#141612!important;
+  color:#b9c7a8!important;
+  position:relative!important;
+  overflow:hidden!important;
+  -webkit-appearance:none!important;
+  appearance:none!important;
+}
+.chat-compose-inline .mic:before,
+.chat-compose-inline .mic:after{content:none!important}
+.chat-compose-inline .mic-icon{
+  display:block!important;
+  width:25px!important;
+  height:25px!important;
+  fill:none!important;
+  stroke:currentColor!important;
+  stroke-width:1.9!important;
+  stroke-linecap:round!important;
+  stroke-linejoin:round!important;
+  pointer-events:none!important;
+}
+.chat-compose-inline .mic.recording{
+  color:#fff!important;
+  background:#c64e32!important;
+  border-color:#df6b50!important;
+}
+.chat-compose-inline .mic:disabled:not(.recording){opacity:.55!important}
+.chat-compose-inline .mic-progress{font-size:18px;font-weight:800}
+.chat-compose-inline textarea{
+  min-width:0!important;
+  width:100%!important;
+  overflow-y:auto!important;
+  overscroll-behavior:contain;
+}
+.chat-compose-inline textarea:focus,
+.chat-compose-inline textarea:focus-visible{
+  outline:none!important;
+  box-shadow:none!important;
+  border-color:transparent!important;
+}
+.chat-compose-inline .send{
+  width:50px!important;
+  height:50px!important;
+  min-width:50px!important;
+}
+.chat-message-group.user .chat-thinking-inline{
+  align-self:flex-start!important;
+  margin:8px 0 2px!important;
+}
+.chat-thinking-inline span{
+  white-space:nowrap;
+}
