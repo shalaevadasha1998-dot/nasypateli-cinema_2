@@ -2922,3 +2922,49 @@ body{margin:0!important}
   overflow-y:auto!important;
   overscroll-behavior:contain;
 }
+
+
+/* v0.10.7 — ios keyboard + canonical creature portrait */
+html.chat-keyboard-open .chat-compose-portal{
+  bottom:calc(var(--chat-keyboard-inset,0px) + 8px)!important;
+  left:8px!important;
+  right:8px!important;
+}
+html.chat-keyboard-open .bottom-nav{
+  opacity:0!important;
+  pointer-events:none!important;
+  transform:translateY(120%)!important;
+}
+html.chat-keyboard-open .chat-page{
+  padding-bottom:calc(var(--chat-keyboard-inset,0px) + 92px)!important;
+}
+.chat-compose-portal textarea:focus,
+.chat-compose-portal textarea:focus-visible{
+  outline:none!important;
+  box-shadow:none!important;
+  border-color:transparent!important;
+}
+.rabbit-loop img,
+.rabbit-main img,
+.rabbit-static img,
+.home-creature-static-art img,
+.creature-static-art img,
+.birth-simple-art img,
+.zhivotina-portrait img,
+.chat-creature-portrait img{
+  mix-blend-mode:normal!important;
+  object-fit:contain!important;
+  object-position:center!important;
+}
+.rabbit-loop img{
+  transform:none!important;
+  width:100%!important;
+  height:100%!important;
+  -webkit-mask-image:none!important;
+  mask-image:none!important;
+}
+.rabbit-static .rabbit-art{transform:none!important}
+.rabbit-static img{background:#000}
+.loading-rabbit,.telegram-gate-rabbit{
+  background:#000!important;
+}
