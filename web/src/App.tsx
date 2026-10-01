@@ -313,7 +313,7 @@ function ReviewForm({data,reload}:{data:DemoState;reload:()=>void}){const [ratin
 function FeedbackForm({data,reload}:{data:DemoState;reload:()=>void}){const [returnIntent,setReturn]=useState(data.feedback?.returnIntent||'да');const [strongest,setStrongest]=useState(data.feedback?.strongest||'');const [improve,setImprove]=useState(data.feedback?.improve||'');const [willingness,setWtp]=useState(data.feedback?.willingness??900);const [durationFeel,setDuration]=useState(data.feedback?.durationFeel||'нормально');const [inviteFriend,setInvite]=useState(data.feedback?.inviteFriend??8);const [message,setMessage]=useState('');const [saved,setSaved]=useState(false);const [busy,setBusy]=useState(false);const change=()=>{setSaved(false);setMessage('')};const save=async()=>{try{setBusy(true);setMessage('');setSaved(false);await callApi('submit-feedback',{slug:data.event.slug,feedback:{returnIntent,strongest,improve,willingness,durationFeel,inviteFriend}});await reload();setSaved(true)}catch(e:any){setMessage(e.message||'не получилось сохранить обратную связь')}finally{setBusy(false)}};return <Card><div className="section-title">3 минуты на исследование</div><Field label="придёте ещё?"><select value={returnIntent} onChange={e=>{change();setReturn(e.target.value)}}><option>да</option><option>скорее да</option><option>не знаю</option><option>скорее нет</option><option>нет</option></select></Field><Field label="что было самым сильным?"><textarea maxLength={1000} value={strongest} onChange={e=>{change();setStrongest(e.target.value)}}/></Field><Field label="что надо исправить?"><textarea maxLength={1000} value={improve} onChange={e=>{change();setImprove(e.target.value)}}/></Field><Field label="по длительности"><select value={durationFeel} onChange={e=>{change();setDuration(e.target.value)}}><option>коротко</option><option>нормально</option><option>долго</option></select></Field><Field label="насколько вероятно, что позовёте друга?. 0–10"><input type="number" inputMode="numeric" min="0" max="10" value={inviteFriend} onChange={e=>{change();setInvite(Math.max(0,Math.min(10,Number(e.target.value))))}}/></Field><Field label="сколько нормально платить за следующий офлайн?"><input type="number" inputMode="numeric" min="0" step="100" value={willingness} onChange={e=>{change();setWtp(Math.max(0,Number(e.target.value)||0))}}/></Field><Button disabled={busy} onClick={save}>{busy?'отправляем…':data.feedback?'обновить ответ':'отправить'}</Button>{saved&&<div className="success">ответ сохранён</div>}{message&&<div className="form-error">{message}</div>}</Card>}
 function Finalists({title,items}:{title:string;items:{name:string;sub:string}[]}){return <Card><div className="section-title">{title}</div>{items.length?items.map((x,i)=><div className="finalist" key={i}><span>0{i+1}</span><div><b>{x.name}</b><p>{x.sub}</p></div></div>):<Empty>животина ещё думает</Empty>}</Card>}
 
-function cleanAiText(text:string){return text.replace(/\*\*([^*]+)\*\*/g,'$1').replace(/__([^_]+)__/g,'$1').replace(/`([^`]+)`/g,'$1').replace(/^#{1,6}\s+/gm,'').replace(/^\s*[-*]\s+/gm,'— ')}
+function uiLower(text:string){return String(text||'').toLocaleLowerCase('ru-RU')}\nfunction cleanAiText(text:string){return uiLower(text.replace(/\*\*([^*]+)\*\*/g,'$1').replace(/__([^_]+)__/g,'$1').replace(/`([^`]+)`/g,'$1').replace(/^#{1,6}\s+/gm,'').replace(/^\s*[-*]\s+/gm,'— '))}
 function ZhivotinaPage(){
   const {data,error}=useStateData()
   const [search]=useSearchParams()
@@ -334,33 +334,44 @@ function ZhivotinaPage(){
     el.style.height=Math.min(120,Math.max(50,el.scrollHeight))+'px'
   },[text])
   useEffect(()=>{
-    const vv=window.visualViewport
-    if(!vv)return
     const root=document.documentElement
-    let baseline=Math.max(window.innerHeight,vv.height)
+    const body=document.body
+    const vv=window.visualViewport
+    root.classList.add('chat-page-open')
+    body.classList.add('chat-page-open')
+    let baseline=Math.max(window.innerHeight,vv?.height||0)
     let keyboardOpen=false
     let orientationTimer=0
     const sync=()=>{
-      baseline=Math.max(baseline,window.innerHeight,vv.height)
-      const inset=Math.max(0,Math.round(baseline-vv.height-vv.offsetTop),Math.round(window.innerHeight-vv.height-vv.offsetTop))
+      const height=Math.max(1,Math.round(vv?.height||window.innerHeight))
+      const offsetTop=Math.max(0,Math.round(vv?.offsetTop||0))
+      baseline=Math.max(baseline,window.innerHeight,height)
+      const inset=Math.max(0,Math.round(baseline-height-offsetTop),Math.round(window.innerHeight-height-offsetTop))
       const open=inset>90
+      root.style.setProperty('--chat-visual-height',`${height}px`)
+      root.style.setProperty('--chat-visual-top',`${offsetTop}px`)
       root.style.setProperty('--chat-keyboard-inset',`${open?inset:0}px`)
       root.classList.toggle('chat-keyboard-open',open)
       if(open&&!keyboardOpen)window.requestAnimationFrame(()=>threadEnd.current?.scrollIntoView({block:'end'}))
       keyboardOpen=open
     }
-    const resetOrientation=()=>{window.clearTimeout(orientationTimer);orientationTimer=window.setTimeout(()=>{baseline=Math.max(window.innerHeight,vv.height);sync()},250)}
+    const resetOrientation=()=>{window.clearTimeout(orientationTimer);orientationTimer=window.setTimeout(()=>{baseline=Math.max(window.innerHeight,vv?.height||0);sync()},250)}
     sync()
-    vv.addEventListener('resize',sync)
-    vv.addEventListener('scroll',sync)
+    vv?.addEventListener('resize',sync)
+    vv?.addEventListener('scroll',sync)
+    window.addEventListener('resize',sync)
     window.addEventListener('orientationchange',resetOrientation)
     return()=>{
-      vv.removeEventListener('resize',sync)
-      vv.removeEventListener('scroll',sync)
+      vv?.removeEventListener('resize',sync)
+      vv?.removeEventListener('scroll',sync)
+      window.removeEventListener('resize',sync)
       window.removeEventListener('orientationchange',resetOrientation)
       window.clearTimeout(orientationTimer)
-      root.classList.remove('chat-keyboard-open')
+      root.classList.remove('chat-keyboard-open','chat-page-open')
+      body.classList.remove('chat-page-open')
       root.style.removeProperty('--chat-keyboard-inset')
+      root.style.removeProperty('--chat-visual-height')
+      root.style.removeProperty('--chat-visual-top')
     }
   },[])
 
@@ -416,7 +427,7 @@ function ZhivotinaPage(){
   }
 
   const suggestions=mode==='post_film'?['что у меня осталось после фильма?','где я вообще с ним разминулась?','давай просто обсудим']:mode==='taste'?['что ты уже поняла про мой вкус?','где я сама себе противоречу?','что мне попробовать непривычного?']:['у меня странный день','поговорим?','что посмотреть сегодня?']
-  const creatureName=data.creature?.name||'животина'
+  const creatureName=uiLower(data.creature?.name||'животина')
   const voiceError=voice.error||message
   return <div className="page chat-page">
     <div className="chat-head"><div className="chat-creature-identity"><div className="chat-creature-portrait" aria-hidden><img src={`${import.meta.env.BASE_URL}assets/rabbit-main-front.webp`} alt="" draggable={false}/></div><div><div className="eyebrow">ваша животина</div><h2>{creatureName}</h2></div></div><p className="muted">с ней можно говорить о чём угодно. фильмы — её способ иногда попасть ровно в нужное состояние</p></div>
