@@ -2372,7 +2372,7 @@ export async function handleApi(req:Request){
       const show=await buildShowState(db,event)
       if(!show.currentRound?.id)return err('нет активного раунда',409)
       const now=new Date().toISOString()
-      const a=await db.from('event_rounds').update({status:'closed',vote_state:'closed',closed_at:now,updated_at:now}).eq('id',show.currentRound.id);if(a.error)throw a.error
+      const a=await db.from('event_rounds').update({status:'closed',flow_status:'round_finished',vote_state:'closed',closed_at:now,updated_at:now}).eq('id',show.currentRound.id);if(a.error)throw a.error
       const rt=await db.from('event_runtime').select('revision').eq('event_id',event.id).single();if(rt.error)throw rt.error
       const b=await db.from('event_runtime').update({vote_state:'closed',revision:Number(rt.data.revision||0)+1,updated_at:now}).eq('event_id',event.id).eq('revision',rt.data.revision).select('event_id').maybeSingle();if(b.error)throw b.error
       if(!b.data)return err('пульт уже изменился в другой вкладке · обновите экран',409)
