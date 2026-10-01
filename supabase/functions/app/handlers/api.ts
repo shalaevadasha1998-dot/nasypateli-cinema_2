@@ -1954,8 +1954,8 @@ export async function handleApi(req:Request){
       const assignment=await db.rpc('assign_film_mission',{p_event_id:event.id,p_round_id:roundId,p_film_package_id:packageId})
       if(assignment.error){
         const m=String(assignment.error.message||'')
-        if(m.includes('no eligible animal'))return err('нет животинки, которая присутствует, отправила слово и ответила на все 5 вопросов',409)
-        if(m.includes('exactly 5 questions'))return err('в пакете должно быть ровно 5 вопросов',409)
+        if(m.includes('no eligible animal'))return err('нет присутствующей животинки для назначения',409)
+        if(m.includes('between 1 and 5 questions'))return err('в раунде должен быть хотя бы один проверенный вопрос',409)
         throw assignment.error
       }
       const winner=assignment.data?.[0]
@@ -1968,6 +1968,8 @@ export async function handleApi(req:Request){
         revision:Number(current.data?.revision||0)+1,updated_at:new Date().toISOString()
       },{onConflict:'event_id'})
       if(projector.error)throw projector.error
+      const flow=await db.from('event_rounds').update({flow_status:'assignment_selected',updated_at:new Date().toISOString()}).eq('id',roundId).eq('event_id',event.id)
+      if(flow.error)throw flow.error
       return json({ok:true,assignment:{animalName:winner.animal_name,filmTitle:pack.data.title_snapshot,dueAt:winner.due_at},projector:await projectorPublicState(db,event)})
     }
 
