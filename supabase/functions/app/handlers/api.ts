@@ -1639,6 +1639,212 @@ export async function handleApi(req:Request){
 
     if(!adminTokenOk)await mustAdmin(db,user,tg)
 
+    if(action==='admin-round-pitches-open'){
+      return await withEventOperation(db,event.id,'round-pitches-open',async()=>{
+        const show=await buildShowState(db,event)
+        const round=show.currentRound
+        if(!round?.id||round.status!=='active')return err('сначала запустите кинораунд',409)
+        const now=new Date().toISOString()
+        const updated=await db.from('event_rounds').update({
+          flow_status:'collecting_films',selected_submission_id:null,movie_candidate_id:null,
+          question_position:0,question_target:3,updated_at:now
+        }).eq('id',round.id).eq('event_id',event.id)
+        if(updated.error)throw updated.error
+        await db.from('invented_films').delete().eq('round_id',round.id).eq('event_id',event.id)
+        const projector=await setProjectorState(db,event,'pitch_collecting',round.id,null,{prompt:'придумайте фильм, которого не существует'})
+        return json({ok:true,projector})
+      })
+    }
+
+    if(action==='admin-round-pitches-close'){
+      return await withEventOperation(db,event.id,'round-pitches-close',async()=>{
+        const show=await buildShowState(db,event)
+        const round=show.currentRound
+        if(!round?.id||round.status!=='active')return err('сейчас нет активного раунда',409)
+        if(round.flowStatus!=='collecting_films')return err('сбор фильмов сейчас не открыт',409)
+        const pitches=await db.from('invented_films').select('id',{count:'exact'}).eq('round_id',round.id).eq('event_id',event.id)
+        if(pitches.error)throw pitches.error
+        if(!Number(pitches.count||0))return err('пока никто не отправил фильм',409)
+        const now=new Date().toISOString()
+        const lock=await db.from('invented_films').update({locked_at:now,updated_at:now}).eq('round_id',round.id).eq('event_id',event.id)
+        if(lock.error)throw lock.error
+        const updated=await db.from('event_rounds').update({flow_status:'films_locked',updated_at:now}).eq('id',round.id).eq('event_id',event.id)
+        if(updated.error)throw updated.error
+        const projector=await setProjectorState(db,event,'pitch_locked',round.id,null,{count:Number(pitches.count||0)})
+        return json({ok:true,count:Number(pitches.count||0),projector})
+      })
+    }
+
+    if(action==='admin-round-pitch-draw'){
+      return await withEventOperation(db,event.id,'round-pitch-draw',async()=>{
+        const show=await buildShowState(db,event)
+        const round=show.currentRound
+        if(!round?.id||round.status!=='active')return err('сейчас нет активного раунда',409)
+        if(round.selectedSubmissionId&&round.selectedPitch){
+          const projector=await setProjectorState(db,event,'pitch_selected',round.id,null,{pitch:round.selectedPitch})
+          return json({ok:true,pitch:round.selectedPitch,projector})
+        }
+        if(round.flowStatus!=='films_locked')return err('сначала закройте сбор фильмов',409)
+        const rows=await db.from('invented_films').select('id,animal_name_snapshot,title,description').eq('round_id',round.id).eq('event_id',event.id).order('created_at')
+        if(rows.error)throw rows.error
+        const list=rows.data||[]
+        if(!list.length)return err('нечего выбирать',409)
+        await db.from('event_rounds').update({flow_status:'randomizing_submission',updated_at:new Date().toISOString()}).eq('id',round.id)
+        await setProjectorState(db,event,'pitch_randomizing',round.id,null,{count:list.length})
+        const {index,randomBytesHex}=secureIndex(list.length)
+        const chosen:any=list[index]
+        const saved=await db.from('event_rounds').update({selected_submission_id:chosen.id,flow_status:'submission_selected',updated_at:new Date().toISOString()}).eq('id',round.id).eq('event_id',event.id)
+        if(saved.error)throw saved.error
+        const audit=await db.from('random_draws').insert({event_id:event.id,draw_type:'invented_film_round',candidate_ids:list.map((x:any)=>x.id),chosen_id:chosen.id,random_bytes_hex:randomBytesHex})
+        if(audit.error)console.error('invented film draw audit failed',audit.error)
+        const pitch={id:String(chosen.id),animalName:String(chosen.animal_name_snapshot),title:String(chosen.title),description:String(chosen.description)}
+        const projector=await setProjectorState(db,event,'pitch_selected',round.id,null,{pitch})
+        return json({ok:true,pitch,projector})
+      },60)
+    }
+
+    if(action==='admin-round-find-movie'){
+      return await withEventOperation(db,event.id,'round-find-movie',async()=>{
+        const show=await buildShowState(db,event)
+        const round=show.currentRound
+        if(!round?.id||!round.selectedSubmissionId)return err('сначала выберите идею',409)
+        if(!['submission_selected','searching_movie'].includes(String(round.flowStatus||'')))return err('поиск фильма сейчас недоступен',409)
+        const pitch=await db.from('invented_films').select('*').eq('id',round.selectedSubmissionId).eq('round_id',round.id).eq('event_id',event.id).maybeSingle()
+        if(pitch.error)throw pitch.error
+        if(!pitch.data)return err('идея не найдена',404)
+        await db.from('event_rounds').update({flow_status:'searching_movie',updated_at:new Date().toISOString()}).eq('id',round.id)
+        await setProjectorState(db,event,'movie_searching',round.id,null,{pitch:{animalName:pitch.data.animal_name_snapshot,title:pitch.data.title,description:pitch.data.description}})
+        const regs=await db.from('registrations').select('user_id').eq('event_id',event.id).eq('status','attended')
+        if(regs.error)throw regs.error
+        const userIds=(regs.data||[]).map((x:any)=>x.user_id)
+        const profiles=userIds.length?await db.from('cinema_profiles').select('favorite_films,favorite_genres,avoid,profile_json').in('user_id',userIds):{data:[],error:null} as any
+        if(profiles.error)throw profiles.error
+        const schema={type:'object',additionalProperties:false,properties:{
+          analysis:{type:'object',additionalProperties:false,properties:{
+            genre:{type:'string'},plot:{type:'string'},protagonist:{type:'string'},setting:{type:'string'},
+            conflict:{type:'string'},keyIdea:{type:'string'},mood:{type:'string'},twist:{type:'string'}
+          },required:['genre','plot','protagonist','setting','conflict','keyIdea','mood','twist']},
+          candidates:{type:'array',minItems:8,maxItems:12,items:{type:'object',additionalProperties:false,properties:{
+            title:{type:'string'},originalTitle:{type:'string'},year:{type:['integer','null']},
+            similarityScore:{type:'number',minimum:0,maximum:100},audienceFitScore:{type:'number',minimum:0,maximum:100},reason:{type:'string'}
+          },required:['title','originalTitle','year','similarityScore','audienceFitScore','reason']}}
+        },required:['analysis','candidates']}
+        const ai=await structuredResponse<any>({
+          name:'round_movie_match',schema,instructions:JIPITINA,
+          input:`разбери придуманную зрителем идею и предложи только реально существующие полнометражные фильмы для внешней проверки. сходство с идеей важнее популярности. ничего не выдумывай. идея: ${JSON.stringify({title:pitch.data.title,description:pitch.data.description})}. агрегированный вкус зала: ${JSON.stringify(profiles.data||[])}`,
+          maxOutputTokens:3200,model:Deno.env.get('OPENAI_FILM_MODEL')||'gpt-5.6-terra'
+        })
+        const validated:any[]=[]
+        for(const c of ai.candidates||[]){
+          if(validated.length>=8)break
+          const v=await validateMovieTitle(c.originalTitle||c.title,c.year||undefined)
+          if(!v?.runtimeMin||v.runtimeMin>event.max_movie_runtime_min)continue
+          validated.push({...c,...v,runtimeMin:v.runtimeMin})
+        }
+        if(!validated.length){
+          await db.from('event_rounds').update({flow_status:'submission_selected',updated_at:new Date().toISOString()}).eq('id',round.id)
+          const projector=await setProjectorState(db,event,'movie_found',round.id,null,{found:false,message:'кажется, это пока не сняли.'})
+          return json({ok:true,found:false,projector})
+        }
+        const inserted:any[]=[]
+        for(const c of validated){
+          const row=await db.from('movie_candidates').insert({
+            event_id:event.id,provider:'wikidata',provider_id:c.wikidataId,title:c.title,original_title:c.originalTitle||c.title,
+            year:c.year||null,runtime_min:c.runtimeMin||null,validated:true,similarity_score:c.similarityScore,
+            audience_fit_score:c.audienceFitScore,reason:c.reason,
+            metadata:{wikidata_url:c.url,description:c.description,round_id:round.id,origin_submission_id:pitch.data.id}
+          }).select('*').single()
+          if(row.error)throw row.error
+          inserted.push(row.data)
+        }
+        const ranked=inserted.sort((a:any,b:any)=>Number(b.similarity_score||0)-Number(a.similarity_score||0)||Number(b.audience_fit_score||0)-Number(a.audience_fit_score||0))
+        let chosen:any=null,preferred:any=null
+        const sourceSearch:any[]=[]
+        for(const movie of ranked){
+          try{
+            const resolved=await discoverAndPersistMovieSources(db,event,movie)
+            sourceSearch.push({movieId:movie.id,title:movie.title,found:(resolved.discovery.candidates||[]).length,preferred:resolved.preferred})
+            if(resolved.preferred){chosen=movie;preferred=resolved.preferred;break}
+          }catch(e:any){sourceSearch.push({movieId:movie.id,title:movie.title,error:String(e?.message||e)})}
+        }
+        if(!chosen||!preferred){
+          await db.from('event_rounds').update({flow_status:'submission_selected',updated_at:new Date().toISOString()}).eq('id',round.id)
+          const projector=await setProjectorState(db,event,'movie_found',round.id,null,{found:false,message:'кажется, это пока не сняли.'})
+          return json({ok:true,found:false,sourceSearch,projector})
+        }
+        const fragment={label:'первый фрагмент',sourcePlatform:preferred.sourcePlatform,videoId:preferred.videoId||'',sourceUrl:preferred.sourceUrl||'',startSec:Number(preferred.startSec||0),endSec:preferred.endSec==null?null:Number(preferred.endSec)}
+        const pack=await db.from('film_packages').insert({
+          event_id:event.id,movie_candidate_id:chosen.id,title_snapshot:chosen.title,fragments:[fragment],status:'draft',
+          origin_submission_id:pitch.data.id,match_data:{analysis:ai.analysis,alternatives:ranked.slice(0,5).map((x:any)=>({id:x.id,title:x.title,year:x.year,similarityScore:x.similarity_score,reason:x.reason}))}
+        }).select('*').single()
+        if(pack.error)throw pack.error
+        const now=new Date().toISOString()
+        const ru=await db.from('event_rounds').update({movie_candidate_id:chosen.id,flow_status:'movie_found',updated_at:now}).eq('id',round.id).eq('event_id',event.id)
+        if(ru.error)throw ru.error
+        const runtime=await db.from('event_runtime').select('revision').eq('event_id',event.id).maybeSingle()
+        if(runtime.error)throw runtime.error
+        if(runtime.data){
+          const up=await db.from('event_runtime').update({current_movie_id:chosen.id,revision:Number(runtime.data.revision||0)+1,updated_at:now}).eq('event_id',event.id).eq('revision',runtime.data.revision)
+          if(up.error)throw up.error
+        }
+        const projector=await setProjectorState(db,event,'movie_found',round.id,pack.data.id,{found:true,filmTitle:chosen.title,year:chosen.year,reason:chosen.reason,fragment})
+        return json({ok:true,found:true,movie:{id:chosen.id,title:chosen.title,year:chosen.year,reason:chosen.reason},filmPackageId:pack.data.id,sourceSearch,projector})
+      },600)
+    }
+
+    if(action==='admin-round-question-generate'){
+      return await withEventOperation(db,event.id,'round-question-generate',async()=>{
+        const show=await buildShowState(db,event)
+        const round=show.currentRound
+        if(!round?.id||!round.movie?.id)return err('сначала найдите фильм',409)
+        if(!['movie_found','playing_clip','question_reveal','next_question','generating_question'].includes(String(round.flowStatus||'')))return err('сейчас вопрос создавать рано',409)
+        const pack=await db.from('film_packages').select('*').eq('event_id',event.id).eq('movie_candidate_id',round.movie.id).maybeSingle()
+        if(pack.error)throw pack.error
+        if(!pack.data)return err('киноблок не найден',404)
+        const existing=await db.from('film_questions').select('id,position').eq('film_package_id',pack.data.id).order('position')
+        if(existing.error)throw existing.error
+        const target=Math.max(1,Math.min(5,Number(round.questionTarget||3)))
+        const position=(existing.data||[]).length+1
+        if(position>target)return err('все вопросы этого раунда уже готовы',409)
+        const realOutcome=String(body.realOutcome||'').trim().slice(0,1200)
+        const verificationSource=String(body.verificationSource||'').trim().slice(0,1500)
+        if(realOutcome.length<8)return err('нужно описать проверенное продолжение',422)
+        if(verificationSource.length<4)return err('нужен источник подтверждения',422)
+        const fragments=Array.isArray(pack.data.fragments)?pack.data.fragments:[]
+        const source:any=fragments[0]||{}
+        const revealStartSec=Math.max(0,Math.round(Number(body.revealStartSec)||0))
+        const revealEndSec=Math.max(0,Math.round(Number(body.revealEndSec)||0))
+        if(revealEndSec<=revealStartSec)return err('для reveal укажите корректные start/end секунды',422)
+        if(!source.videoId&&!source.sourceUrl)return err('у фильма нет воспроизводимого источника',409)
+        await db.from('event_rounds').update({flow_status:'generating_question',updated_at:new Date().toISOString()}).eq('id',round.id)
+        const schema={type:'object',additionalProperties:false,properties:{
+          prompt:{type:'string'},options:{type:'array',minItems:4,maxItems:4,items:{type:'string'}},correctAnswer:{type:'string'}
+        },required:['prompt','options','correctAnswer']}
+        const ai=await structuredResponse<any>({
+          name:'verified_next_question',schema,
+          instructions:'сформулируй один короткий вопрос «что будет дальше?» и четыре правдоподобных варианта. правильный вариант обязан буквально соответствовать переданному проверенному продолжению. не добавляй фактов, которых нет в проверенном продолжении. без markdown.',
+          input:JSON.stringify({filmTitle:pack.data.title_snapshot,position,realOutcome}),
+          maxOutputTokens:500,reasoningEffort:'none'
+        })
+        const options=(Array.isArray(ai.options)?ai.options:[]).map((x:any)=>String(x).trim()).filter(Boolean).slice(0,4)
+        const correctAnswer=String(ai.correctAnswer||'').trim()
+        if(options.length!==4||!options.includes(correctAnswer))return err('не удалось собрать проверяемый вопрос. попробуйте ещё раз',422)
+        const revealFragment={...source,label:'правильный ответ',startSec:revealStartSec,endSec:revealEndSec}
+        const saved=await db.from('film_questions').insert({
+          film_package_id:pack.data.id,position,prompt:String(ai.prompt||'что будет дальше?').trim().slice(0,500),
+          options,correct_answer:correctAnswer,reveal_text:realOutcome,reveal_fragment:revealFragment,
+          real_outcome:realOutcome,verification_data:{source:verificationSource,revealFragment}
+        }).select('*').single()
+        if(saved.error)throw saved.error
+        const ready=position>=target
+        const pu=await db.from('film_packages').update({status:ready?'ready':'draft',updated_at:new Date().toISOString()}).eq('id',pack.data.id)
+        if(pu.error)throw pu.error
+        const ru=await db.from('event_rounds').update({flow_status:'next_question',question_position:position,updated_at:new Date().toISOString()}).eq('id',round.id)
+        if(ru.error)throw ru.error
+        return json({ok:true,question:{id:saved.data.id,position,prompt:saved.data.prompt,options:saved.data.options,correctAnswer:saved.data.correct_answer},ready})
+      },180)
+    }
+
     if(action==='admin-film-package-save'){
       const movieCandidateId=String(body.movieCandidateId||'')
       if(!isUuid(movieCandidateId))return err('выберите фильм',422)
