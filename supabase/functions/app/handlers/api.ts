@@ -1891,7 +1891,7 @@ export async function handleApi(req:Request){
       if(!isUuid(packageId)||!isUuid(roundId))return err('не выбран фильм или раунд',422)
       const [pack,round,current]=await Promise.all([
         db.from('film_packages').select('*').eq('id',packageId).eq('event_id',event.id).maybeSingle(),
-        db.from('event_rounds').select('id,movie_candidate_id').eq('id',roundId).eq('event_id',event.id).maybeSingle(),
+        db.from('event_rounds').select('id,movie_candidate_id,question_target').eq('id',roundId).eq('event_id',event.id).maybeSingle(),
         db.from('event_projector_state').select('revision').eq('event_id',event.id).maybeSingle()
       ])
       if(pack.error)throw pack.error;if(round.error)throw round.error;if(current.error)throw current.error
@@ -1915,19 +1915,29 @@ export async function handleApi(req:Request){
         if(q.error)throw q.error
         if(!q.data)return err('вопрос не найден',404)
         if(op==='question_open'){
-          state='question_open';payload={filmTitle:pack.data.title_snapshot,questionId:q.data.id,position,prompt:q.data.prompt,options:q.data.options}
+          state='question_open';payload={filmTitle:pack.data.title_snapshot,questionId:q.data.id,position,totalQuestions:Number(round.data.question_target||3),prompt:q.data.prompt,options:q.data.options}
         }else if(op==='question_results'){
           const answers=await db.from('film_predictions').select('answer').eq('event_id',event.id).eq('round_id',roundId).eq('film_package_id',packageId).eq('question_id',q.data.id)
           if(answers.error)throw answers.error
           const counts=new Map<string,{answer:any;count:number}>()
           for(const x of answers.data||[]){const key=JSON.stringify(x.answer);const cur=counts.get(key)||{answer:x.answer,count:0};cur.count++;counts.set(key,cur)}
-          state='question_results';payload={filmTitle:pack.data.title_snapshot,questionId:q.data.id,position,prompt:q.data.prompt,results:[...counts.values()].sort((a,b)=>b.count-a.count)}
+          state='question_results';payload={filmTitle:pack.data.title_snapshot,questionId:q.data.id,position,totalQuestions:Number(round.data.question_target||3),prompt:q.data.prompt,results:[...counts.values()].sort((a,b)=>b.count-a.count)}
         }else{
-          state='question_reveal';payload={filmTitle:pack.data.title_snapshot,questionId:q.data.id,position,prompt:q.data.prompt,correctAnswer:q.data.correct_answer,revealText:q.data.reveal_text,revealFragment:q.data.reveal_fragment}
+          state='question_reveal';payload={filmTitle:pack.data.title_snapshot,questionId:q.data.id,position,totalQuestions:Number(round.data.question_target||3),prompt:q.data.prompt,correctAnswer:q.data.correct_answer,revealText:q.data.reveal_text,revealFragment:q.data.reveal_fragment}
         }
       }else if(op==='assignment_randomizing'){
         state='assignment_randomizing';payload={filmTitle:pack.data.title_snapshot}
       }else return err('неизвестное состояние projector',422)
+      const flowPatch:any={updated_at:new Date().toISOString()}
+      if(op==='film_intro')flowPatch.flow_status='playing_clip'
+      else if(op==='question_open'){flowPatch.flow_status='question_open';flowPatch.question_position=Math.max(1,Math.min(5,Number(body.position)||1))}
+      else if(op==='question_results')flowPatch.flow_status='question_results'
+      else if(op==='question_reveal')flowPatch.flow_status='question_reveal'
+      else if(op==='assignment_randomizing')flowPatch.flow_status='assignment_randomizing'
+      if(Object.keys(flowPatch).length>1){
+        const flow=await db.from('event_rounds').update(flowPatch).eq('id',roundId).eq('event_id',event.id)
+        if(flow.error)throw flow.error
+      }
       const revision=Number(current.data?.revision||0)+1
       const saved=await db.from('event_projector_state').upsert({event_id:event.id,state,film_package_id:packageId,round_id:roundId,payload,revision,updated_at:new Date().toISOString()},{onConflict:'event_id'}).select('*').single()
       if(saved.error)throw saved.error
