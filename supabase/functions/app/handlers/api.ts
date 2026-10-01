@@ -1018,6 +1018,17 @@ export async function handleApi(req:Request){
       return json({ok:true,alreadyBorn:false,creature:await creatureState(db,user.id)})
     }
 
+    if(action==='rename-creature'){
+      const name=String(body.name||'').trim().replace(/\s+/g,' ').slice(0,32)
+      if(name.length<2)return err('имя должно быть хотя бы из двух символов',422)
+      const creature=await ensureCreature(db,user.id)
+      if(!creature.born_at)return err('сначала должна родиться животина',409)
+      const updated=await db.from('creatures').update({name,updated_at:new Date().toISOString()}).eq('user_id',user.id).select('user_id').maybeSingle()
+      if(updated.error)throw updated.error
+      if(!updated.data)return err('животина не найдена',404)
+      return json({ok:true,creature:await creatureState(db,user.id)})
+    }
+
     if(action==='bootstrap'){
       let event=await nextEvent(db)
       if(!event){
