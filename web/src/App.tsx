@@ -830,10 +830,8 @@ function Admin(){
       {preflight?.checkedAt&&<small className="event-preflight-time">проверено {new Date(preflight.checkedAt).toLocaleString('ru-RU')}</small>}
     </Card>
     <ShowControl data={data} busy={busy} run={run}/>
-    <IdeaSubmissionAdmin data={data} busy={busy} run={run}/>
     <ShowRoundControl data={data} busy={busy} run={run}/>
-    <FilmPackagePrepAdmin data={data} busy={busy} run={run}/>
-    <FilmMechanicAdmin data={data} busy={busy} run={run}/>
+    <RoundFilmFlowAdmin data={data} busy={busy} run={run}/>
     <AdminParticipants data={data} reload={reload} adminToken={privileged.token}/>
     <ReviewQueueAdmin data={data} busy={busy} run={run}/>
     <ProgramEditor data={data} busy={busy} run={run}/>
@@ -846,7 +844,7 @@ function Admin(){
       {!demoMode&&<Card><div className="section-title">telegram</div><Button kind="secondary" disabled={busy} onClick={()=>run('admin-configure-telegram')}>обновить webhook + кнопку бота</Button></Card>}
       <Card><div className="section-title">выгрузка</div><div className="inline"><Button kind="secondary" disabled={busy} onClick={async()=>{const x=await run('admin-export-event');if(x)downloadEventExport(x,'csv')}}>csv</Button><Button kind="secondary" disabled={busy} onClick={async()=>{const x=await run('admin-export-event');if(x)downloadEventExport(x,'json')}}>json</Button></div></Card>
     </div></details>
-    <details className="admin-legacy"><summary>старый экспериментальный пайплайн</summary><SmartAdmin data={data} reload={reload} adminToken={privileged.token}/></details>
+    <details className="admin-legacy"><summary>старый экспериментальный пайплайн</summary><IdeaSubmissionAdmin data={data} busy={busy} run={run}/><FilmPackagePrepAdmin data={data} busy={busy} run={run}/><FilmMechanicAdmin data={data} busy={busy} run={run}/><SmartAdmin data={data} reload={reload} adminToken={privileged.token}/></details>
   </div>
 }
 
