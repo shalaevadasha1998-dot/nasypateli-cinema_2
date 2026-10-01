@@ -666,6 +666,55 @@ function FilmPackagePrepAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(
   </Card>
 }
 
+function RoundFilmFlowAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(action:string,payload?:Record<string,unknown>)=>Promise<any>}){
+  const round=data.show?.currentRound
+  const pitches=data.inventedFilms||[]
+  const flow=round?.flowStatus||'draft'
+  const pack=round?.movie?(data.filmPackages||[]).find(x=>x.movieCandidateId===round.movie?.id):undefined
+  const target=Math.max(1,Math.min(5,Number(round?.questionTarget||3)))
+  const questions=pack?.questions||[]
+  const latest=questions.length?questions[questions.length-1]:undefined
+  const firstFragment=pack?.fragments?.[0]||{}
+  const [realOutcome,setRealOutcome]=useState('')
+  const [verificationSource,setVerificationSource]=useState('')
+  const [revealStart,setRevealStart]=useState(0)
+  const [revealEnd,setRevealEnd]=useState(30)
+  useEffect(()=>{
+    setRealOutcome('');setVerificationSource('')
+    const base=Math.max(0,Number(firstFragment?.endSec??firstFragment?.startSec??0)||0)
+    setRevealStart(base);setRevealEnd(base+30)
+  },[round?.id,questions.length,pack?.id])
+  if(!round||round.status!=='active')return null
+  const project=(op:string,extra:Record<string,unknown>={})=>pack&&run('admin-film-projector',{filmPackageId:pack.id,roundId:round.id,op,...extra})
+  const generate=()=>run('admin-round-question-generate',{realOutcome,verificationSource,revealStartSec:revealStart,revealEndSec:revealEnd})
+  const questionForm=<div className="film-live-step verified-question-step">
+    <div className="section-title">создать проверенный вопрос {questions.length+1}/{target}</div>
+    <p className="muted">модель формулирует только вопрос и ложные варианты. правильный ответ берётся из проверенного продолжения ниже.</p>
+    <Field label="что реально происходит дальше"><textarea value={realOutcome} onChange={e=>setRealOutcome(e.target.value)} placeholder="коротко и фактически: что происходит после точки остановки"/></Field>
+    <Field label="источник подтверждения"><input value={verificationSource} onChange={e=>setVerificationSource(e.target.value)} placeholder="ссылка, субтитры, таймкод или проверенный источник"/></Field>
+    <div className="inline"><Field label="reveal start sec"><input type="number" min="0" value={revealStart} onChange={e=>setRevealStart(Number(e.target.value))}/></Field><Field label="reveal end sec"><input type="number" min="1" value={revealEnd} onChange={e=>setRevealEnd(Number(e.target.value))}/></Field></div>
+    <Button disabled={busy||realOutcome.trim().length<8||verificationSource.trim().length<4||revealEnd<=revealStart} onClick={generate}>{busy?'создаём…':'создать вопрос'}</Button>
+  </div>
+  return <Card className="round-film-flow-admin">
+    <div className="row spread"><div><div className="section-title">кинораунд · текущий шаг</div><h2>{round.roundNo}. {flow.replaceAll('_',' ')}</h2></div><Pill>{round.pitchCount||0} идей</Pill></div>
+    {flow==='draft'&&<><p>сначала открываем сбор. у каждого гостя появятся два поля: название и описание несуществующего фильма.</p><Button disabled={busy} onClick={()=>run('admin-round-pitches-open')}>открыть сбор фильмов</Button></>}
+    {flow==='collecting_films'&&<><p className="muted">гости могут менять свою идею до закрытия сбора.</p><div className="round-pitch-list">{pitches.map(x=><div key={x.id}><b>{x.animalName} · {x.title}</b><span>{x.description}</span></div>)}</div><Button disabled={busy||!pitches.length} onClick={()=>run('admin-round-pitches-close')}>закрыть сбор фильмов</Button></>}
+    {flow==='films_locked'&&<><p>получено: {pitches.length}. выбор произойдёт на backend и сохранится, поэтому обновление страницы победителя не поменяет.</p><Button disabled={busy||!pitches.length} onClick={()=>run('admin-round-pitch-draw')}>выбрать фильм</Button></>}
+    {flow==='randomizing_submission'&&<p>животина крутит рандом…</p>}
+    {flow==='submission_selected'&&<><div className="selected-pitch-admin"><div className="eyebrow">{round.selectedPitch?.animalName||'животина'} придумала фильм</div><h3>{round.selectedPitch?.title}</h3><p>{round.selectedPitch?.description}</p></div><Button disabled={busy} onClick={()=>run('admin-round-find-movie')}>найти фильм</Button></>}
+    {flow==='searching_movie'&&<p>животина ищет подтверждённый реальный фильм и сразу проверяет, есть ли воспроизводимый источник…</p>}
+    {flow==='movie_found'&&<>{round.movie?<><div className="selected-pitch-admin"><div className="eyebrow">максимально близко</div><h3>{round.movie.title}{round.movie.year?' · '+round.movie.year:''}</h3><p>{round.movie.reason}</p></div><Button disabled={busy||!pack} onClick={()=>project('film_intro')}>запустить фрагмент</Button></>:<><p>кажется, это пока не сняли.</p><Button kind="secondary" disabled={busy} onClick={()=>run('admin-round-pitch-draw')}>выбрать другую идею</Button></>}</>}
+    {flow==='playing_clip'&&questionForm}
+    {flow==='generating_question'&&<p>животина собирает вопрос из проверенного продолжения…</p>}
+    {flow==='next_question'&&latest&&<div className="film-live-step"><b>{latest.position}/{target}. {latest.prompt}</b><p className="muted">{latest.options.map(answerText).join(' · ')}</p><Button disabled={busy} onClick={()=>project('question_open',{position:latest.position})}>открыть вопрос</Button></div>}
+    {flow==='question_open'&&latest&&<div className="film-live-step"><b>{latest.position}/{target}. голосование открыто</b><Button disabled={busy} onClick={()=>project('question_results',{position:latest.position})}>закрыть и показать результаты</Button></div>}
+    {flow==='question_results'&&latest&&<div className="film-live-step"><b>{latest.position}/{target}. результаты на экране</b><Button disabled={busy} onClick={()=>project('question_reveal',{position:latest.position})}>показать ответ + реальное продолжение</Button></div>}
+    {flow==='question_reveal'&&<>{questions.length<target?questionForm:<div className="film-live-step assignment-step"><b>{questions.length}/{target}. вопросы закончились</b><div className="inline"><Button kind="secondary" disabled={busy} onClick={()=>project('assignment_randomizing')}>кому смотреть?</Button></div></div>}</>}
+    {flow==='assignment_randomizing'&&<div className="film-live-step assignment-step"><b>рандом идёт на экране</b><Button disabled={busy||!pack} onClick={()=>run('admin-film-assign',{filmPackageId:pack?.id,roundId:round.id})}>выбрать животинку</Button></div>}
+    {flow==='assignment_selected'&&<div className="success">фильм назначен. можно закончить раунд и запускать следующий.</div>}
+  </Card>
+}
+
 function FilmMechanicAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(action:string,payload?:Record<string,unknown>)=>Promise<any>}){
   const round=data.show?.currentRound
   const liveMovie=round?.movie
