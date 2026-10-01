@@ -64,12 +64,26 @@ export function BirthPage(){
 }
 
 export function CreatureProfilePage(){
-  const {data,error}=useBootstrap()
+  const {data,error,reload}=useBootstrap()
   const nav=useNavigate()
   const [busy,setBusy]=useState('')
   const [msg,setMsg]=useState('')
+  const [renameDraft,setRenameDraft]=useState('')
+  useEffect(()=>{if(data?.creature?.name)setRenameDraft(prev=>prev||data.creature.name)},[data?.creature?.name])
   if(!data)return <Load error={error}/>
   const creatureName=(data.creature.name||'животина').trim()||'животина'
+  const saveName=async()=>{
+    const clean=renameDraft.trim().replace(/\s+/g,' ').slice(0,32)
+    if(clean.length<2){setMsg('имя должно быть хотя бы из двух символов');return}
+    try{
+      setBusy('rename');setMsg('')
+      await callApi('rename-creature',{name:clean})
+      setRenameDraft(clean)
+      await reload()
+      setMsg('имя сохранено')
+    }catch(e:any){setMsg(e.message||'не получилось сохранить имя')}
+    finally{setBusy('')}
+  }
 
   const remove=async()=>{
     if(!window.confirm('Удалить кинопрофиль, животину, знакомства и персональную историю? Это действие нельзя отменить'))return
@@ -113,9 +127,12 @@ export function CreatureProfilePage(){
 
     <Card>
       <div className="section-title">настройки</div>
+      <Field label="имя животины"><input maxLength={32} value={renameDraft} onChange={e=>{setRenameDraft(e.target.value);setMsg('')}}/></Field>
+      <Button kind="secondary" disabled={busy==='rename'||renameDraft.trim().length<2||renameDraft.trim()===creatureName} onClick={()=>void saveName()}>{busy==='rename'?'сохраняем имя…':'сохранить имя'}</Button>
       <Button kind="secondary" onClick={()=>nav('/onboarding?edit=1')}>изменить кинопрофиль</Button>
       <Button kind="secondary" onClick={()=>nav('/notifications')}>уведомления</Button>
       <Button kind="secondary" onClick={()=>nav('/rules')}>правила насыпателей в кино</Button>
+      {msg&&<div className={msg==='имя сохранено'?'success':'form-error'}>{msg}</div>}
     </Card>
 
     <Card className="danger-zone">
@@ -149,7 +166,7 @@ export function DatingPage(){
   const swipe=async(userId:string,direction:'like'|'pass')=>{try{setBusy(userId);setSwipeMotion(direction);haptic(direction==='like'?'medium':'light');await new Promise(resolve=>window.setTimeout(resolve,220));const r:any=await callApi('dating-swipe',{targetUserId:userId,direction});if(r?.matched){hapticSuccess();setMatch({name:card?.displayName||'человек',creature:card?.creatureName||'животина',kind:r.kind||'friend'});window.setTimeout(()=>setMatch(null),3200)}await reload()}catch(e:any){setMsg(e.message)}finally{setSwipeMotion('');setBusy('')}}
   const hideConnection=async(connectionId:string)=>{try{setBusy(`hide:${connectionId}`);setMsg('');await callApi('dating-hide-connection',{connectionId});await reload()}catch(e:any){setMsg(e.message||'не получилось скрыть связь')}finally{setBusy('')}}
   const blockUser=async(userId:string,name:string)=>{if(!window.confirm(`заблокировать ${name}? вы больше не будете показываться друг другу в знакомствах.`))return;try{setBusy(`block:${userId}`);setMsg('');await callApi('dating-block',{targetUserId:userId});await reload()}catch(e:any){setMsg(e.message||'не получилось заблокировать профиль')}finally{setBusy('')}}
-  if(!d.enabled||setup)return <div className="page dating-page"><div className="eyebrow">знакомства. 18+</div><h1>сначала<br/>решите, кого<br/>сюда пускать</h1><p className="muted">знакомства полностью добровольные. ваш возраст не показывается. до мэтча люди видят животину, имя и кино-профиль. показываем только взаимно подходящие гендерные и смысловые настройки знакомств</p><Card><div className="section-title">я</div><div className="chips"><button type="button" disabled={busy==='save'} className={draft.selfGender==='woman'?'active':''} onClick={()=>updateDraft({selfGender:'woman'})}>женщина</button><button type="button" disabled={busy==='save'} className={draft.selfGender==='man'?'active':''} onClick={()=>updateDraft({selfGender:'man'})}>мужчина</button></div><div className="section-title">хочу видеть</div><div className="chips"><button type="button" disabled={busy==='save'} className={draft.showGender==='women'?'active':''} onClick={()=>updateDraft({showGender:'women'})}>женщин</button><button type="button" disabled={busy==='save'} className={draft.showGender==='men'?'active':''} onClick={()=>updateDraft({showGender:'men'})}>мужчин</button><button type="button" disabled={busy==='save'} className={draft.showGender==='all'?'active':''} onClick={()=>updateDraft({showGender:'all'})}>всех</button></div><div className="section-title">что ищу</div><div className="chips">{intentOptions.map(([id,label])=><button type="button" disabled={busy==='save'} key={id} className={draft.intents.includes(id)?'active':''} onClick={()=>updateDraft({intents:draft.intents.includes(id)?draft.intents.filter(x=>x!==id):[...draft.intents,id]})}>{label}</button>)}</div><Button disabled={busy==='save'||!draft.selfGender||!draft.showGender||!draft.intents.length} onClick={()=>void saveSettings()}>{busy==='save'?'сохраняем…':d.enabled?'сохранить настройки':'включить знакомства'}</Button>{d.enabled&&<Button kind="secondary" disabled={busy==='save'} onClick={cancelSetup}>назад без сохранения</Button>}{msg&&<div className="form-error">{msg}</div>}</Card></div>
+  if(!d.enabled||setup)return <div className="page dating-page"><div className="eyebrow">знакомства. 18+</div><h1>сначала<br/>решите, кого<br/>сюда пускать</h1><p className="muted">знакомства полностью добровольные. ваш возраст не показывается. до мэтча люди видят животину, имя и кино-профиль. показываем только взаимно подходящие гендерные и смысловые настройки знакомств</p><Card><div className="section-title">я</div><div className="chips"><button type="button" disabled={busy==='save'} className={draft.selfGender==='woman'?'active':''} onClick={()=>updateDraft({selfGender:'woman'})}>женщина</button><button type="button" disabled={busy==='save'} className={draft.selfGender==='man'?'active':''} onClick={()=>updateDraft({selfGender:'man'})}>мужчина</button></div><div className="section-title">хочу видеть</div><div className="chips"><button type="button" disabled={busy==='save'} className={draft.showGender==='women'?'active':''} onClick={()=>updateDraft({showGender:'women'})}>женщин</button><button type="button" disabled={busy==='save'} className={draft.showGender==='men'?'active':''} onClick={()=>updateDraft({showGender:'men'})}>мужчин</button><button type="button" disabled={busy==='save'} className={draft.showGender==='all'?'active':''} onClick={()=>updateDraft({showGender:'all'})}>всех</button></div><div className="section-title">что ищу</div><div className="chips">{intentOptions.map(([id,label])=><button type="button" disabled={busy==='save'} key={id} className={draft.intents.includes(id)?'active':''} onClick={()=>updateDraft({intents:draft.intents.includes(id)?draft.intents.filter(x=>x!==id):[...draft.intents,id]})}>{label}</button>)}</div><Button disabled={busy==='save'||!draft.selfGender||!draft.showGender||!draft.intents.length} onClick={()=>void saveSettings()}>{busy==='save'?'сохраняем…':d.enabled?'сохранить настройки':'включить знакомства'}</Button>{d.enabled&&<Button kind="secondary" disabled={busy==='save'} onClick={cancelSetup}>назад без сохранения</Button>}</Card></div>
   const card=data.datingCards?.[0]
   return <div className="page dating-page">{match&&<div className="match-overlay"><div className="match-rabbits"><Rabbit creature={data.creature}/><Rabbit creature={{...data.creature,name:match.creature,cosmetics:[]}}/></div><div className="eyebrow">{match.kind==='romantic'?'мэтч':'зайцы нашли друг друга'}</div><h2>{data.creature.name} + {match.creature}</h2><p>{match.name} тоже выбрал(а) вас</p></div>}<div className="row spread"><div><div className="eyebrow">знакомства</div><h2>зайцы рядом</h2></div><button type="button" className="dating-settings-button" disabled={busy==='save'} onClick={()=>openSetup()}>настроить</button></div>{d.paused?<Card><h3>знакомства на паузе</h3><Button disabled={busy==='save'} onClick={()=>void setPaused(false)}>{busy==='save'?'сохраняем…':'вернуться'}</Button></Card>:card?<div className={`dating-card ${swipeMotion?`swipe-${swipeMotion}`:''}`}><div className="dating-rabbit"><Rabbit creature={{...data.creature,name:card.creatureName,stage:card.creatureStage,cosmetics:[],timeline:[],storyCount:0,crumbs:0,growthProgress:0,born:true,traits:data.creature.traits}}/></div><div className="dating-info"><div className="eyebrow">{card.creatureName}</div><h1>{card.displayName}</h1><p className="match-note">{card.matchNote}</p><div className="film-tags">{card.favoriteFilms.slice(0,4).map(x=><span key={x}>{x}</span>)}</div><button type="button" className="tiny-link" disabled={busy===`block:${card.userId}`} onClick={()=>void blockUser(card.userId,card.displayName)}>заблокировать</button></div><div className="swipe-actions"><button disabled={busy===card.userId||busy===`block:${card.userId}`} onClick={()=>swipe(card.userId,'pass')}>×</button><button className="like" disabled={busy===card.userId||busy===`block:${card.userId}`} onClick={()=>swipe(card.userId,'like')}>♥</button></div></div>:<Card><div className="big-copy">пока всё</div><p className="muted">животина не будет показывать людей просто ради бесконечной ленты. новые карточки появятся, когда найдутся подходящие участники</p></Card>}
     
