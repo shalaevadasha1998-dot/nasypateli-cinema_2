@@ -1776,7 +1776,7 @@ export async function handleApi(req:Request){
           }catch(e:any){sourceSearch.push({movieId:movie.id,title:movie.title,error:String(e?.message||e)})}
         }
         if(!chosen||!preferred){
-          await db.from('event_rounds').update({flow_status:'submission_selected',updated_at:new Date().toISOString()}).eq('id',round.id)
+          await db.from('event_rounds').update({flow_status:'movie_found',movie_candidate_id:null,updated_at:new Date().toISOString()}).eq('id',round.id)
           const projector=await setProjectorState(db,event,'movie_found',round.id,null,{found:false,message:'кажется, это пока не сняли.'})
           return json({ok:true,found:false,sourceSearch,projector})
         }
