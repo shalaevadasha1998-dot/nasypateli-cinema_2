@@ -322,12 +322,14 @@ function ZhivotinaPage(){
   const [busy,setBusy]=useState(false)
   const [message,setMessage]=useState('')
   const [localMessages,setLocalMessages]=useState<JipitinaMessage[]>([])
+  const threadRef=useRef<HTMLDivElement|null>(null)
   const threadEnd=useRef<HTMLDivElement|null>(null)
   const composer=useRef<HTMLTextAreaElement|null>(null)
   const voice=useVoiceInput(transcript=>{setText(prev=>[prev.trim(),transcript.trim()].filter(Boolean).join(prev.trim()?' ':'').trim());setMessage('')})
 
   useEffect(()=>{if(data&&!busy)setLocalMessages(data.jipitinaMessages||[])},[data?.jipitinaMessages,busy])
-  useEffect(()=>{window.requestAnimationFrame(()=>threadEnd.current?.scrollIntoView({behavior:'smooth',block:'end'}))},[localMessages.length,busy,voice.transcribing])
+  const scrollThreadToEnd=(behavior:ScrollBehavior='auto')=>window.requestAnimationFrame(()=>{const el=threadRef.current;if(el)el.scrollTo({top:el.scrollHeight,behavior})})
+  useEffect(()=>{scrollThreadToEnd('auto')},[localMessages.length,busy,voice.transcribing])
   useEffect(()=>{
     const el=composer.current
     if(!el)return
@@ -353,7 +355,7 @@ function ZhivotinaPage(){
       root.style.setProperty('--chat-visual-top',`${offsetTop}px`)
       root.style.setProperty('--chat-keyboard-inset',`${open?inset:0}px`)
       root.classList.toggle('chat-keyboard-open',open)
-      if(open&&!keyboardOpen)window.requestAnimationFrame(()=>threadEnd.current?.scrollIntoView({block:'end'}))
+      if(open&&!keyboardOpen)scrollThreadToEnd('auto')
       keyboardOpen=open
     }
     const resetOrientation=()=>{window.clearTimeout(orientationTimer);orientationTimer=window.setTimeout(()=>{baseline=Math.max(window.innerHeight,vv?.height||0);sync()},250)}
@@ -434,7 +436,7 @@ function ZhivotinaPage(){
     <div className="chat-head"><div className="chat-creature-identity"><div className="chat-creature-portrait" aria-hidden><img src={`${import.meta.env.BASE_URL}assets/rabbit-main-front.webp`} alt="" draggable={false}/></div><div><div className="eyebrow">ваша животина</div><h2>{creatureName}</h2></div></div><p className="muted">с ней можно говорить о чём угодно. фильмы — её способ иногда попасть ровно в нужное состояние</p></div>
     {localMessages.length<2&&<div className="chips chat-suggestions">{suggestions.map(s=><button type="button" disabled={busy||voice.recording||voice.transcribing} key={s} onClick={()=>send(s,mode)}>{s}</button>)}</div>}
     {voiceError&&<div className="form-error chat-error">{voiceError}</div>}
-    <div className="chat-thread">
+    <div ref={threadRef} className="chat-thread">
       {localMessages.length===0&&<div className="zhivotina-reply">ну, рассказывай. что сегодня происходит?</div>}
       {localMessages.map(m=><div key={m.id} className={`chat-message-group ${m.role}`}>
         <div className={`chat-msg ${m.role} ${m.deliveryStatus==='failed'?'failed':''}`}>{m.role==='assistant'?cleanAiText(m.text):m.text}</div>
@@ -447,7 +449,7 @@ function ZhivotinaPage(){
     </div>
     {typeof document!=='undefined'&&createPortal(<div className="chat-compose chat-compose-portal">
       <button type="button" className={voice.recording?'mic recording':'mic'} disabled={busy||voice.transcribing} onClick={()=>void voice.toggle()} aria-label={voice.recording?'остановить запись':'записать голос'} title={voice.recording?'остановить запись':'голос'}>{voice.transcribing?<span className="mic-progress">…</span>:<svg className="mic-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="3" width="8" height="12" rx="4"/><path d="M5.5 11.5v.5a6.5 6.5 0 0 0 13 0v-.5M12 18.5V22M8.5 22h7"/></svg>}</button>
-      <textarea ref={composer} value={text} inputMode="text" enterKeyHint="enter" onFocus={()=>window.requestAnimationFrame(()=>threadEnd.current?.scrollIntoView({block:'end'}))} onChange={e=>setText(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing&&!('ontouchstart' in window)){e.preventDefault();void send()}}} placeholder={voice.recording?'говори…':voice.transcribing?'расшифровываю…':busy?`${creatureName} отвечает…`:'сообщение'}/>
+      <textarea ref={composer} value={text} inputMode="text" enterKeyHint="enter" onFocus={()=>scrollThreadToEnd('auto')} onChange={e=>setText(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing&&!('ontouchstart' in window)){e.preventDefault();void send()}}} placeholder={voice.recording?'говори…':voice.transcribing?'расшифровываю…':busy?`${creatureName} отвечает…`:'сообщение'}/>
       <button className="send" disabled={busy||voice.recording||voice.transcribing||!text.trim()} onPointerDown={e=>e.preventDefault()} onClick={()=>void send()} aria-label="отправить">{busy?'…':'→'}</button>
     </div>,document.body)}
   </div>
