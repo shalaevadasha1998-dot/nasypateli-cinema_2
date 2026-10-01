@@ -1680,15 +1680,16 @@ export async function handleApi(req:Request){
         const show=await buildShowState(db,event)
         const round=show.currentRound
         if(!round?.id||round.status!=='active')return err('сейчас нет активного раунда',409)
-        if(round.selectedSubmissionId&&round.selectedPitch){
+        const force=body.force===true
+        if(round.selectedSubmissionId&&round.selectedPitch&&!force){
           const projector=await setProjectorState(db,event,'pitch_selected',round.id,null,{pitch:round.selectedPitch})
           return json({ok:true,pitch:round.selectedPitch,projector})
         }
-        if(round.flowStatus!=='films_locked')return err('сначала закройте сбор фильмов',409)
+        if(round.flowStatus!=='films_locked'&&!(force&&round.flowStatus==='submission_selected'))return err('сначала закройте сбор фильмов',409)
         const rows=await db.from('invented_films').select('id,animal_name_snapshot,title,description').eq('round_id',round.id).eq('event_id',event.id).order('created_at')
         if(rows.error)throw rows.error
-        const list=rows.data||[]
-        if(!list.length)return err('нечего выбирать',409)
+        const list=(rows.data||[]).filter((x:any)=>!force||String(x.id)!==String(round.selectedSubmissionId||''))
+        if(!list.length)return err('других идей в этом раунде нет',409)
         await db.from('event_rounds').update({flow_status:'randomizing_submission',updated_at:new Date().toISOString()}).eq('id',round.id)
         await setProjectorState(db,event,'pitch_randomizing',round.id,null,{count:list.length})
         const {index,randomBytesHex}=secureIndex(list.length)
