@@ -51,7 +51,7 @@ jobs:
           echo "::add-mask::$SCREEN_ACCESS_TOKEN"
           echo "::add-mask::$CRON_ACCESS_TOKEN"
 
-          supabase secrets set             SCREEN_ACCESS_TOKEN="$SCREEN_ACCESS_TOKEN"             CRON_ACCESS_TOKEN="$CRON_ACCESS_TOKEN"             --project-ref "$PROJECT_ID"
+          supabase secrets set             SCREEN_ACCESS_TOKEN="$SCREEN_ACCESS_TOKEN"             CRON_ACCESS_TOKEN="$CRON_ACCESS_TOKEN"             TELEGRAM_WEBAPP_URL="https://shalaevadasha1998-dot.github.io/nasypateli-cinema_2/"             --project-ref "$PROJECT_ID"
 
           if [ -n "$ADMIN_TELEGRAM_USERNAMES" ]; then
             supabase secrets set ADMIN_TELEGRAM_USERNAMES="$ADMIN_TELEGRAM_USERNAMES" --project-ref "$PROJECT_ID"
