@@ -447,6 +447,15 @@ async function reviewQuestionForStep(db:any,assignment:any,step:number){
     ['recommend','кому бы ты посоветовал этот фильм?'],
     ['crumbs','сколько крошек из 5? напиши число от 1 до 5.']
   ] as [string,string][]
+  if(step===1){
+    const pack=await db.from('film_packages').select('origin_submission_id').eq('id',assignment.film_package_id).maybeSingle()
+    if(pack.error)throw pack.error
+    if(pack.data?.origin_submission_id){
+      const pitch=await db.from('invented_films').select('title,description').eq('id',pack.data.origin_submission_id).maybeSingle()
+      if(pitch.error)throw pitch.error
+      if(pitch.data)return {key:'expectations',text:`в начале вечера была идея «${pitch.data.title}»: ${pitch.data.description}. насколько найденный фильм совпал с ожиданиями и с этой идеей?`,kind:'text'}
+    }
+  }
   if(step<base.length)return {key:base[step][0],text:base[step][1],kind:base[step][0]==='crumbs'?'rating':'text'}
   return {key:'personal',text:await reviewPersonalQuestion(db,assignment),kind:'text'}
 }
