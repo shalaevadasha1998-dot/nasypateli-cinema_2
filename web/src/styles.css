@@ -2804,3 +2804,53 @@ body{text-transform:lowercase}
 .chat-compose .mic.recording{
   box-shadow:0 0 0 4px rgba(207,85,55,.14);
 }
+
+
+/* v0.10.4 — dora composer + creature asset hardening */
+.chat-compose-portal{
+  display:grid!important;
+  grid-template-columns:50px minmax(0,1fr) 50px!important;
+  align-items:end!important;
+  gap:8px!important;
+}
+.chat-compose-portal .mic{
+  display:grid!important;
+  place-items:center!important;
+  visibility:visible!important;
+  opacity:1!important;
+  width:50px!important;
+  min-width:50px!important;
+  height:50px!important;
+  min-height:50px!important;
+  padding:0!important;
+  border:1px solid #3a3d35!important;
+  border-radius:14px!important;
+  background:#141612!important;
+  color:#b9c7a8!important;
+  position:relative!important;
+  overflow:hidden!important;
+  -webkit-appearance:none!important;
+  appearance:none!important;
+}
+.chat-compose-portal .mic:before,.chat-compose-portal .mic:after{content:none!important}
+.chat-compose-portal .mic-icon{
+  display:block!important;
+  width:25px!important;
+  height:25px!important;
+  fill:none!important;
+  stroke:currentColor!important;
+  stroke-width:1.9!important;
+  stroke-linecap:round!important;
+  stroke-linejoin:round!important;
+  pointer-events:none!important;
+}
+.chat-compose-portal .mic.recording{
+  color:#fff!important;
+  background:#c64e32!important;
+  border-color:#df6b50!important;
+}
+.chat-compose-portal .mic:disabled:not(.recording){opacity:.55!important}
+.chat-compose-portal .mic-progress{font-size:18px;font-weight:800}
+.chat-compose-portal textarea{min-width:0!important;width:100%!important}
+.chat-compose-portal .send{width:50px!important;height:50px!important;min-width:50px!important}
+.creature-static-art img,.home-creature-static-art img,.chat-creature-portrait img{image-rendering:auto!important}
