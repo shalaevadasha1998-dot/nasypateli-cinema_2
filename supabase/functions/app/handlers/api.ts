@@ -1175,7 +1175,14 @@ export async function handleApi(req:Request){
       if(direction==='pass')return json({ok:true,matched:false})
       const reverse=await db.from('dating_swipes').select('direction').eq('swiper_id',targetId).eq('target_id',user.id).maybeSingle()
       if(reverse.error)throw reverse.error
-      if(reverse.data?.direction!=='like')return json({ok:true,matched:false})
+      if(reverse.data?.direction!=='like'){
+        const likeNotice=await db.from('notification_queue').upsert({
+          user_id:targetId,kind:'matches',text:'кто-то отметил тебя в знакомствах · загляни, вдруг это взаимно',
+          send_after:new Date().toISOString(),status:'pending',dedupe_key:`dating_like:${user.id}:${targetId}`
+        },{onConflict:'user_id,dedupe_key'})
+        if(likeNotice.error)console.error('dating like notification enqueue failed',likeNotice.error)
+        return json({ok:true,matched:false})
+      }
       const kind=connectionKind(mine.data?.intents||[],target.data?.intents||[])
       const [pa,pb]=await Promise.all([
         db.from('cinema_profiles').select('favorite_films').eq('user_id',user.id).maybeSingle(),
