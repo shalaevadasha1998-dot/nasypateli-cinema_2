@@ -357,6 +357,17 @@ async function projectorPublicState(db:any,event:any){
   return {state:String(p.state||'idle'),revision:Number(p.revision||0),payload,updatedAt:p.updated_at}
 }
 
+async function setProjectorState(db:any,event:any,state:string,roundId:string|null,filmPackageId:string|null,payload:any){
+  const current=await db.from('event_projector_state').select('revision').eq('event_id',event.id).maybeSingle()
+  if(current.error)throw current.error
+  const saved=await db.from('event_projector_state').upsert({
+    event_id:event.id,state,round_id:roundId,film_package_id:filmPackageId,payload:payload||{},
+    revision:Number(current.data?.revision||0)+1,updated_at:new Date().toISOString()
+  },{onConflict:'event_id'})
+  if(saved.error)throw saved.error
+  return await projectorPublicState(db,event)
+}
+
 async function filmAdminPackages(db:any,eventId:string){
   const packages=await db.from('film_packages').select('*').eq('event_id',eventId).order('created_at')
   if(packages.error)throw packages.error
