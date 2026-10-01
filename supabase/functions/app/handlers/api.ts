@@ -971,7 +971,7 @@ export async function handleApi(req:Request){
     }
 
     if(action==='birth-creature'||action==='participant-birth-v2'){
-      const name=String(body.name||'Животина').trim().slice(0,32)||'Животина'
+      const name=(String(body.name||'животина').trim().replace(/\s+/g,' ').toLocaleLowerCase('ru-RU').slice(0,32)||'животина')
       const ex=await db.from('creatures').select('user_id,name,born_at,crumbs').eq('user_id',user.id).maybeSingle()
       if(ex.error)throw ex.error
       const existing=ex.data
@@ -1019,7 +1019,7 @@ export async function handleApi(req:Request){
     }
 
     if(action==='rename-creature'){
-      const name=String(body.name||'').trim().replace(/\s+/g,' ').slice(0,32)
+      const name=String(body.name||'').trim().replace(/\s+/g,' ').toLocaleLowerCase('ru-RU').slice(0,32)
       if(name.length<2)return err('имя должно быть хотя бы из двух символов',422)
       const creature=await ensureCreature(db,user.id)
       if(!creature.born_at)return err('сначала должна родиться животина',409)

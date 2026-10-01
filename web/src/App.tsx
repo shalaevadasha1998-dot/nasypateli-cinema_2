@@ -193,7 +193,7 @@ function Home(){
       <button type="button" className="home-creature-static-art" onClick={()=>nav('/profile')} aria-label="открыть профиль животины"><img src={`${import.meta.env.BASE_URL}assets/rabbit-main-front.webp`} alt={data.creature.name||'животина'} draggable={false}/></button>
       <div className="home-creature-name">{data.creature.name||'животина'}</div>
       <p className="home-creature-copy">{data.creature.name||'животина'} знает ваш кинопрофиль и может обсуждать с вами фильмы, вкусы и происходящее в клубе</p>
-      <Button onClick={()=>nav('/zhivotina')}>поговорить с {data.creature.name||'животиной'}</Button>
+      <Button onClick={()=>nav('/zhivotina')}>поговорить с {uiLower(data.creature.name||'животиной')}</Button>
     </section>
     {encounterMsg&&<div className="success floating-success">{encounterMsg}</div>}
     <FilmMissionCards data={data} onOpen={id=>nav('/mission/'+id)}/>
@@ -222,7 +222,7 @@ function Home(){
         <div className="zhivotina-portal-name">{data.creature.name||'животина'}</div>
         <p>можно говорить о чём угодно. кино она подключит, когда оно правда к месту</p>
       </div>
-      <Button kind="secondary" onClick={()=>nav('/zhivotina')}>поговорить с {data.creature.name||'животиной'}</Button>
+      <Button kind="secondary" onClick={()=>nav('/zhivotina')}>поговорить с {uiLower(data.creature.name||'животиной')}</Button>
     </section>
     {data.isAdmin&&<button type="button" className="admin-entry-link" onClick={()=>nav(`/admin/event/${e.slug}`)}>админка шоу ↗</button>}
     {demoMode&&<Card className="dev"><b>демо</b><span>админка: <a href={`${import.meta.env.BASE_URL}#/admin/${e.slug}`}>/admin/{e.slug}</a>. экран: <a href={`${import.meta.env.BASE_URL}#/screen/${e.slug}`}>/screen/{e.slug}</a></span></Card>}
@@ -307,13 +307,14 @@ function IdeaCoach({data,title,plot}:{data:DemoState;title:string;plot:string}){
 
 function PredictionForm({data,reload}:{data:DemoState;reload:()=>void}){const [answers,setAnswers]=useState<Record<string,boolean>>(()=>Object.fromEntries(data.predictions.filter(p=>p.answer!==undefined).map(p=>[p.id,p.answer!])));const [message,setMessage]=useState('');const [busy,setBusy]=useState(false);const answeredCount=data.predictions.filter(p=>typeof answers[p.id]==='boolean').length;const done=data.predictions.length===10&&answeredCount===10;const choose=(id:string,value:boolean)=>{if(data.predictionSubmitted||busy)return;setMessage('');setAnswers(prev=>({...prev,[id]:value}))};const submit=async()=>{if(!done){setMessage(`ответьте на все 10 прогнозов. сейчас ${answeredCount}/10`);return}try{setBusy(true);setMessage('');const predictions=data.predictions.map(p=>({...p,answer:answers[p.id]}));await callApi('submit-predictions',{slug:data.event.slug,predictions});await reload()}catch(e:any){setMessage(e.message||'не получилось сохранить прогнозы')}finally{setBusy(false)}};return <Card><div className="section-title">10 прогнозов</div><p className="muted">после фиксации изменить ответы нельзя</p>{data.predictions.map(p=><div className="prediction" key={p.id}><b>{p.position}. {p.text}</b><div className="binary"><button type="button" disabled={busy||data.predictionSubmitted} className={answers[p.id]===true?'active':''} onClick={()=>choose(p.id,true)}>будет</button><button type="button" disabled={busy||data.predictionSubmitted} className={answers[p.id]===false?'active':''} onClick={()=>choose(p.id,false)}>не будет</button></div></div>)}{message&&<div className="form-error">{message}</div>}<Button disabled={busy||data.predictionSubmitted||data.predictions.length!==10} onClick={submit}>{busy?'сохраняем…':data.predictionSubmitted?'ответы зафиксированы':data.predictions.length!==10?'прогнозы ещё загружаются':'зафиксировать прогнозы'}</Button></Card>}
 
-function ReactionForm({data,reload}:{data:DemoState;reload:()=>void}){const nav=useNavigate();const [rating,setRating]=useState(data.reaction?.rating||7);const [stateWord,setState]=useState(data.reaction?.stateWord||'');const [thought,setThought]=useState(data.reaction?.thought||'');const [recommendation,setRec]=useState<PostFilmReaction['recommendation']>(data.reaction?.recommendation||'');const [message,setMessage]=useState('');const [busy,setBusy]=useState(false);const save=async()=>{const missing=[];if(!stateWord.trim())missing.push('одно слово про состояние');if(!thought.trim())missing.push('мысль после фильма');if(!recommendation)missing.push('рекомендацию');if(missing.length){setMessage(`заполните: ${missing.join(', ')}`);return}try{setBusy(true);setMessage('');await callApi('submit-reaction',{slug:data.event.slug,reaction:{rating,stateWord:stateWord.trim(),thought:thought.trim(),recommendation}});await reload()}catch(e:any){setMessage(e.message)}finally{setBusy(false)}};return <><Card><div className="section-title">первая реакция</div><p className="muted">не рецензия. что осталось сразу после титров</p><div className="rating">{[1,2,3,4,5,6,7,8,9,10].map(n=><button type="button" className={rating===n?'active':''} key={n} onClick={()=>setRating(n)}>{n}</button>)}</div><Field label="одно слово про состояние"><input maxLength={80} value={stateWord} onChange={e=>{setMessage('');setState(e.target.value)}}/></Field><Field label="что осталось в голове"><textarea maxLength={500} value={thought} onChange={e=>{setMessage('');setThought(e.target.value)}}/></Field><div className="choice-question"><span>посоветовали бы?</span><ChoiceChips value={recommendation} onChange={v=>{setMessage('');setRec(v as PostFilmReaction['recommendation'])}} options={[['yes','да'],['no','нет'],['depends','смотря кому']]}/></div><Button disabled={busy} onClick={save}>{busy?'сохраняем…':'сохранить реакцию'}</Button>{message&&<div className="form-error">{message}</div>}</Card><Card><div className="section-title">обсудить с {data.creature.name||'Животиной'}</div><p className="muted">{data.creature.name||'животина'} видит ваши прогнозы, реакцию и кинопрофиль — но не выдаёт чужие приватные ответы</p><Button kind="secondary" onClick={()=>nav('/zhivotina?mode=post_film')}>поговорить с {data.creature.name||'Животиной'}</Button></Card></>}
+function ReactionForm({data,reload}:{data:DemoState;reload:()=>void}){const nav=useNavigate();const [rating,setRating]=useState(data.reaction?.rating||7);const [stateWord,setState]=useState(data.reaction?.stateWord||'');const [thought,setThought]=useState(data.reaction?.thought||'');const [recommendation,setRec]=useState<PostFilmReaction['recommendation']>(data.reaction?.recommendation||'');const [message,setMessage]=useState('');const [busy,setBusy]=useState(false);const save=async()=>{const missing=[];if(!stateWord.trim())missing.push('одно слово про состояние');if(!thought.trim())missing.push('мысль после фильма');if(!recommendation)missing.push('рекомендацию');if(missing.length){setMessage(`заполните: ${missing.join(', ')}`);return}try{setBusy(true);setMessage('');await callApi('submit-reaction',{slug:data.event.slug,reaction:{rating,stateWord:stateWord.trim(),thought:thought.trim(),recommendation}});await reload()}catch(e:any){setMessage(e.message)}finally{setBusy(false)}};return <><Card><div className="section-title">первая реакция</div><p className="muted">не рецензия. что осталось сразу после титров</p><div className="rating">{[1,2,3,4,5,6,7,8,9,10].map(n=><button type="button" className={rating===n?'active':''} key={n} onClick={()=>setRating(n)}>{n}</button>)}</div><Field label="одно слово про состояние"><input maxLength={80} value={stateWord} onChange={e=>{setMessage('');setState(e.target.value)}}/></Field><Field label="что осталось в голове"><textarea maxLength={500} value={thought} onChange={e=>{setMessage('');setThought(e.target.value)}}/></Field><div className="choice-question"><span>посоветовали бы?</span><ChoiceChips value={recommendation} onChange={v=>{setMessage('');setRec(v as PostFilmReaction['recommendation'])}} options={[['yes','да'],['no','нет'],['depends','смотря кому']]}/></div><Button disabled={busy} onClick={save}>{busy?'сохраняем…':'сохранить реакцию'}</Button>{message&&<div className="form-error">{message}</div>}</Card><Card><div className="section-title">обсудить с {uiLower(data.creature.name||'животиной')}</div><p className="muted">{data.creature.name||'животина'} видит ваши прогнозы, реакцию и кинопрофиль — но не выдаёт чужие приватные ответы</p><Button kind="secondary" onClick={()=>nav('/zhivotina?mode=post_film')}>поговорить с {uiLower(data.creature.name||'животиной')}</Button></Card></>}
 
 function ReviewForm({data,reload}:{data:DemoState;reload:()=>void}){const [rating,setRating]=useState(data.review?.rating||data.reaction?.rating||7);const [sentence,setSentence]=useState(data.review?.sentence||'');const [message,setMessage]=useState('');const [busy,setBusy]=useState(false);const save=async()=>{if(!sentence.trim()){setMessage('напишите одну финальную фразу');return}try{setBusy(true);setMessage('');await callApi('submit-review',{slug:data.event.slug,rating,sentence:sentence.trim()});await reload()}catch(e:any){setMessage(e.message)}finally{setBusy(false)}};return <Card><div className="section-title">ваша строка в общей рецензии</div><div className="rating">{[1,2,3,4,5,6,7,8,9,10].map(n=><button type="button" className={rating===n?'active':''} key={n} onClick={()=>setRating(n)}>{n}</button>)}</div><Field label="ровно одна финальная фраза"><textarea maxLength={180} value={sentence} onChange={e=>{setMessage('');setSentence(e.target.value)}}/></Field><Button disabled={busy} onClick={save}>{busy?'сохраняем…':'сохранить без редактуры'}</Button>{message&&<div className="form-error">{message}</div>}</Card>}
 function FeedbackForm({data,reload}:{data:DemoState;reload:()=>void}){const [returnIntent,setReturn]=useState(data.feedback?.returnIntent||'да');const [strongest,setStrongest]=useState(data.feedback?.strongest||'');const [improve,setImprove]=useState(data.feedback?.improve||'');const [willingness,setWtp]=useState(data.feedback?.willingness??900);const [durationFeel,setDuration]=useState(data.feedback?.durationFeel||'нормально');const [inviteFriend,setInvite]=useState(data.feedback?.inviteFriend??8);const [message,setMessage]=useState('');const [saved,setSaved]=useState(false);const [busy,setBusy]=useState(false);const change=()=>{setSaved(false);setMessage('')};const save=async()=>{try{setBusy(true);setMessage('');setSaved(false);await callApi('submit-feedback',{slug:data.event.slug,feedback:{returnIntent,strongest,improve,willingness,durationFeel,inviteFriend}});await reload();setSaved(true)}catch(e:any){setMessage(e.message||'не получилось сохранить обратную связь')}finally{setBusy(false)}};return <Card><div className="section-title">3 минуты на исследование</div><Field label="придёте ещё?"><select value={returnIntent} onChange={e=>{change();setReturn(e.target.value)}}><option>да</option><option>скорее да</option><option>не знаю</option><option>скорее нет</option><option>нет</option></select></Field><Field label="что было самым сильным?"><textarea maxLength={1000} value={strongest} onChange={e=>{change();setStrongest(e.target.value)}}/></Field><Field label="что надо исправить?"><textarea maxLength={1000} value={improve} onChange={e=>{change();setImprove(e.target.value)}}/></Field><Field label="по длительности"><select value={durationFeel} onChange={e=>{change();setDuration(e.target.value)}}><option>коротко</option><option>нормально</option><option>долго</option></select></Field><Field label="насколько вероятно, что позовёте друга?. 0–10"><input type="number" inputMode="numeric" min="0" max="10" value={inviteFriend} onChange={e=>{change();setInvite(Math.max(0,Math.min(10,Number(e.target.value))))}}/></Field><Field label="сколько нормально платить за следующий офлайн?"><input type="number" inputMode="numeric" min="0" step="100" value={willingness} onChange={e=>{change();setWtp(Math.max(0,Number(e.target.value)||0))}}/></Field><Button disabled={busy} onClick={save}>{busy?'отправляем…':data.feedback?'обновить ответ':'отправить'}</Button>{saved&&<div className="success">ответ сохранён</div>}{message&&<div className="form-error">{message}</div>}</Card>}
 function Finalists({title,items}:{title:string;items:{name:string;sub:string}[]}){return <Card><div className="section-title">{title}</div>{items.length?items.map((x,i)=><div className="finalist" key={i}><span>0{i+1}</span><div><b>{x.name}</b><p>{x.sub}</p></div></div>):<Empty>животина ещё думает</Empty>}</Card>}
 
-function cleanAiText(text:string){return text.replace(/\*\*([^*]+)\*\*/g,'$1').replace(/__([^_]+)__/g,'$1').replace(/`([^`]+)`/g,'$1').replace(/^#{1,6}\s+/gm,'').replace(/^\s*[-*]\s+/gm,'— ')}
+function uiLower(text:string){return String(text||'').toLocaleLowerCase('ru-RU')}
+function cleanAiText(text:string){return uiLower(text.replace(/\*\*([^*]+)\*\*/g,'$1').replace(/__([^_]+)__/g,'$1').replace(/`([^`]+)`/g,'$1').replace(/^#{1,6}\s+/gm,'').replace(/^\s*[-*]\s+/gm,'— '))}
 function ZhivotinaPage(){
   const {data,error}=useStateData()
   const [search]=useSearchParams()
@@ -334,33 +335,44 @@ function ZhivotinaPage(){
     el.style.height=Math.min(120,Math.max(50,el.scrollHeight))+'px'
   },[text])
   useEffect(()=>{
-    const vv=window.visualViewport
-    if(!vv)return
     const root=document.documentElement
-    let baseline=Math.max(window.innerHeight,vv.height)
+    const body=document.body
+    const vv=window.visualViewport
+    root.classList.add('chat-page-open')
+    body.classList.add('chat-page-open')
+    let baseline=Math.max(window.innerHeight,vv?.height||0)
     let keyboardOpen=false
     let orientationTimer=0
     const sync=()=>{
-      baseline=Math.max(baseline,window.innerHeight,vv.height)
-      const inset=Math.max(0,Math.round(baseline-vv.height-vv.offsetTop),Math.round(window.innerHeight-vv.height-vv.offsetTop))
+      const height=Math.max(1,Math.round(vv?.height||window.innerHeight))
+      const offsetTop=Math.max(0,Math.round(vv?.offsetTop||0))
+      baseline=Math.max(baseline,window.innerHeight,height)
+      const inset=Math.max(0,Math.round(baseline-height-offsetTop),Math.round(window.innerHeight-height-offsetTop))
       const open=inset>90
+      root.style.setProperty('--chat-visual-height',`${height}px`)
+      root.style.setProperty('--chat-visual-top',`${offsetTop}px`)
       root.style.setProperty('--chat-keyboard-inset',`${open?inset:0}px`)
       root.classList.toggle('chat-keyboard-open',open)
       if(open&&!keyboardOpen)window.requestAnimationFrame(()=>threadEnd.current?.scrollIntoView({block:'end'}))
       keyboardOpen=open
     }
-    const resetOrientation=()=>{window.clearTimeout(orientationTimer);orientationTimer=window.setTimeout(()=>{baseline=Math.max(window.innerHeight,vv.height);sync()},250)}
+    const resetOrientation=()=>{window.clearTimeout(orientationTimer);orientationTimer=window.setTimeout(()=>{baseline=Math.max(window.innerHeight,vv?.height||0);sync()},250)}
     sync()
-    vv.addEventListener('resize',sync)
-    vv.addEventListener('scroll',sync)
+    vv?.addEventListener('resize',sync)
+    vv?.addEventListener('scroll',sync)
+    window.addEventListener('resize',sync)
     window.addEventListener('orientationchange',resetOrientation)
     return()=>{
-      vv.removeEventListener('resize',sync)
-      vv.removeEventListener('scroll',sync)
+      vv?.removeEventListener('resize',sync)
+      vv?.removeEventListener('scroll',sync)
+      window.removeEventListener('resize',sync)
       window.removeEventListener('orientationchange',resetOrientation)
       window.clearTimeout(orientationTimer)
-      root.classList.remove('chat-keyboard-open')
+      root.classList.remove('chat-keyboard-open','chat-page-open')
+      body.classList.remove('chat-page-open')
       root.style.removeProperty('--chat-keyboard-inset')
+      root.style.removeProperty('--chat-visual-height')
+      root.style.removeProperty('--chat-visual-top')
     }
   },[])
 
@@ -416,7 +428,7 @@ function ZhivotinaPage(){
   }
 
   const suggestions=mode==='post_film'?['что у меня осталось после фильма?','где я вообще с ним разминулась?','давай просто обсудим']:mode==='taste'?['что ты уже поняла про мой вкус?','где я сама себе противоречу?','что мне попробовать непривычного?']:['у меня странный день','поговорим?','что посмотреть сегодня?']
-  const creatureName=data.creature?.name||'животина'
+  const creatureName=uiLower(data.creature?.name||'животина')
   const voiceError=voice.error||message
   return <div className="page chat-page">
     <div className="chat-head"><div className="chat-creature-identity"><div className="chat-creature-portrait" aria-hidden><img src={`${import.meta.env.BASE_URL}assets/rabbit-main-front.webp`} alt="" draggable={false}/></div><div><div className="eyebrow">ваша животина</div><h2>{creatureName}</h2></div></div><p className="muted">с ней можно говорить о чём угодно. фильмы — её способ иногда попасть ровно в нужное состояние</p></div>
