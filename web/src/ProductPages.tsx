@@ -26,8 +26,8 @@ export function BirthPage(){
   if(!data)return <Load error={error}/>
 
   const finish=async()=>{
-    const clean=name.trim().replace(/\s+/g,' ').slice(0,32)
-    if(clean.length<2){setMessage('дайте Животине имя хотя бы из двух символов');return}
+    const clean=name.trim().replace(/\s+/g,' ').toLocaleLowerCase('ru-RU').slice(0,32)
+    if(clean.length<2){setMessage('дайте животине имя хотя бы из двух символов');return}
     try{
       setBusy(true);setMessage('')
       await callApi('birth-creature',{name:clean})
@@ -45,7 +45,7 @@ export function BirthPage(){
     <div className="birth-simple-copy">
       <div className="eyebrow">ваша животина</div>
       <h1>как её<br/>назовём?</h1>
-      <p>имя останется с ней в приложении и будет стоять над вашим личным чатом с Животиной.</p>
+      <p>имя останется с ней в приложении и будет стоять над вашим личным чатом с животиной.</p>
       <Field label="имя животины">
         <input
           autoFocus
@@ -70,11 +70,11 @@ export function CreatureProfilePage(){
   const [nameMsg,setNameMsg]=useState('')
   const [deleteMsg,setDeleteMsg]=useState('')
   const [renameDraft,setRenameDraft]=useState('')
-  useEffect(()=>{if(data?.creature?.name)setRenameDraft(prev=>prev||data.creature.name)},[data?.creature?.name])
+  useEffect(()=>{if(data?.creature?.name)setRenameDraft(prev=>prev||data.creature.name.toLocaleLowerCase('ru-RU'))},[data?.creature?.name])
   if(!data)return <Load error={error}/>
-  const creatureName=(data.creature.name||'животина').trim()||'животина'
+  const creatureName=((data.creature.name||'животина').trim()||'животина').toLocaleLowerCase('ru-RU')
   const saveName=async()=>{
-    const clean=renameDraft.trim().replace(/\s+/g,' ').slice(0,32)
+    const clean=renameDraft.trim().replace(/\s+/g,' ').toLocaleLowerCase('ru-RU').slice(0,32)
     if(clean.length<2){setNameMsg('имя должно быть хотя бы из двух символов');return}
     try{
       setBusy('rename');setNameMsg('')
