@@ -303,7 +303,17 @@ async function filmLiveState(db:any,event:any,userId?:string){
     if(r.error)throw r.error
     packageRow=r.data
   }
-  let myWord:any=undefined,myAnswers:any[]=[]
+  let myWord:any=undefined,myAnswers:any[]=[],myPitch:any=undefined,questionTarget=3
+  if(p.round_id){
+    const round=await db.from('event_rounds').select('question_target').eq('id',p.round_id).eq('event_id',event.id).maybeSingle()
+    if(round.error)throw round.error
+    questionTarget=Math.max(1,Math.min(5,Number(round.data?.question_target||3)))
+  }
+  if(userId&&p.round_id){
+    const pitch=await db.from('invented_films').select('id,title,description,updated_at').eq('round_id',p.round_id).eq('user_id',userId).maybeSingle()
+    if(pitch.error)throw pitch.error
+    if(pitch.data)myPitch={id:String(pitch.data.id),title:String(pitch.data.title),description:String(pitch.data.description),updatedAt:pitch.data.updated_at}
+  }
   if(userId&&p.round_id&&p.film_package_id){
     const [impression,preds]=await Promise.all([
       db.from('film_impressions').select('word').eq('round_id',p.round_id).eq('user_id',userId).maybeSingle(),
@@ -315,7 +325,7 @@ async function filmLiveState(db:any,event:any,userId?:string){
   }
   return {
     state:String(p.state),revision:Number(p.revision||0),roundId:p.round_id||undefined,filmPackageId:p.film_package_id||undefined,
-    filmTitle:packageRow?.title_snapshot||undefined,payload:p.payload||{},myWord,myAnswers
+    filmTitle:packageRow?.title_snapshot||undefined,payload:p.payload||{},myWord,myAnswers,myPitch,questionTarget
   }
 }
 
