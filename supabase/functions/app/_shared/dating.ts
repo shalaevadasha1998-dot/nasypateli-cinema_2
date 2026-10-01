@@ -33,7 +33,7 @@ export async function datingState(db:any,userId:string){
   }
   const con=await db.from('social_connections').select('*').or(`user_a.eq.${userId},user_b.eq.${userId}`).eq('status','active').order('created_at',{ascending:false}).limit(30);if(con.error)throw con.error
   const matches:any[]=[]
-  for(const x of con.data||[]){if(Array.isArray(x.metadata?.hidden_by)&&x.metadata.hidden_by.includes(userId))continue;const other=x.user_a===userId?x.user_b:x.user_a;if(blocked.has(other))continue;const [u,cr]=await Promise.all([db.from('users').select('display_name').eq('id',other).single(),ensureCreature(db,other)]);if(u.error)continue;matches.push({id:x.id,userId:other,kind:x.kind,displayName:u.data.display_name||'участник',creatureName:cr.name||'Животина',createdAt:x.created_at,sharedFilms:x.metadata?.shared_films||[]})}
+  for(const x of con.data||[]){if(Array.isArray(x.metadata?.hidden_by)&&x.metadata.hidden_by.includes(userId))continue;const other=x.user_a===userId?x.user_b:x.user_a;if(blocked.has(other))continue;const [u,cr]=await Promise.all([db.from('users').select('display_name,telegram_username').eq('id',other).single(),ensureCreature(db,other)]);if(u.error)continue;matches.push({id:x.id,userId:other,kind:x.kind,displayName:u.data.display_name||'участник',telegramUsername:u.data.telegram_username?String(u.data.telegram_username):'',creatureName:cr.name||'животина',createdAt:x.created_at,sharedFilms:x.metadata?.shared_films||[]})}
   return {dating:profile,datingCards:cards.slice(0,12),datingMatches:matches}
 }
 
