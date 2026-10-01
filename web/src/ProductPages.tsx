@@ -87,8 +87,8 @@ export function CreatureProfilePage(){
   }
 
   const remove=async()=>{
-    if(!window.confirm('Удалить кинопрофиль, животину, знакомства и персональную историю? Это действие нельзя отменить'))return
-    if(!window.confirm('Точно удалить профиль? Билеты и платёжные записи останутся у организаторов, персонализация будет удалена.'))return
+    if(!window.confirm('удалить кинопрофиль, животину, знакомства и персональную историю? это действие нельзя отменить'))return
+    if(!window.confirm('точно удалить профиль? билеты и платёжные записи останутся у организаторов, персонализация будет удалена.'))return
     try{
       setBusy('delete');setDeleteMsg('')
       await callApi('delete-profile',{confirm:'DELETE_PROFILE'})
