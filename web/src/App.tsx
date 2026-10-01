@@ -445,7 +445,6 @@ function ZhivotinaPage(){
       {localMessages.length===0&&<div className="zhivotina-reply">ну, рассказывай. что сегодня происходит?</div>}
       {localMessages.map(m=><div key={m.id} className={`chat-message-group ${m.role}`}>
         <div className={`chat-msg ${m.role} ${m.deliveryStatus==='failed'?'failed':''}`}>{m.role==='assistant'?cleanAiText(m.text):m.text}</div>
-        {m.role==='user'&&m.deliveryStatus==='pending'&&<div className="chat-thinking chat-thinking-inline"><div className="chat-msg assistant typing"><i/><i/><i/></div><span>{creatureName} думает…</span></div>}
         {m.role==='user'&&m.deliveryStatus==='failed'&&m.requestId&&<button type="button" className="chat-retry" disabled={busy} onClick={()=>void send(m.text,m.mode,m.requestId)}>повторить</button>}
         {m.role==='user'&&m.deliveryStatus==='pending'&&!busy&&m.requestId&&<button type="button" className="chat-retry pending" onClick={()=>void send(m.text,m.mode,m.requestId)}>проверить ответ</button>}
       </div>)}
