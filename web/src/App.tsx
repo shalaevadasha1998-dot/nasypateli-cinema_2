@@ -511,6 +511,12 @@ function ShowRoundControl({data,busy,run}:{data:DemoState;busy:boolean;run:(acti
   if(!['cinema_rounds','warm_up','final_vote'].includes(block.type))return <Card className="show-round-card"><div className="section-title">раунд</div><p className="muted">в блоке «{block.title}» кинораунд не нужен</p></Card>
   const catalog=data.movieCatalog||[]
   const canMovie=block.type==='cinema_rounds'
+  if(canMovie)return <Card className="show-round-card">
+    <div className="row spread"><div><div className="section-title">текущий кинораунд</div><h2>{round?'раунд '+round.roundNo:'ещё не запущен'}</h2></div>{round&&<Pill>{round.flowStatus||round.status}</Pill>}</div>
+    {!round||round.status!=='active'
+      ?<Button disabled={busy||show.runtime.runStatus!=='running'} onClick={()=>run('admin-round-start')}>{show.runtime.currentRound?'следующий раунд':'запустить раунд'}</Button>
+      :<><p className="muted">вся режиссура этого раунда идёт ниже по одному текущему шагу: фильм гостя → рандом → поиск реального фильма → фрагмент → вопросы → назначение.</p>{round.flowStatus==='assignment_selected'&&<Button kind="secondary" disabled={busy} onClick={()=>run('admin-round-close')}>закончить раунд</Button>}</>}
+  </Card>
   return <Card className="show-round-card">
     <div className="row spread"><div><div className="section-title">текущий раунд</div><h2>{round?'раунд '+round.roundNo:'ещё не запущен'}</h2></div>{round&&<Pill>{round.status}</Pill>}</div>
     {!round||round.status!=='active'?<Button disabled={busy||show.runtime.runStatus!=='running'} onClick={()=>run('admin-round-start')}>{show.runtime.currentRound?'следующий раунд':'запустить раунд'}</Button>:<>
