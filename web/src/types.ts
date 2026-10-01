@@ -111,7 +111,7 @@ export type MovieCandidate = {
 }
 export type Prediction = { id:string; position:number; text:string; answer?:boolean; actual?:boolean }
 export type LeaderRow = { name:string; points:number; wins:number; events:number }
-export type JipitinaMessage = { id:string; role:'user'|'assistant'; text:string; mode:string; createdAt:string }
+export type JipitinaMessage = { id:string; role:'user'|'assistant'; text:string; mode:string; createdAt:string; requestId?:string; deliveryStatus?:'pending'|'completed'|'failed' }
 export type PostFilmReaction = {rating:number;stateWord:string;thought:string;recommendation:'yes'|'no'|'depends'|''}
 export type CollectiveReview = {intro?:string;caption?:string;averageRating?:number;sentences?:string[]}
 export type ClubEvent = {id:string;slug:string;title:string;startsAt:string;movie?:{title:string;year?:number};review?:CollectiveReview;prediction?:{correct:number;total:number;points:number;rank:number};myReview?:{rating:number;sentence:string}}

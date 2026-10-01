@@ -690,7 +690,7 @@ async function userExtras(db:any,userId:string){
     db.from('leaderboard').select('events_attended,prediction_points,wins').eq('user_id',userId).maybeSingle(),
     db.from('film_ideas').select('id').eq('user_id',userId),
     db.from('registrations').select('event_id').eq('user_id',userId).eq('status','attended'),
-    db.from('jipitina_messages').select('id,role,text,mode,created_at').eq('user_id',userId).order('created_at',{ascending:false}).limit(30)
+    db.from('jipitina_messages').select('id,role,text,mode,request_id,delivery_status,created_at').eq('user_id',userId).order('created_at',{ascending:false}).limit(30)
   ])
   for(const [label,r] of [['leaderboard',leader],['ideas',ideas],['attendance',attendance],['messages',messages]] as const){
     if(r.error)console.warn('optional bootstrap query failed',label,String(r.error.message||r.error))
@@ -730,7 +730,7 @@ async function userExtras(db:any,userId:string){
   return {
     profileStats:{eventsAttended:Number(leader.error?0:(leader.data?.events_attended||0)),predictionPoints:Number(leader.error?0:(leader.data?.prediction_points||0)),wins:Number(leader.error?0:(leader.data?.wins||0)),ideasSubmitted:ideas.error?0:(ideas.data||[]).length},
     pastEvents,
-    jipitinaMessages:(messages.error?[]:(messages.data||[])).reverse().map((m:any)=>({id:m.id,role:m.role,text:m.text,mode:m.mode,createdAt:m.created_at}))
+    jipitinaMessages:(messages.error?[]:(messages.data||[])).reverse().map((m:any)=>({id:m.id,role:m.role,text:m.text,mode:m.mode,requestId:m.request_id||undefined,deliveryStatus:m.delivery_status||undefined,createdAt:m.created_at}))
   }
 }
 
@@ -1018,6 +1018,17 @@ export async function handleApi(req:Request){
       return json({ok:true,alreadyBorn:false,creature:await creatureState(db,user.id)})
     }
 
+    if(action==='rename-creature'){
+      const name=String(body.name||'').trim().replace(/\s+/g,' ').slice(0,32)
+      if(name.length<2)return err('имя должно быть хотя бы из двух символов',422)
+      const creature=await ensureCreature(db,user.id)
+      if(!creature.born_at)return err('сначала должна родиться животина',409)
+      const updated=await db.from('creatures').update({name,updated_at:new Date().toISOString()}).eq('user_id',user.id).select('user_id').maybeSingle()
+      if(updated.error)throw updated.error
+      if(!updated.data)return err('животина не найдена',404)
+      return json({ok:true,creature:await creatureState(db,user.id)})
+    }
+
     if(action==='bootstrap'){
       let event=await nextEvent(db)
       if(!event){
@@ -1271,27 +1282,60 @@ export async function handleApi(req:Request){
       const profileRow=await db.from('cinema_profiles').select('*').eq('user_id',user.id).maybeSingle();if(profileRow.error)throw profileRow.error
       const reg=await db.from('registrations').select('*').eq('event_id',event.id).eq('user_id',user.id).maybeSingle();if(reg.error)throw reg.error
       const profile=normalizeProfile(user,profileRow.data,reg.data,tg);if(!profile.completed)return err('Сначала завершите кинопрофиль',409)
-      const limitMessage=await chatRateLimit(db,user.id);if(limitMessage)return err(limitMessage,429)
-      const mode=allowedChatModes.has(String(body.mode))?String(body.mode):'general';const message=String(body.message||'').trim().slice(0,3000);if(!message)return err('Напишите сообщение')
+      const mode=allowedChatModes.has(String(body.mode))?String(body.mode):'general'
+      const message=String(body.message||'').trim().slice(0,3000);if(!message)return err('Напишите сообщение')
+      const requestId=isUuid(String(body.requestId||''))?String(body.requestId):crypto.randomUUID()
       if(mode==='idea_coach'){mechanicsRequired(event);if(!await hasPaidAccess(db,event.id,user.id))return err('Нужен оплаченный билет',403);if(event.status!=='IDEAS_OPEN')return err('Идеи сейчас не принимаются',409)}
       if(mode==='post_film'){if(!await hasPaidAccess(db,event.id,user.id))return err('Нужен оплаченный билет',403);if(!['DISCUSSION','FINAL_REVIEW','FEEDBACK','CLOSED'].includes(event.status))return err('Разговор после фильма ещё не открыт',409)}
-      const context=await chatContext(db,event,user,profile);const recent=await db.from('jipitina_messages').select('role,text,mode').eq('user_id',user.id).order('created_at',{ascending:false}).limit(16);if(recent.error)throw recent.error
+
+      const attemptId=crypto.randomUUID()
+      const claimed=await db.rpc('claim_creature_chat',{p_user_id:user.id,p_event_id:event.id,p_request_id:requestId,p_mode:mode,p_text:message,p_attempt_id:attemptId})
+      if(claimed.error){
+        const detail=String(claimed.error.message||claimed.error)
+        if(detail.includes('CHAT_REQUEST_CONFLICT'))return err('это сообщение уже было отправлено с другим текстом',409)
+        if(detail.includes('CHAT_RATE_LIMIT'))return err('слишком много сообщений подряд. попробуйте чуть позже',429)
+        throw claimed.error
+      }
+      const claim=claimed.data||{}
+      if(claim.state==='completed'){
+        const completed=Array.isArray(claim.messages)?claim.messages:[]
+        const answer=completed.find((x:any)=>x?.role==='assistant')
+        if(answer?.text)return json({ok:true,reply:String(answer.text),mode:String(answer.mode||mode),requestId,replayed:true})
+      }
+      if(claim.state==='pending')return err('животина уже отвечает на это сообщение',409)
+      const claimedMessage=claim.message
+      if(claim.state!=='claimed'||!claimedMessage?.id)return err('не получилось поставить сообщение в очередь. попробуйте ещё раз',409)
+
+      const context=await chatContext(db,event,user,profile)
+      const recentRows=await db.from('jipitina_messages').select('role,text,mode,request_id').eq('user_id',user.id).order('created_at',{ascending:false}).limit(18)
+      if(recentRows.error)throw recentRows.error
+      const recent=(recentRows.data||[]).filter((x:any)=>String(x.request_id||'')!==requestId).slice(0,16).reverse().map((x:any)=>({role:x.role,text:x.text,mode:x.mode}))
       const draft=mode==='idea_coach'?{title:String(body.draftTitle||''),plot:String(body.draftPlot||'')}:undefined
-      const input=`КОНТЕКСТ JSON:\n${JSON.stringify({...context,draft,recent:(recent.data||[]).reverse()})}\n\nСООБЩЕНИЕ ПОЛЬЗОВАТЕЛЯ:\n${message}`
+      const input=`КОНТЕКСТ JSON:\n${JSON.stringify({...context,draft,recent})}\n\nСООБЩЕНИЕ ПОЛЬЗОВАТЕЛЯ:\n${message}`
       const chatSchema={type:'object',additionalProperties:false,properties:{reply:{type:'string',minLength:1,maxLength:2200}},required:['reply']}
       let chat:{reply:string}
       try{
-        chat=await structuredResponse<{reply:string}>({name:'dora_chat',schema:chatSchema,instructions:jipitinaInstructions(mode),input,maxOutputTokens:620,reasoningEffort:'none'})
+        chat=await structuredResponse<{reply:string}>({name:'zhivotina_chat',schema:chatSchema,instructions:jipitinaInstructions(mode),input,maxOutputTokens:620,reasoningEffort:'none'})
       }catch(e:any){
         const detail=String(e?.message||e||'unknown')
         console.error('jipitina model request failed',detail)
-        return err('чат временно недоступен. попробуйте ещё раз позже',503)
+        const failed=await db.from('jipitina_messages').update({delivery_status:'failed',lease_until:null}).eq('user_id',user.id).eq('request_id',requestId).eq('role','user').eq('attempt_id',attemptId)
+        if(failed.error)console.error('chat failure state update failed',failed.error)
+        return err('чат временно недоступен. попробуйте ещё раз',503)
       }
       const reply=String(chat.reply||'').trim().toLocaleLowerCase('ru-RU').replaceAll('·','.').replace(/\.+$/,'')
-      const userInsert=await db.from('jipitina_messages').insert({user_id:user.id,event_id:event.id,role:'user',mode,text:message,created_at:new Date().toISOString()}).select('id').single();if(userInsert.error)throw userInsert.error
-      const assistantInsert=await db.from('jipitina_messages').insert({user_id:user.id,event_id:event.id,role:'assistant',mode,text:reply,created_at:new Date().toISOString()});if(assistantInsert.error)throw assistantInsert.error
-      const task=processChatAftermath(db,user.id,message,reply,String(userInsert.data.id),event.id).catch((e:any)=>console.error('chat aftermath failed',e));const edge=(globalThis as any).EdgeRuntime;if(edge?.waitUntil)edge.waitUntil(task)
-      return json({ok:true,reply,mode})
+      const finished=await db.rpc('finish_creature_chat',{p_user_id:user.id,p_request_id:requestId,p_attempt_id:attemptId,p_reply:reply})
+      if(finished.error){
+        const detail=String(finished.error.message||finished.error)
+        if(detail.includes('CHAT_LEASE_LOST')){
+          const recovered=await db.from('jipitina_messages').select('text,mode').eq('user_id',user.id).eq('request_id',requestId).eq('role','assistant').maybeSingle()
+          if(!recovered.error&&recovered.data?.text)return json({ok:true,reply:String(recovered.data.text),mode:String(recovered.data.mode||mode),requestId,replayed:true})
+          return err('ответ уже обрабатывается в другой попытке. обновите чат',409)
+        }
+        throw finished.error
+      }
+      const task=processChatAftermath(db,user.id,message,reply,String(claimedMessage.id),event.id).catch((e:any)=>console.error('chat aftermath failed',e));const edge=(globalThis as any).EdgeRuntime;if(edge?.waitUntil)edge.waitUntil(task)
+      return json({ok:true,reply,mode,requestId})
     }
 
     if(action==='submit-idea'){

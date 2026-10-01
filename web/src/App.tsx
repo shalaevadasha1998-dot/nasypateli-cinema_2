@@ -9,7 +9,7 @@ import { initTelegram, telegramUser } from './lib/telegram'
 import { useVoiceInput } from './hooks/useVoiceInput'
 import { ArchivePage, BirthPage, CreatureProfilePage, DatingPage, NotificationPage, RulesPage } from './ProductPages'
 import { emptyProfile, stages } from './demo'
-import type { AdminParticipant, CinemaProfile, DemoState, EventStatus, PostFilmReaction, ScreenCreature, TasteVector } from './types'
+import type { AdminParticipant, CinemaProfile, DemoState, EventStatus, JipitinaMessage, PostFilmReaction, ScreenCreature, TasteVector } from './types'
 import './styles.css'
 
 function downloadText(name:string,text:string,type:string){const blob=new Blob([text],{type});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();window.setTimeout(()=>URL.revokeObjectURL(url),0)}
@@ -317,21 +317,99 @@ function Finalists({title,items}:{title:string;items:{name:string;sub:string}[]}
 
 function cleanAiText(text:string){return text.replace(/\*\*([^*]+)\*\*/g,'$1').replace(/__([^_]+)__/g,'$1').replace(/`([^`]+)`/g,'$1').replace(/^#{1,6}\s+/gm,'').replace(/^\s*[-*]\s+/gm,'— ')}
 function ZhivotinaPage(){
-  const {data,error}=useStateData();const [search]=useSearchParams();const [text,setText]=useState('');const [busy,setBusy]=useState(false);const [message,setMessage]=useState('');const [localMessages,setLocalMessages]=useState<any[]>([]);const threadEnd=useRef<HTMLDivElement|null>(null)
+  const {data,error}=useStateData()
+  const [search]=useSearchParams()
+  const [text,setText]=useState('')
+  const [busy,setBusy]=useState(false)
+  const [message,setMessage]=useState('')
+  const [localMessages,setLocalMessages]=useState<JipitinaMessage[]>([])
+  const threadEnd=useRef<HTMLDivElement|null>(null)
+  const composer=useRef<HTMLTextAreaElement|null>(null)
   const voice=useVoiceInput(transcript=>{setText(prev=>[prev.trim(),transcript.trim()].filter(Boolean).join(prev.trim()?' ':'').trim());setMessage('')})
+
   useEffect(()=>{if(data&&!busy)setLocalMessages(data.jipitinaMessages||[])},[data?.jipitinaMessages,busy])
   useEffect(()=>{window.requestAnimationFrame(()=>threadEnd.current?.scrollIntoView({behavior:'smooth',block:'end'}))},[localMessages.length,busy,voice.transcribing])
-  if(!data)return <Loading error={error}/>;const requested=search.get('mode')||'general';const mode=requested==='post_film'?'post_film':requested==='taste'?'taste':'general'
-  const send=async(raw=text,forcedMode=mode)=>{const messageText=raw.trim();if(!messageText||busy||voice.recording||voice.transcribing)return;const optimistic={id:`local-${Date.now()}`,role:'user',text:messageText,mode:forcedMode,createdAt:new Date().toISOString()};setLocalMessages(prev=>[...prev,optimistic]);setText('');setBusy(true);setMessage('');try{const r:any=await callApi('jipitina-chat',{slug:data.event.slug,mode:forcedMode,message:messageText});setLocalMessages(prev=>[...prev,{id:`local-a-${Date.now()}`,role:'assistant',text:cleanAiText(String(r.reply||'')),mode:forcedMode,createdAt:new Date().toISOString()}])}catch(e:any){setLocalMessages(prev=>prev.filter(m=>m.id!==optimistic.id));setText(messageText);setMessage(e.message||'чат временно недоступен. попробуйте ещё раз')}finally{setBusy(false)}}
+  useEffect(()=>{
+    const el=composer.current
+    if(!el)return
+    el.style.height='0px'
+    el.style.height=Math.min(120,Math.max(50,el.scrollHeight))+'px'
+  },[text])
+
+  if(!data)return <Loading error={error}/>
+  const requested=search.get('mode')||'general'
+  const mode=requested==='post_film'?'post_film':requested==='taste'?'taste':'general'
+  const recover=async(requestId:string)=>{
+    for(const delay of [0,700,1400]){
+      if(delay)await new Promise(resolve=>window.setTimeout(resolve,delay))
+      try{
+        const fresh=await callApi<DemoState>('bootstrap',{fresh:true})
+        const remote=fresh.jipitinaMessages||[]
+        if(remote.some(m=>m.role==='assistant'&&m.requestId===requestId))return remote
+      }catch{}
+    }
+    return null
+  }
+  const send=async(raw=text,forcedMode=mode,existingRequestId='')=>{
+    const messageText=raw.trim()
+    if(!messageText||busy||voice.recording||voice.transcribing)return
+    const requestId=existingRequestId||crypto.randomUUID()
+    const optimistic:JipitinaMessage={id:`local-u-${requestId}`,role:'user',text:messageText,mode:forcedMode,requestId,deliveryStatus:'pending',createdAt:new Date().toISOString()}
+    setLocalMessages(prev=>{
+      const exists=prev.some(m=>m.role==='user'&&m.requestId===requestId)
+      return exists?prev.map(m=>m.role==='user'&&m.requestId===requestId?{...m,deliveryStatus:'pending'}:m):[...prev,optimistic]
+    })
+    if(!existingRequestId)setText('')
+    setBusy(true);setMessage('')
+    try{
+      const r:any=await callApi('jipitina-chat',{slug:data.event.slug,mode:forcedMode,message:messageText,requestId})
+      const reply=cleanAiText(String(r.reply||''))
+      setLocalMessages(prev=>{
+        const marked=prev.map(m=>m.role==='user'&&m.requestId===requestId?{...m,deliveryStatus:'completed' as const}:m)
+        if(marked.some(m=>m.role==='assistant'&&m.requestId===requestId))return marked
+        return [...marked,{id:`local-a-${requestId}`,role:'assistant',text:reply,mode:forcedMode,requestId,deliveryStatus:'completed',createdAt:new Date().toISOString()}]
+      })
+    }catch(e:any){
+      const errorText=String(e?.message||'чат временно недоступен. попробуйте ещё раз')
+      const recovered=await recover(requestId)
+      if(recovered){
+        setLocalMessages(recovered)
+      }else if(errorText.includes('уже отвечает')){
+        setLocalMessages(prev=>prev.map(m=>m.role==='user'&&m.requestId===requestId?{...m,deliveryStatus:'pending'}:m))
+        setMessage('ответ ещё обрабатывается. можно проверить это сообщение чуть позже')
+      }else{
+        setLocalMessages(prev=>prev.map(m=>m.role==='user'&&m.requestId===requestId?{...m,deliveryStatus:'failed'}:m))
+        setMessage(errorText)
+      }
+    }finally{
+      setBusy(false)
+      window.requestAnimationFrame(()=>composer.current?.focus({preventScroll:true}))
+    }
+  }
+
   const suggestions=mode==='post_film'?['что у меня осталось после фильма?','где я вообще с ним разминулась?','давай просто обсудим']:mode==='taste'?['что ты уже поняла про мой вкус?','где я сама себе противоречу?','что мне попробовать непривычного?']:['у меня странный день','поговорим?','что посмотреть сегодня?']
   const creatureName=data.creature?.name||'животина'
   const voiceError=voice.error||message
   return <div className="page chat-page">
     <div className="chat-head"><div className="chat-creature-identity"><div className="chat-creature-portrait" aria-hidden><img src={`${import.meta.env.BASE_URL}assets/rabbit-main-front.webp`} alt="" draggable={false}/></div><div><div className="eyebrow">ваша животина</div><h2>{creatureName}</h2></div></div><p className="muted">с ней можно говорить о чём угодно. фильмы — её способ иногда попасть ровно в нужное состояние</p></div>
-    <div className="chips chat-suggestions">{suggestions.map(s=><button type="button" disabled={busy||voice.recording||voice.transcribing} key={s} onClick={()=>send(s,mode)}>{s}</button>)}</div>
+    {localMessages.length<2&&<div className="chips chat-suggestions">{suggestions.map(s=><button type="button" disabled={busy||voice.recording||voice.transcribing} key={s} onClick={()=>send(s,mode)}>{s}</button>)}</div>}
     {voiceError&&<div className="form-error chat-error">{voiceError}</div>}
-    <div className="chat-thread">{localMessages.length===0&&<div className="zhivotina-reply">ну, рассказывай. что сегодня происходит?</div>}{localMessages.map(m=><div key={m.id} className={`chat-msg ${m.role}`}>{m.role==='assistant'?cleanAiText(m.text):m.text}</div>)}{busy&&<div className="chat-thinking"><div className="chat-msg assistant typing"><i/><i/><i/></div><span>{creatureName} отвечает…</span></div>}{voice.transcribing&&<div className="chat-thinking"><span>расшифровываю голос…</span></div>}<div ref={threadEnd}/></div>
-    {typeof document!=='undefined'&&createPortal(<div className="chat-compose chat-compose-portal"><button type="button" className={voice.recording?'mic recording':'mic'} disabled={busy||voice.transcribing} onClick={()=>void voice.toggle()} aria-label={voice.recording?'остановить запись':'записать голос'} title={voice.recording?'остановить запись':'голос'}>{voice.transcribing?<span className="mic-progress">…</span>:<svg className="mic-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="3" width="8" height="12" rx="4"/><path d="M5.5 11.5v.5a6.5 6.5 0 0 0 13 0v-.5M12 18.5V22M8.5 22h7"/></svg>}</button><textarea value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();void send()}}} placeholder={voice.recording?'говори…':voice.transcribing?'расшифровываю…':busy?`${creatureName} отвечает…`:'сообщение'}/><button className="send" disabled={busy||voice.recording||voice.transcribing||!text.trim()} onClick={()=>send()}>{busy?'…':'→'}</button></div>,document.body)}
+    <div className="chat-thread">
+      {localMessages.length===0&&<div className="zhivotina-reply">ну, рассказывай. что сегодня происходит?</div>}
+      {localMessages.map(m=><div key={m.id} className={`chat-message-group ${m.role}`}>
+        <div className={`chat-msg ${m.role} ${m.deliveryStatus==='failed'?'failed':''}`}>{m.role==='assistant'?cleanAiText(m.text):m.text}</div>
+        {m.role==='user'&&m.deliveryStatus==='failed'&&m.requestId&&<button type="button" className="chat-retry" disabled={busy} onClick={()=>void send(m.text,m.mode,m.requestId)}>повторить</button>}
+        {m.role==='user'&&m.deliveryStatus==='pending'&&!busy&&m.requestId&&<button type="button" className="chat-retry pending" onClick={()=>void send(m.text,m.mode,m.requestId)}>проверить ответ</button>}
+      </div>)}
+      {busy&&<div className="chat-thinking"><div className="chat-msg assistant typing"><i/><i/><i/></div><span>{creatureName} отвечает…</span></div>}
+      {voice.transcribing&&<div className="chat-thinking"><span>расшифровываю голос…</span></div>}
+      <div ref={threadEnd}/>
+    </div>
+    {typeof document!=='undefined'&&createPortal(<div className="chat-compose chat-compose-portal">
+      <button type="button" className={voice.recording?'mic recording':'mic'} disabled={busy||voice.transcribing} onClick={()=>void voice.toggle()} aria-label={voice.recording?'остановить запись':'записать голос'} title={voice.recording?'остановить запись':'голос'}>{voice.transcribing?<span className="mic-progress">…</span>:<svg className="mic-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="3" width="8" height="12" rx="4"/><path d="M5.5 11.5v.5a6.5 6.5 0 0 0 13 0v-.5M12 18.5V22M8.5 22h7"/></svg>}</button>
+      <textarea ref={composer} value={text} inputMode="text" enterKeyHint="enter" onChange={e=>setText(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing&&!('ontouchstart' in window)){e.preventDefault();void send()}}} placeholder={voice.recording?'говори…':voice.transcribing?'расшифровываю…':busy?`${creatureName} отвечает…`:'сообщение'}/>
+      <button className="send" disabled={busy||voice.recording||voice.transcribing||!text.trim()} onPointerDown={e=>e.preventDefault()} onClick={()=>void send()} aria-label="отправить">{busy?'…':'→'}</button>
+    </div>,document.body)}
   </div>
 }
 
