@@ -120,6 +120,12 @@ function demoAction(action:string,payload:Record<string,unknown>){
       const next=mutate(s=>({...s,creature:{...s.creature,born:true,bornAt:new Date().toISOString(),name:String(payload.name||'Животина'),stage:'stage_0',crumbs:s.creature.crumbs,growthProgress:s.creature.growthProgress||0,feedingCost:s.creature.feedingCost||1,canFeedToday:s.creature.canFeedToday!==false}}))
       return {ok:true,alreadyBorn:false,creature:next.creature}
     }
+    case 'rename-creature': {
+      const clean=String(payload.name||'').trim().replace(/\s+/g,' ').slice(0,32)
+      if(clean.length<2)throw new Error('имя должно быть хотя бы из двух символов')
+      const next=mutate(v=>({...v,creature:{...v.creature,name:clean}}))
+      return {ok:true,creature:next.creature}
+    }
     case 'creature-tasks': {
       const s=loadDemo();const completed=s.creatureTaskCompletions?.first_test_task
       return {ok:true,tasks:[{id:'first_test_task',title:'первая крошка',description:'тестовое задание для первого вертикального среза Животины',rewardCrumbs:3,completionType:'manual',status:completed?'completed':'available',completedAt:completed||undefined}]}
@@ -158,12 +164,20 @@ function demoAction(action:string,payload:Record<string,unknown>){
     case 'submit-thought': return mutate(s=>({...s,thought:String(payload.text||'')}))
     case 'submit-review': return mutate(s=>({...s,review:{rating:Number(payload.rating),sentence:String(payload.sentence||'')}}))
     case 'submit-feedback': return mutate(s=>({...s,feedback:payload.feedback as DemoState['feedback']}))
-    case 'jipitina-chat': return mutate(s=>{
-      const text=String(payload.message||'');const mode=String(payload.mode||'general');const now=new Date().toISOString();
-      const userMsg:JipitinaMessage={id:`u-${Date.now()}`,role:'user',text,mode,createdAt:now}
-      const assistant:JipitinaMessage={id:`a-${Date.now()}`,role:'assistant',text:demoReply(text,mode),mode,createdAt:new Date().toISOString()}
-      return {...s,jipitinaMessages:[...(s.jipitinaMessages||[]),userMsg,assistant].slice(-30)}
-    })
+    case 'jipitina-chat': {
+      const text=String(payload.message||'')
+      const mode=String(payload.mode||'general')
+      const requestId=String(payload.requestId||crypto.randomUUID())
+      const current=loadDemo()
+      const existing=(current.jipitinaMessages||[]).find(x=>x.role==='assistant'&&x.requestId===requestId)
+      if(existing)return {ok:true,reply:existing.text,mode,requestId,replayed:true}
+      const reply=demoReply(text,mode)
+      const now=new Date().toISOString()
+      const userMsg:JipitinaMessage={id:`u-${requestId}`,role:'user',text,mode,requestId,deliveryStatus:'completed',createdAt:now}
+      const assistant:JipitinaMessage={id:`a-${requestId}`,role:'assistant',text:reply,mode,requestId,deliveryStatus:'completed',createdAt:new Date().toISOString()}
+      mutate(v=>({...v,jipitinaMessages:[...(v.jipitinaMessages||[]),userMsg,assistant].slice(-30)}))
+      return {ok:true,reply,mode,requestId}
+    }
     case 'admin-fix-registration': return mutate(s=>{const fix=String(payload.fix||'');if(fix==='mark_attended'&&['paid','no_show'].includes(s.registration))return {...s,registration:'attended'};if(fix==='undo_attended'&&s.registration==='attended')return {...s,registration:s.event.status==='CLOSED'?'no_show':'paid'};if(fix==='release_hold'&&s.registration==='reserved')return {...s,registration:'cancelled',reservationExpiresAt:undefined,queuePosition:undefined};throw new Error('это действие не подходит текущему статусу')})
     case 'admin-stage': return mutate(s=>applyStageData(s,payload.status as EventStatus))
     case 'admin-set-mechanic': return mutate(s=>({...s,event:{...s.event,nonexistentFilmEnabled:!!payload.enabled}}))
