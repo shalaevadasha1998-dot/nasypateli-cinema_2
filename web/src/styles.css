@@ -2806,7 +2806,7 @@ body{text-transform:lowercase}
 }
 
 
-/* v0.10.4 — dora composer + creature asset hardening */
+/* v0.10.4 — creature composer + asset hardening */
 .chat-compose-portal{
   display:grid!important;
   grid-template-columns:50px minmax(0,1fr) 50px!important;
@@ -2891,4 +2891,34 @@ body{margin:0!important}
   .loading-page{padding:14px!important}
   .loading-stage{gap:13px!important}
   .loading-rabbit{height:min(235px,29dvh)!important}
+}
+
+
+/* v0.10.6 — durable creature chat */
+.chat-message-group{
+  width:100%;
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+}
+.chat-message-group.user{align-items:flex-end}
+.chat-message-group.user .chat-msg{align-self:flex-end}
+.chat-message-group.assistant .chat-msg{align-self:flex-start}
+.chat-msg.failed{opacity:.66}
+.chat-retry{
+  margin:5px 2px 2px;
+  padding:4px 0;
+  border:0;
+  background:transparent;
+  color:#9fa894;
+  font:700 11px/1.2 inherit;
+  text-decoration:underline;
+  text-underline-offset:3px;
+  cursor:pointer;
+}
+.chat-retry.pending{color:#777a70}
+.chat-retry:disabled{opacity:.42;cursor:default}
+.chat-compose-portal textarea{
+  overflow-y:auto!important;
+  overscroll-behavior:contain;
 }
