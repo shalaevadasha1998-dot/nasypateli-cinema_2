@@ -3322,3 +3322,28 @@ html.chat-keyboard-open .chat-compose-inline{
 .rabbit-loop img{
   background:transparent!important;
 }
+
+
+/* v0.12.3 — loading copy gets one clean slot */
+.loading-words{
+  height:26px!important;
+  line-height:26px!important;
+  overflow:hidden!important;
+}
+.loading-words span{
+  inset:0!important;
+  width:100%!important;
+  line-height:26px!important;
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  animation:loading-copy-clean 4.5s linear infinite!important;
+}
+.loading-words span:nth-child(1){animation-delay:0s!important}
+.loading-words span:nth-child(2){animation-delay:1.5s!important}
+.loading-words span:nth-child(3){animation-delay:3s!important}
+@keyframes loading-copy-clean{
+  0%,4%{opacity:0;transform:translateY(7px)}
+  10%,27%{opacity:1;transform:none}
+  31%,100%{opacity:0;transform:translateY(-7px)}
+}
