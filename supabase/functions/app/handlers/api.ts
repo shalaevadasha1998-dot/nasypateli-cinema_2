@@ -1781,7 +1781,7 @@ export async function handleApi(req:Request){
           const projector=await setProjectorState(db,event,'movie_found',round.id,null,{found:false,message:'кажется, это пока не сняли.'})
           return json({ok:true,found:false,sourceSearch,projector})
         }
-        const fragment={label:'первый фрагмент',sourcePlatform:preferred.sourcePlatform,videoId:preferred.videoId||'',sourceUrl:preferred.sourceUrl||'',startSec:Number(preferred.startSec||0),endSec:preferred.endSec==null?null:Number(preferred.endSec)}
+        const fragment={label:'первый фрагмент',sourcePlatform:preferred.sourcePlatform,videoId:preferred.videoId||'',sourceUrl:preferred.sourceUrl||'',startSec:Number(preferred.startSec||0),endSec:preferred.endSec==null?Number(preferred.startSec||0)+90:Number(preferred.endSec)}
         const pack=await db.from('film_packages').insert({
           event_id:event.id,movie_candidate_id:chosen.id,title_snapshot:chosen.title,fragments:[fragment],status:'draft',
           origin_submission_id:pitch.data.id,match_data:{analysis:ai.analysis,alternatives:ranked.slice(0,5).map((x:any)=>({id:x.id,title:x.title,year:x.year,similarityScore:x.similarity_score,reason:x.reason}))}
