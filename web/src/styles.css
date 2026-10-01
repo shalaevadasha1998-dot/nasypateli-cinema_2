@@ -3261,3 +3261,18 @@ html.chat-keyboard-open .chat-compose-inline{
   opacity:.38;
   pointer-events:none;
 }
+
+
+/* v0.11.2 — keep the creature fully visible in compact chat avatar */
+.chat-creature-portrait{
+  overflow:hidden!important;
+}
+.chat-creature-portrait img{
+  width:100%!important;
+  height:100%!important;
+  object-fit:contain!important;
+  object-position:center!important;
+  transform:none!important;
+  padding:4px!important;
+  box-sizing:border-box!important;
+}
