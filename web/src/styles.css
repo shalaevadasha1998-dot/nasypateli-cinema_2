@@ -3232,3 +3232,32 @@ html.chat-keyboard-open .chat-compose-inline{
 .chat-thinking-inline span{
   white-space:nowrap;
 }
+
+
+/* v0.11.1 — simple dating connection action */
+.match-row{
+  gap:14px!important;
+}
+.match-row>div:first-child{
+  min-width:0;
+  flex:1 1 auto;
+}
+.match-tg{
+  flex:0 0 auto;
+  min-width:72px;
+  min-height:44px;
+  padding:0 16px;
+  border:1px solid #3a3d35;
+  border-radius:14px;
+  display:grid;
+  place-items:center;
+  color:#c4d5ad;
+  background:#141612;
+  font:800 15px/1 inherit;
+  text-decoration:none;
+  text-transform:lowercase;
+}
+.match-tg.unavailable{
+  opacity:.38;
+  pointer-events:none;
+}
