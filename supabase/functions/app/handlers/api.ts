@@ -844,7 +844,16 @@ export async function handleApi(req:Request){
         filmAdminReviews(db,event.id),
         projectorPublicState(db,event)
       ])
-      return json({...state,adminParticipants,filmPackages,reviewQueue,projector,movieCatalog:(movieCatalog.data||[]).map((x:any)=>({
+      const currentRoundId=state.show?.currentRound?.id
+      const pitchRows=currentRoundId
+        ? await db.from('invented_films').select('id,user_id,animal_name_snapshot,title,description,created_at,updated_at').eq('event_id',event.id).eq('round_id',currentRoundId).order('created_at')
+        : {data:[],error:null} as any
+      if(pitchRows.error)throw pitchRows.error
+      const inventedFilms=(pitchRows.data||[]).map((x:any)=>({
+        id:String(x.id),userId:String(x.user_id),animalName:String(x.animal_name_snapshot),
+        title:String(x.title),description:String(x.description),createdAt:x.created_at,updatedAt:x.updated_at
+      }))
+      return json({...state,adminParticipants,filmPackages,reviewQueue,projector,inventedFilms,movieCatalog:(movieCatalog.data||[]).map((x:any)=>({
         id:x.id,title:x.title,originalTitle:x.original_title||undefined,year:x.year||undefined,runtimeMin:x.runtime_min||undefined,
         genre:x.genre||undefined,country:x.country||undefined,reason:x.reason||undefined,enabledForEvent:x.enabled_for_event!==false,
         trailerStatus:x.trailer_status||'unchecked',clipStatus:x.clip_status||'unchecked',sourceType:x.source_type||undefined,
