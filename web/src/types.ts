@@ -194,6 +194,7 @@ export type DatingMatch = {
   userId:string
   kind:'friend'|'cinema'|'romantic'
   displayName:string
+  telegramUsername?:string
   creatureName:string
   createdAt:string
   sharedFilms?:string[]
