@@ -452,7 +452,7 @@ async function reviewQuestionForStep(db:any,assignment:any,step:number){
 }
 
 async function buildReviewDraft(db:any,assignment:any,answers:any){
-  const pack=await db.from('film_packages').select('title_snapshot').eq('id',assignment.film_package_id).single()
+  const pack=await db.from('film_packages').select('title_snapshot,origin_submission_id,match_data').eq('id',assignment.film_package_id).single()
   if(pack.error)throw pack.error
   const [impressions,preds]=await Promise.all([
     db.from('film_impressions').select('word,normalized_word').eq('event_id',assignment.event_id).eq('round_id',assignment.round_id),
@@ -471,8 +471,15 @@ async function buildReviewDraft(db:any,assignment:any,answers:any){
     const q:any=questionMap.get(String(x.question_id))||{}
     return {position:Number(q.position||0),prompt:String(q.prompt||''),answer:x.answer,isCorrect:x.is_correct===true,correctAnswer:q.correct_answer,revealText:String(q.reveal_text||'')}
   }).sort((a:any,b:any)=>a.position-b.position)
+  let inventedIdea:any=undefined
+  if(pack.data.origin_submission_id){
+    const pitch=await db.from('invented_films').select('title,description,animal_name_snapshot').eq('id',pack.data.origin_submission_id).maybeSingle()
+    if(pitch.error)throw pitch.error
+    if(pitch.data)inventedIdea={title:pitch.data.title,description:pitch.data.description,animalName:pitch.data.animal_name_snapshot}
+  }
   const deterministic={
     animalName:String(assignment.animal_name_snapshot),filmTitle:String(pack.data.title_snapshot),
+    inventedIdea,matchReason:String(pack.data.match_data?.alternatives?.[0]?.reason||''),
     beforeWord:String(assignment.before_word||''),afterWord:String(answers.after_word||''),
     crumbs:Math.max(1,Math.min(5,Number(answers.crumbs)||1)),whatStayed:String(answers.memorable||''),
     worked:String(answers.worked||''),didntWork:String(answers.didnt_work||''),recommendTo:String(answers.recommend||''),
@@ -485,7 +492,7 @@ async function buildReviewDraft(db:any,assignment:any,answers:any){
         userReview:{type:'string'},animalTake:{type:'string'},publishText:{type:'string'}
       },required:['userReview','animalTake','publishText']},
       instructions:'Собери короткую русскую рецензию для киноклуба. Не выдумывай факты фильма. Не спорь со вкусом человека. Сохраняй его лексику. Публичная версия без спойлеров. userReview — 2–4 предложения от лица пользователя. animalTake — 1–2 предложения от животинки. publishText — компактная готовая карточка без человеческого имени, только имя животинки.',
-      input:JSON.stringify({filmTitle:deterministic.filmTitle,beforeWord:deterministic.beforeWord,answers,collectiveWords,predictions:predictionContext,correctCount:deterministic.correctCount,totalQuestions:deterministic.totalQuestions}),
+      input:JSON.stringify({filmTitle:deterministic.filmTitle,inventedIdea:deterministic.inventedIdea,matchReason:deterministic.matchReason,answers,predictions:predictionContext,correctCount:deterministic.correctCount,totalQuestions:deterministic.totalQuestions}),
       maxOutputTokens:900,
       reasoningEffort:'minimal'
     })
