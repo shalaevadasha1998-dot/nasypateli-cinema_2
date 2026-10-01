@@ -3103,3 +3103,40 @@ html.chat-keyboard-open .chat-page{
 #root .birth-brand{
   text-transform:uppercase!important;
 }
+
+
+/* v0.10.9 — ios chat jump fix + aligned creature stage */
+html.chat-keyboard-open .chat-compose-portal{
+  bottom:8px!important;
+}
+html.chat-keyboard-open .chat-thread{
+  padding-bottom:96px!important;
+  scroll-padding-bottom:96px!important;
+}
+html.chat-keyboard-open .chat-head{
+  padding-top:4px!important;
+  padding-bottom:8px!important;
+}
+.home-creature-static-art,
+.creature-static-art{
+  width:100%!important;
+  margin-left:0!important;
+  margin-right:0!important;
+  min-height:410px!important;
+  border:1px solid rgba(238,233,223,.07)!important;
+  border-radius:20px!important;
+  overflow:hidden!important;
+  place-items:center!important;
+}
+.home-creature-static-art:before,
+.creature-static-art:before{
+  inset:12px!important;
+  border-radius:14px!important;
+}
+.home-creature-static-art img,
+.creature-static-art img{
+  display:block!important;
+  margin:auto!important;
+  transform:translateY(-6px)!important;
+  transform-origin:center!important;
+}
