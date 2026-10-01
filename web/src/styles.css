@@ -2964,9 +2964,9 @@ html.chat-keyboard-open .chat-page{
   mask-image:none!important;
 }
 .rabbit-static .rabbit-art{transform:none!important}
-.rabbit-static img{background:#000}
+.rabbit-static img{background:transparent}
 .loading-rabbit,.telegram-gate-rabbit{
-  background:#000!important;
+  background:transparent!important;
 }
 
 
@@ -3083,7 +3083,7 @@ html.chat-keyboard-open .chat-page{
   filter:drop-shadow(0 24px 34px rgba(0,0,0,.52))!important;
 }
 .chat-creature-portrait{
-  background:#000!important;
+  background:transparent!important;
   border:1px solid rgba(238,233,223,.10)!important;
 }
 .chat-creature-portrait img{
@@ -3091,7 +3091,7 @@ html.chat-keyboard-open .chat-page{
   object-position:50% 34%!important;
   transform:scale(1.55)!important;
   transform-origin:50% 34%!important;
-  background:#000!important;
+  background:transparent!important;
 }
 
 #root .brand,
@@ -3311,15 +3311,14 @@ html.chat-keyboard-open .chat-compose-inline{
 }
 
 
-/* v0.12.1 — hide legacy black image rectangles until transparent masters replace them */
-.dating-rabbit{
-  background:#000!important;
-}
+/* v0.12.2 — final transparent creature masters */
 .dating-rabbit .rabbit,
 .dating-rabbit .rabbit-static,
-.dating-rabbit .rabbit-static img{
-  background:#000!important;
-}
-.onboarding-gender .gender-rabbit-stage{
-  background:#000!important;
+.dating-rabbit .rabbit-static img,
+.onboarding-gender .gender-rabbit-stage,
+.rabbit-main,
+.rabbit-loop,
+.rabbit-main img,
+.rabbit-loop img{
+  background:transparent!important;
 }
