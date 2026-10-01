@@ -595,6 +595,7 @@ async function notificationRelevance(db:any,n:any){
       if(!assignment.data)return {ok:false,reason:'film assignment missing'}
       const status=String(assignment.data.status||'')
       if(code==='overdue')return status==='overdue'?{ok:true,reason:''}:{ok:false,reason:'film assignment no longer overdue'}
+      if(code==='due')return !['submitted','approved','published'].includes(status)?{ok:true,reason:''}:{ok:false,reason:'review already submitted'}
       if(code.startsWith('changes_'))return status==='changes_requested'?{ok:true,reason:''}:{ok:false,reason:'review changes no longer requested'}
       if(code==='3d'||code==='24h')return ['assigned','watching'].includes(status)?{ok:true,reason:''}:{ok:false,reason:'film already watched or review started'}
       return ['assigned','watching','overdue'].includes(status)?{ok:true,reason:''}:{ok:false,reason:'film assignment already progressed'}
