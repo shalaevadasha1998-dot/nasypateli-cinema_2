@@ -109,11 +109,26 @@ export async function buildShowState(db:any,event:any){
     if(votesR.error)throw votesR.error
     if(roundR.data){
       const rr:any=roundR.data
+      const [pitchCountR,selectedPitchR]=await Promise.all([
+        db.from('invented_films').select('*',{count:'exact',head:true}).eq('round_id',rr.id),
+        rr.selected_submission_id
+          ? db.from('invented_films').select('id,animal_name_snapshot,title,description').eq('id',rr.selected_submission_id).eq('round_id',rr.id).maybeSingle()
+          : Promise.resolve({data:null,error:null})
+      ])
+      if(pitchCountR.error)throw pitchCountR.error
+      if((selectedPitchR as any).error)throw (selectedPitchR as any).error
+      const selectedPitch:any=(selectedPitchR as any).data
       round={
         id:rr.id,
         roundNo:Number(rr.round_no||0),
         blockId:rr.block_id,
         status:rr.status,
+        flowStatus:String(rr.flow_status||'draft'),
+        selectedSubmissionId:rr.selected_submission_id||undefined,
+        selectedPitch:selectedPitch?{id:String(selectedPitch.id),animalName:String(selectedPitch.animal_name_snapshot),title:String(selectedPitch.title),description:String(selectedPitch.description)}:undefined,
+        pitchCount:Number(pitchCountR.count||0),
+        questionPosition:Number(rr.question_position||0),
+        questionTarget:Number(rr.question_target||3),
         movie:moviePublic(rr.movie_candidates),
         question:rr.question||undefined,
         voteState:rr.vote_state,
