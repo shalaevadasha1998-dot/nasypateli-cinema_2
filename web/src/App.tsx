@@ -42,10 +42,8 @@ function RabbitMain({className=''}:{className?:string}){
 }
 
 function RabbitLoop({kind,className=''}:{kind:'boy'|'girl'|'splash';className?:string}){
-  const [failed,setFailed]=useState(false)
-  const file=kind==='boy'?'rabbit-boy-animated.webp':kind==='girl'?'rabbit-girl-animated.webp':'rabbit-splash-back-animated.webp'
   return <div className={`rabbit-loop rabbit-loop-${kind} ${className}`.trim()} aria-hidden>
-    {!failed?<img src={`${import.meta.env.BASE_URL}assets/${file}`} alt="" draggable={false} onError={()=>setFailed(true)}/>:<img src={`${import.meta.env.BASE_URL}assets/rabbit-main-front.webp`} alt="" draggable={false}/>}
+    <img src={`${import.meta.env.BASE_URL}assets/rabbit-main-front.webp`} alt="" draggable={false}/>
   </div>
 }
 
@@ -335,6 +333,36 @@ function ZhivotinaPage(){
     el.style.height='0px'
     el.style.height=Math.min(120,Math.max(50,el.scrollHeight))+'px'
   },[text])
+  useEffect(()=>{
+    const vv=window.visualViewport
+    if(!vv)return
+    const root=document.documentElement
+    let baseline=Math.max(window.innerHeight,vv.height)
+    let keyboardOpen=false
+    let orientationTimer=0
+    const sync=()=>{
+      baseline=Math.max(baseline,window.innerHeight,vv.height)
+      const inset=Math.max(0,Math.round(baseline-vv.height-vv.offsetTop),Math.round(window.innerHeight-vv.height-vv.offsetTop))
+      const open=inset>90
+      root.style.setProperty('--chat-keyboard-inset',`${open?inset:0}px`)
+      root.classList.toggle('chat-keyboard-open',open)
+      if(open&&!keyboardOpen)window.requestAnimationFrame(()=>threadEnd.current?.scrollIntoView({block:'end'}))
+      keyboardOpen=open
+    }
+    const resetOrientation=()=>{window.clearTimeout(orientationTimer);orientationTimer=window.setTimeout(()=>{baseline=Math.max(window.innerHeight,vv.height);sync()},250)}
+    sync()
+    vv.addEventListener('resize',sync)
+    vv.addEventListener('scroll',sync)
+    window.addEventListener('orientationchange',resetOrientation)
+    return()=>{
+      vv.removeEventListener('resize',sync)
+      vv.removeEventListener('scroll',sync)
+      window.removeEventListener('orientationchange',resetOrientation)
+      window.clearTimeout(orientationTimer)
+      root.classList.remove('chat-keyboard-open')
+      root.style.removeProperty('--chat-keyboard-inset')
+    }
+  },[])
 
   if(!data)return <Loading error={error}/>
   const requested=search.get('mode')||'general'
@@ -407,7 +435,7 @@ function ZhivotinaPage(){
     </div>
     {typeof document!=='undefined'&&createPortal(<div className="chat-compose chat-compose-portal">
       <button type="button" className={voice.recording?'mic recording':'mic'} disabled={busy||voice.transcribing} onClick={()=>void voice.toggle()} aria-label={voice.recording?'остановить запись':'записать голос'} title={voice.recording?'остановить запись':'голос'}>{voice.transcribing?<span className="mic-progress">…</span>:<svg className="mic-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="3" width="8" height="12" rx="4"/><path d="M5.5 11.5v.5a6.5 6.5 0 0 0 13 0v-.5M12 18.5V22M8.5 22h7"/></svg>}</button>
-      <textarea ref={composer} value={text} inputMode="text" enterKeyHint="enter" onChange={e=>setText(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing&&!('ontouchstart' in window)){e.preventDefault();void send()}}} placeholder={voice.recording?'говори…':voice.transcribing?'расшифровываю…':busy?`${creatureName} отвечает…`:'сообщение'}/>
+      <textarea ref={composer} value={text} inputMode="text" enterKeyHint="enter" onFocus={()=>window.requestAnimationFrame(()=>threadEnd.current?.scrollIntoView({block:'end'}))} onChange={e=>setText(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing&&!('ontouchstart' in window)){e.preventDefault();void send()}}} placeholder={voice.recording?'говори…':voice.transcribing?'расшифровываю…':busy?`${creatureName} отвечает…`:'сообщение'}/>
       <button className="send" disabled={busy||voice.recording||voice.transcribing||!text.trim()} onPointerDown={e=>e.preventDefault()} onClick={()=>void send()} aria-label="отправить">{busy?'…':'→'}</button>
     </div>,document.body)}
   </div>
