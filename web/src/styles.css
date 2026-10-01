@@ -2760,3 +2760,47 @@ body{text-transform:lowercase}
   from{box-shadow:0 0 0 0 rgba(239,118,95,.08)}
   to{box-shadow:0 0 0 7px rgba(239,118,95,.08)}
 }
+
+
+/* ios/telegram media framing + reliable tap/loading states */
+.home-creature-static-art,.creature-static-art,.birth-simple-art,.chat-creature-portrait{
+  background:#000;
+  overflow:hidden;
+}
+.home-creature-static-art img,.creature-static-art img,.birth-simple-art img,.chat-creature-portrait img{
+  display:block;
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  object-position:center;
+  background:#000;
+}
+.dating-settings-button{
+  min-width:92px;
+  min-height:44px;
+  padding:10px 14px;
+  border:1px solid #3a3c34;
+  border-radius:10px;
+  background:#11120f;
+  color:var(--paper);
+  font:700 13px/1 inherit;
+  cursor:pointer;
+  touch-action:manipulation;
+  position:relative;
+  z-index:3;
+}
+.dating-settings-button:active{transform:scale(.98)}
+.dating-settings-button:disabled{opacity:.45;cursor:not-allowed}
+.chat-thinking{
+  display:flex;
+  align-items:center;
+  gap:9px;
+  min-height:38px;
+  color:#777a70;
+  font-size:12px;
+  letter-spacing:.01em;
+}
+.chat-thinking .chat-msg{margin:0}
+.chat-compose .mic.recording{
+  box-shadow:0 0 0 4px rgba(207,85,55,.14);
+}
