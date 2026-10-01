@@ -1421,6 +1421,32 @@ export async function handleApi(req:Request){
       return json({ok:true,answer:vote.data.answer,crumbs})
     }
 
+    if(action==='invented-film-submit'){
+      const reg=await db.from('registrations').select('status').eq('event_id',event.id).eq('user_id',user.id).maybeSingle()
+      if(reg.error)throw reg.error
+      if(reg.data?.status!=='attended')return err('эта механика только для тех, кто уже отметился в зале',403)
+      const runtime=await db.from('event_runtime').select('current_round_id').eq('event_id',event.id).maybeSingle()
+      if(runtime.error)throw runtime.error
+      const roundId=String(runtime.data?.current_round_id||'')
+      if(!isUuid(roundId))return err('сейчас нет активного раунда',409)
+      const round=await db.from('event_rounds').select('id,status,flow_status').eq('id',roundId).eq('event_id',event.id).maybeSingle()
+      if(round.error)throw round.error
+      if(!round.data||round.data.status!=='active'||round.data.flow_status!=='collecting_films')return err('животина сейчас не собирает фильмы',409)
+      const title=String(body.title||'').trim().replace(/\s+/g,' ').slice(0,120)
+      const description=String(body.description||'').trim().replace(/\s+/g,' ').slice(0,800)
+      if(title.length<2)return err('придумайте название фильма',422)
+      if(description.length<8)return err('добавьте короткое описание фильма',422)
+      const creature=await db.from('creatures').select('name').eq('user_id',user.id).maybeSingle()
+      if(creature.error)throw creature.error
+      if(!creature.data)return err('сначала разбудите животину',409)
+      const saved=await db.from('invented_films').upsert({
+        event_id:event.id,round_id:roundId,user_id:user.id,animal_name_snapshot:String(creature.data.name||'животина'),
+        title,description,updated_at:new Date().toISOString(),locked_at:null
+      },{onConflict:'round_id,user_id'}).select('id,title,description,updated_at').single()
+      if(saved.error)throw saved.error
+      return json({ok:true,pitch:{id:String(saved.data.id),title:saved.data.title,description:saved.data.description,updatedAt:saved.data.updated_at}})
+    }
+
     if(action==='film-one-word'){
       const reg=await db.from('registrations').select('status').eq('event_id',event.id).eq('user_id',user.id).maybeSingle()
       if(reg.error)throw reg.error
