@@ -1692,7 +1692,7 @@ export async function handleApi(req:Request){
           const projector=await setProjectorState(db,event,'pitch_selected',round.id,null,{pitch:round.selectedPitch})
           return json({ok:true,pitch:round.selectedPitch,projector})
         }
-        if(round.flowStatus!=='films_locked'&&!(force&&round.flowStatus==='submission_selected'))return err('сначала закройте сбор фильмов',409)
+        if(round.flowStatus!=='films_locked'&&!(force&&['submission_selected','movie_found'].includes(String(round.flowStatus||''))))return err('сначала закройте сбор фильмов',409)
         const rows=await db.from('invented_films').select('id,animal_name_snapshot,title,description').eq('round_id',round.id).eq('event_id',event.id).order('created_at')
         if(rows.error)throw rows.error
         const list=(rows.data||[]).filter((x:any)=>!force||String(x.id)!==String(round.selectedSubmissionId||''))
@@ -1716,7 +1716,7 @@ export async function handleApi(req:Request){
         const show=await buildShowState(db,event)
         const round=show.currentRound
         if(!round?.id||!round.selectedSubmissionId)return err('сначала выберите идею',409)
-        if(!['submission_selected','searching_movie'].includes(String(round.flowStatus||'')))return err('поиск фильма сейчас недоступен',409)
+        if(!['submission_selected','searching_movie','movie_found'].includes(String(round.flowStatus||'')))return err('поиск фильма сейчас недоступен',409)
         const pitch=await db.from('invented_films').select('*').eq('id',round.selectedSubmissionId).eq('round_id',round.id).eq('event_id',event.id).maybeSingle()
         if(pitch.error)throw pitch.error
         if(!pitch.data)return err('идея не найдена',404)
@@ -1750,7 +1750,7 @@ export async function handleApi(req:Request){
           validated.push({...c,...v,runtimeMin:v.runtimeMin})
         }
         if(!validated.length){
-          await db.from('event_rounds').update({flow_status:'submission_selected',updated_at:new Date().toISOString()}).eq('id',round.id)
+          await db.from('event_rounds').update({flow_status:'movie_found',movie_candidate_id:null,updated_at:new Date().toISOString()}).eq('id',round.id)
           const projector=await setProjectorState(db,event,'movie_found',round.id,null,{found:false,message:'кажется, это пока не сняли.'})
           return json({ok:true,found:false,projector})
         }
