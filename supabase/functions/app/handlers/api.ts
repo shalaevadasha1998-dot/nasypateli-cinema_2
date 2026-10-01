@@ -642,7 +642,7 @@ async function telegramRuntimeReady(){
 }
 
 async function runtimeHealth(db:any){
-  const requiredTables=['users','cinema_profiles','events','registrations','payment_refunds','event_operation_locks','creatures','creature_tasks','user_creature_tasks','creature_game_config','crumb_ledger','story_definitions','dating_profiles','notification_preferences','notification_queue','encounter_tokens','film_packages','film_questions','film_impressions','film_predictions','film_assignments','review_sessions','submitted_reviews','event_projector_state']
+  const requiredTables=['users','cinema_profiles','events','registrations','payment_refunds','event_operation_locks','creatures','creature_tasks','user_creature_tasks','creature_game_config','crumb_ledger','story_definitions','dating_profiles','notification_preferences','notification_queue','encounter_tokens','film_packages','film_questions','film_impressions','film_predictions','film_assignments','review_sessions','submitted_reviews','event_projector_state','invented_films']
   const [tableChecks,pilot,telegram,gameConfig,testTask]=await Promise.all([
     Promise.all(requiredTables.map(async table=>{const r=await db.from(table).select('*',{head:true}).limit(1);return !r.error})),
     db.from('events').select('slug,capacity,ticket_price_rub,starts_at,venue_name').eq('slug','2026-10-03').maybeSingle(),
