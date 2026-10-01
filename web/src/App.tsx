@@ -1083,7 +1083,7 @@ function showTimerText(data:DemoState,now:number){
   return `${Math.floor(left/60)}:${String(left%60).padStart(2,'0')}`
 }
 
-function projectorStateLabel(state:string){const m:Record<string,string>={film_intro:'фрагмент',one_word_collecting:'одно слово',one_word_results:'слова зала',question_open:'вопрос открыт',question_results:'результаты',question_reveal:'продолжение',assignment_randomizing:'рандом',assignment_winner:'фильм назначен',past_review_card:'из архива'};return m[state]||state}
+function projectorStateLabel(state:string){const m:Record<string,string>={pitch_collecting:'сбор фильмов',pitch_locked:'сбор закрыт',pitch_randomizing:'рандом идеи',pitch_selected:'идея выбрана',movie_searching:'поиск фильма',movie_found:'фильм найден',playing_clip:'фрагмент',film_intro:'фрагмент',one_word_collecting:'одно слово',one_word_results:'слова зала',question_open:'вопрос открыт',question_results:'результаты',question_reveal:'продолжение',assignment_randomizing:'рандом',assignment_winner:'фильм назначен',past_review_card:'из архива'};return m[state]||state}
 const projectorDemoCreatures:ScreenCreature[]=[
   {id:'demo-01',visualVariant:1,name:'животина 01',stage:'stage_0',crumbs:0,growthProgress:0},
   {id:'demo-02',visualVariant:2,name:'животина 02',stage:'stage_1',crumbs:4,growthProgress:18},
