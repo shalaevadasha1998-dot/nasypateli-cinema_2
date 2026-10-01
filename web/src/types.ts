@@ -232,6 +232,12 @@ export type ShowRound = {
   roundNo:number
   blockId:string
   status:'draft'|'active'|'closed'|'skipped'
+  flowStatus?:'draft'|'collecting_films'|'films_locked'|'randomizing_submission'|'submission_selected'|'searching_movie'|'movie_found'|'playing_clip'|'generating_question'|'question_open'|'question_results'|'question_reveal'|'next_question'|'assignment_randomizing'|'assignment_selected'|'round_finished'
+  selectedSubmissionId?:string
+  selectedPitch?:{id:string;animalName:string;title:string;description:string}
+  pitchCount?:number
+  questionPosition?:number
+  questionTarget?:number
   movie?:MovieCandidate
   question?:any
   voteState:'closed'|'open'
@@ -279,7 +285,8 @@ export type ScreenCreature = {
 }
 
 export type FilmProjectorState =
-  | 'idle'|'arrival'|'film_intro'|'one_word_collecting'|'one_word_results'
+  | 'idle'|'arrival'|'pitch_collecting'|'pitch_locked'|'pitch_randomizing'|'pitch_selected'|'movie_searching'|'movie_found'|'playing_clip'
+  | 'film_intro'|'one_word_collecting'|'one_word_results'
   | 'question_open'|'question_results'|'question_reveal'
   | 'assignment_randomizing'|'assignment_winner'|'past_review_card'
 
@@ -307,6 +314,8 @@ export type FilmLiveState = {
   filmTitle?:string
   payload:Record<string,any>
   myWord?:string
+  myPitch?:{id:string;title:string;description:string;updatedAt:string}
+  questionTarget?:number
   myAnswers:{question_id:string;answer:any;is_correct:boolean}[]
 }
 
@@ -379,6 +388,7 @@ export type DemoState = {
   filmAssignments?:FilmMission[]
   filmLive?:FilmLiveState
   filmPackages?:FilmPackageAdmin[]
+  inventedFilms?:{id:string;userId:string;animalName:string;title:string;description:string;createdAt:string;updatedAt:string}[]
   reviewQueue?:ReviewQueueItem[]
   projector?:ProjectorState
   screenCreatures?:ScreenCreature[]

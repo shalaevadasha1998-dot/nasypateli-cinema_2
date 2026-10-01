@@ -3276,3 +3276,50 @@ html.chat-keyboard-open .chat-compose-inline{
   padding:4px!important;
   box-sizing:border-box!important;
 }
+
+
+/* v0.12 — invented-film live round */
+.round-film-flow-admin .round-pitch-list{
+  display:grid;
+  gap:8px;
+  margin:14px 0;
+  max-height:360px;
+  overflow:auto;
+}
+.round-film-flow-admin .round-pitch-list>div,
+.selected-pitch-admin{
+  border:1px solid #2c3028;
+  border-radius:16px;
+  background:#0b0c09;
+  padding:14px;
+}
+.round-film-flow-admin .round-pitch-list b,
+.round-film-flow-admin .round-pitch-list span{
+  display:block;
+}
+.round-film-flow-admin .round-pitch-list span{
+  margin-top:5px;
+  color:#9da095;
+  line-height:1.45;
+}
+.verified-question-step{
+  display:grid;
+  gap:10px;
+}
+.pitch-live textarea{
+  min-height:112px;
+}
+
+
+/* v0.12.1 — hide legacy black image rectangles until transparent masters replace them */
+.dating-rabbit{
+  background:#000!important;
+}
+.dating-rabbit .rabbit,
+.dating-rabbit .rabbit-static,
+.dating-rabbit .rabbit-static img{
+  background:#000!important;
+}
+.onboarding-gender .gender-rabbit-stage{
+  background:#000!important;
+}
