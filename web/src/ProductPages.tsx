@@ -40,7 +40,7 @@ export function BirthPage(){
 
   return <div className="birth-simple-page">
     <div className="birth-simple-art">
-      <img src={`${import.meta.env.BASE_URL}assets/rabbit-main-front.webp`} alt="животина" draggable={false}/>
+      <img src={`${import.meta.env.BASE_URL}assets/rabbit-full.webp`} alt="животина" draggable={false}/>
     </div>
     <div className="birth-simple-copy">
       <div className="eyebrow">ваша животина</div>
@@ -102,7 +102,7 @@ export function CreatureProfilePage(){
   return <div className="page creature-page creature-static-page">
     <section className="creature-static-hero">
       <div className="eyebrow">ваша животина</div>
-      <div className="creature-static-art"><img src={`${import.meta.env.BASE_URL}assets/rabbit-main-front.webp`} alt={creatureName} draggable={false}/></div>
+      <div className="creature-static-art"><img src={`${import.meta.env.BASE_URL}assets/rabbit-full.webp`} alt={creatureName} draggable={false}/></div>
       <h1>{creatureName}</h1>
       <p>ваша личная животина внутри насыпателей в кино. {creatureName} знает ваш кинопрофиль и может обсуждать с вами фильмы, вкусы и происходящее в клубе</p>
       <Button onClick={()=>nav('/zhivotina')}>поговорить с {creatureName}</Button>
