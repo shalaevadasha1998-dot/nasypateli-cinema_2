@@ -67,21 +67,22 @@ export function CreatureProfilePage(){
   const {data,error,reload}=useBootstrap()
   const nav=useNavigate()
   const [busy,setBusy]=useState('')
-  const [msg,setMsg]=useState('')
+  const [nameMsg,setNameMsg]=useState('')
+  const [deleteMsg,setDeleteMsg]=useState('')
   const [renameDraft,setRenameDraft]=useState('')
   useEffect(()=>{if(data?.creature?.name)setRenameDraft(prev=>prev||data.creature.name)},[data?.creature?.name])
   if(!data)return <Load error={error}/>
   const creatureName=(data.creature.name||'животина').trim()||'животина'
   const saveName=async()=>{
     const clean=renameDraft.trim().replace(/\s+/g,' ').slice(0,32)
-    if(clean.length<2){setMsg('имя должно быть хотя бы из двух символов');return}
+    if(clean.length<2){setNameMsg('имя должно быть хотя бы из двух символов');return}
     try{
-      setBusy('rename');setMsg('')
+      setBusy('rename');setNameMsg('')
       await callApi('rename-creature',{name:clean})
       setRenameDraft(clean)
       await reload()
-      setMsg('имя сохранено')
-    }catch(e:any){setMsg(e.message||'не получилось сохранить имя')}
+      setNameMsg('имя сохранено')
+    }catch(e:any){setNameMsg(e.message||'не получилось сохранить имя')}
     finally{setBusy('')}
   }
 
@@ -89,12 +90,12 @@ export function CreatureProfilePage(){
     if(!window.confirm('Удалить кинопрофиль, животину, знакомства и персональную историю? Это действие нельзя отменить'))return
     if(!window.confirm('Точно удалить профиль? Билеты и платёжные записи останутся у организаторов, персонализация будет удалена.'))return
     try{
-      setBusy('delete')
+      setBusy('delete');setDeleteMsg('')
       await callApi('delete-profile',{confirm:'DELETE_PROFILE'})
       try{localStorage.removeItem('nasypateli-pending-creature-name')}catch{}
       window.history.replaceState(null,'',`${window.location.pathname}${window.location.search}#/onboarding`)
       window.location.reload()
-    }catch(e:any){setMsg(e.message)}
+    }catch(e:any){setDeleteMsg(e.message)}
     finally{setBusy('')}
   }
 
@@ -127,19 +128,19 @@ export function CreatureProfilePage(){
 
     <Card>
       <div className="section-title">настройки</div>
-      <Field label="имя животины"><input maxLength={32} value={renameDraft} onChange={e=>{setRenameDraft(e.target.value);setMsg('')}}/></Field>
+      <Field label="имя животины"><input maxLength={32} value={renameDraft} onChange={e=>{setRenameDraft(e.target.value);setNameMsg('')}}/></Field>
       <Button kind="secondary" disabled={busy==='rename'||renameDraft.trim().length<2||renameDraft.trim()===creatureName} onClick={()=>void saveName()}>{busy==='rename'?'сохраняем имя…':'сохранить имя'}</Button>
       <Button kind="secondary" onClick={()=>nav('/onboarding?edit=1')}>изменить кинопрофиль</Button>
       <Button kind="secondary" onClick={()=>nav('/notifications')}>уведомления</Button>
       <Button kind="secondary" onClick={()=>nav('/rules')}>правила насыпателей в кино</Button>
-      {msg&&<div className={msg==='имя сохранено'?'success':'form-error'}>{msg}</div>}
+      {nameMsg&&<div className={nameMsg==='имя сохранено'?'success':'form-error'}>{nameMsg}</div>}
     </Card>
 
     <Card className="danger-zone">
       <div className="section-title">удаление</div>
       <p className="muted">удалит кинопрофиль, животину, знакомства и персональную историю. платёжные записи и минимальные данные о купленных билетах не удаляются автоматически</p>
       <Button kind="danger" disabled={busy==='delete'} onClick={remove}>удалить профиль</Button>
-      {msg&&<div className="form-error">{msg}</div>}
+      {deleteMsg&&<div className="form-error">{deleteMsg}</div>}
     </Card>
   </div>
 }
