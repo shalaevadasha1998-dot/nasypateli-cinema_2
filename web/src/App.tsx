@@ -1093,6 +1093,9 @@ function screenContent(d:DemoState){
     return <div className="screen-selected-idea"><RabbitMain className="screen-main-rabbit"/><div className="eyebrow">рандом выбрал</div><h1>{d.selectedIdea.title}</h1><p>{d.selectedIdea.plot}</p>{d.event.status==='MOVIE_SEARCH'&&<small>животина ищет реальный фильм, похожий на эту идею</small>}</div>
   }
   const show=d.show
+  const externalVideo:any=show?.runtime.videoState||{}
+  if(externalVideo.external&&externalVideo.status==='paused')return <><div className="eyebrow">фильм на паузе</div><h1>телефоны в руки</h1><p>животина кое-что заметила</p></>
+  if(externalVideo.external&&externalVideo.status==='finished')return <><div className="eyebrow">титры</div><h1>не расходиться</h1><p>теперь животина хочет узнать, какой фильм увидел каждый из вас</p></>
   if(show&&show.runtime.currentBlock?.type==='arrival'&&!['paused','finished'].includes(show.runtime.runStatus))return <><div className="eyebrow">сбор гостей</div><h1>животины заходят в зал</h1><ScreenCreatureWall data={d}/></>
   if(show&&show.runtime.runStatus!=='idle'){
     const block=show.runtime.currentBlock
