@@ -5,6 +5,7 @@ import { telegramInitData, telegramWebApp } from './telegram'
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const fn = (import.meta.env.VITE_API_FUNCTION as string | undefined) || 'app'
 export const demoMode = import.meta.env.VITE_DEMO_MODE !== 'false' || !supabaseUrl
+export const buildSha = (import.meta.env.VITE_BUILD_SHA as string | undefined) || 'dev'
 
 function normalizeCreatureStage(stage:unknown):DemoState['creature']['stage']{
   const value=String(stage||'')
@@ -30,7 +31,7 @@ async function requestApi<T=unknown>(action:string,payload:Record<string,unknown
   try{
     const res=await fetch(`${supabaseUrl}/functions/v1/${fn}`,{
       method:'POST',
-      headers:{'content-type':'application/json','x-telegram-init-data':telegramInitData(),...extraHeaders},
+      headers:{'content-type':'application/json','x-telegram-init-data':telegramInitData(),'x-client-build':buildSha,...extraHeaders},
       body:JSON.stringify({action,...payload}),
       signal:controller.signal
     })

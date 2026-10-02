@@ -8,6 +8,7 @@ import { allowedGender, connectionKind, datingState, intentsCompatible } from '.
 import { JIPITINA, jipitinaInstructions } from '../_shared/jipitina.ts'
 import { discoverMovieSources, validateMovieTitle } from '../_shared/movies.ts'
 import { buildEventState, buildShowState, eventBySlug, nextEvent, nonexistentFilmEnabled } from '../_shared/state.ts'
+import { RELEASE_SHA } from '../_shared/release.ts'
 
 const manualTransitions:Record<string,string>={
   DRAFT:'SALES_OPEN',SALES_OPEN:'CHECKIN',CHECKIN:'IDEAS_OPEN',IDEAS_OPEN:'IDEAS_LOCKED',
@@ -699,7 +700,7 @@ async function runtimeHealth(db:any){
     cron:env('CRON_ACCESS_TOKEN'),
     demoOff:Deno.env.get('ALLOW_DEMO_AUTH')!=='true'
   }
-  return {ok:true,version:'0.9.0',service:'nasypateli-cinema',ready:Object.values(checks).every(Boolean),checks}
+  return {ok:true,version:'0.9.0',release:RELEASE_SHA,service:'nasypateli-cinema',ready:Object.values(checks).every(Boolean),checks}
 }
 
 async function telegramBot(method:string,body:Record<string,unknown>){
@@ -804,7 +805,7 @@ async function publicScreenAnimalId(eventId:string,userId:string){
 
 export async function handleApi(req:Request){
   if(req.method==='OPTIONS')return new Response('ok',{headers:cors})
-  if(req.method==='GET')return json({ok:true,version:'0.9.0',service:'nasypateli-cinema'})
+  if(req.method==='GET')return json({ok:true,version:'0.9.0',release:RELEASE_SHA,service:'nasypateli-cinema'})
   if(req.method!=='POST')return err('Нужен POST-запрос',405)
   try{
     const body=await req.json();const action=String(body.action||'');const db=adminDb()
@@ -1018,6 +1019,9 @@ export async function handleApi(req:Request){
     }
 
     if(action==='birth-creature'||action==='participant-birth-v2'){
+      const profileRow=await db.from('cinema_profiles').select('profile_json').eq('user_id',user.id).maybeSingle()
+      if(profileRow.error)throw profileRow.error
+      if(profileRow.data?.profile_json?.completed!==true)return err('Сначала заполните кинопрофиль',409)
       const name=(String(body.name||'животина').trim().replace(/\s+/g,' ').toLocaleLowerCase('ru-RU').slice(0,32)||'животина')
       const ex=await db.from('creatures').select('user_id,name,born_at,crumbs').eq('user_id',user.id).maybeSingle()
       if(ex.error)throw ex.error
@@ -1083,7 +1087,15 @@ export async function handleApi(req:Request){
         if(activeMission.error)throw activeMission.error
         if(activeMission.data?.event_id)event=await eventBySlug(db,String(activeMission.data.event_id))
       }
-      if(!event)return json({user,profile:null,event:null,onboardingComplete:false})
+      if(!event){
+        const [profileRow,creature]=await Promise.all([
+          db.from('cinema_profiles').select('*').eq('user_id',user.id).maybeSingle(),
+          creatureState(db,user.id)
+        ])
+        if(profileRow.error)throw profileRow.error
+        const profile=normalizeProfile(user,profileRow.data,null,tg)
+        return json({user,profile,event:null,onboardingComplete:profile.completed,creature})
+      }
       if(event.status==='SALES_OPEN'){const promoted=await db.rpc('promote_event_waitlist',{p_event_id:event.id});if(promoted.error)throw promoted.error}
       if(event.status!=='CLOSED'){
         const presence=await db.from('event_presence').upsert({event_id:event.id,user_id:user.id,last_seen_at:new Date().toISOString()},{onConflict:'event_id,user_id'})

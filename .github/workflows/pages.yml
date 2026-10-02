@@ -3,9 +3,6 @@ name: Deploy Mini App
 on:
   push:
     branches: [main]
-    paths:
-      - "web/**"
-      - ".github/workflows/pages.yml"
   workflow_dispatch:
 
 permissions:
@@ -25,6 +22,7 @@ jobs:
       VITE_DEMO_MODE: "false"
       VITE_SUPABASE_URL: "https://vwteokawtqnoiyzmsldj.supabase.co"
       VITE_API_FUNCTION: "app"
+      VITE_BUILD_SHA: "${{ github.sha }}"
 
     steps:
       - name: Checkout
@@ -77,9 +75,13 @@ jobs:
           if(!html.includes('НАСЫПАТЕЛИ В КИНО'))throw new Error('Production index is not live')
           const refs=[...html.matchAll(/(?:src|href)="([^"]+\.(?:js|css))"/g)].map(x=>new URL(x[1],url).href)
           if(!refs.length)throw new Error('Production assets were not found')
+          let shaFound=false
           for(const asset of refs){
             const r=await fetch(asset,{method:'GET',cache:'no-store'})
             if(!r.ok)throw new Error('Production asset failed: '+asset+' '+r.status)
+            const body=await r.text()
+            if(asset.endsWith('.js')&&body.includes(process.env.GITHUB_SHA))shaFound=true
           }
-          console.log('Production site and assets are reachable')
+          if(!shaFound)throw new Error('Production frontend does not match commit '+process.env.GITHUB_SHA)
+          console.log('Production site and assets match '+process.env.GITHUB_SHA)
           NODE

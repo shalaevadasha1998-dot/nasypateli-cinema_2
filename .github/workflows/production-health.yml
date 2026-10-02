@@ -3,8 +3,6 @@ name: Production Health
 on:
   push:
     branches: [main]
-    paths:
-      - ".github/workflows/production-health.yml"
   schedule:
     - cron: "17 * * * *"
   workflow_dispatch:
@@ -37,10 +35,31 @@ jobs:
             return {status:r.status,data}
           }
 
-          const health=await post({action:'health'})
-          if(health.status!==200||health.data?.ok!==true||health.data?.version!=='0.9.0'){
-            throw new Error('Production API health failed: '+JSON.stringify(health))
+          let health={}
+          for(let i=0;i<30;i++){
+            health=await post({action:'health'})
+            if(health.status===200&&health.data?.ok===true&&health.data?.version==='0.9.0'&&health.data?.release===process.env.GITHUB_SHA)break
+            await new Promise(resolve=>setTimeout(resolve,5000))
           }
+          if(health.status!==200||health.data?.ok!==true||health.data?.version!=='0.9.0'||health.data?.release!==process.env.GITHUB_SHA){
+            throw new Error('Production API does not match main: '+JSON.stringify(health))
+          }
+
+          const pageUrl='https://shalaevadasha1998-dot.github.io/nasypateli-cinema_2/'
+          let frontendMatches=false
+          for(let i=0;i<30&&!frontendMatches;i++){
+            const page=await fetch(pageUrl,{cache:'no-store'})
+            if(page.ok){
+              const html=await page.text()
+              const refs=[...html.matchAll(/src="([^"]+\.js)"/g)].map(x=>new URL(x[1],pageUrl).href)
+              for(const asset of refs){
+                const r=await fetch(asset,{cache:'no-store'})
+                if(r.ok&&(await r.text()).includes(process.env.GITHUB_SHA)){frontendMatches=true;break}
+              }
+            }
+            if(!frontendMatches)await new Promise(resolve=>setTimeout(resolve,5000))
+          }
+          if(!frontendMatches)throw new Error('Production frontend does not match main '+process.env.GITHUB_SHA)
 
           const blockers=Object.entries(health.data?.checks||{})
             .filter(([,ok])=>ok!==true)
@@ -62,5 +81,5 @@ jobs:
           if(screen.status!==401)throw new Error('Screen endpoint is not protected')
           if(cron.status!==401)throw new Error('Cron endpoint is not protected')
 
-          console.log('Production health and auth gates are OK')
+          console.log('Production frontend, backend, health and auth gates match '+process.env.GITHUB_SHA)
           NODE

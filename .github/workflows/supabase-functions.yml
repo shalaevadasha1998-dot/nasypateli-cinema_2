@@ -3,11 +3,6 @@ name: Deploy Supabase Function
 on:
   push:
     branches: [main]
-    paths:
-      - "supabase/functions/**"
-      - "supabase/migrations/**"
-      - "supabase/config.toml"
-      - ".github/workflows/supabase-functions.yml"
   workflow_dispatch:
 
 permissions:
@@ -61,6 +56,9 @@ jobs:
             supabase secrets set TELEGRAM_PROVIDER_TOKEN="$TELEGRAM_PROVIDER_TOKEN" --project-ref "$PROJECT_ID"
           fi
 
+      - name: Stamp release SHA
+        run: printf "export const RELEASE_SHA='%s'\n" "$GITHUB_SHA" > supabase/functions/app/_shared/release.ts
+
       - name: Deploy app Edge Function
         run: supabase functions deploy app --project-ref "$PROJECT_ID" --use-api
 
@@ -95,15 +93,21 @@ jobs:
           const localMap=new Map(local.map(row=>[row.version,row.name]))
           const missingRemote=local.filter(row=>!remote.has(row.version))
           const missingLocal=[...remote.entries()].filter(([version])=>!localMap.has(version))
+          const knownLegacyProductionOnly=new Set(['20261002003637','20261002181924'])
+          const unexpectedProductionOnly=missingLocal.filter(([version])=>!knownLegacyProductionOnly.has(version))
+          const legacyProductionOnly=missingLocal.filter(([version])=>knownLegacyProductionOnly.has(version))
           const renamed=local.filter(row=>remote.has(row.version)&&remote.get(row.version)!==row.name)
-          if(missingRemote.length||missingLocal.length||renamed.length){
+          if(legacyProductionOnly.length){
+            console.log('::warning::Preserving known production-only legacy migrations after rollback: '+legacyProductionOnly.map(([v,n])=>v+'_'+n).join(', '))
+          }
+          if(missingRemote.length||unexpectedProductionOnly.length||renamed.length){
             throw new Error([
               missingRemote.length?`not applied in production: ${missingRemote.map(x=>x.version+'_'+x.name).join(', ')}`:'',
-              missingLocal.length?`production-only migrations: ${missingLocal.map(([v,n])=>v+'_'+n).join(', ')}`:'',
+              unexpectedProductionOnly.length?`unexpected production-only migrations: ${unexpectedProductionOnly.map(([v,n])=>v+'_'+n).join(', ')}`:'',
               renamed.length?`name mismatch: ${renamed.map(x=>x.version+' local='+x.name+' production='+remote.get(x.version)).join(', ')}`:''
             ].filter(Boolean).join(' | '))
           }
-          console.log(`Migration history synchronized: ${local.length} migrations`)
+          console.log(`Migration history compatible: ${local.length} active + ${legacyProductionOnly.length} preserved legacy migrations`)
           })().catch(error=>{console.error(error);process.exit(1)})
           NODE
 
@@ -116,16 +120,16 @@ jobs:
             const r=await fetch(endpoint,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'health'})})
             const data=await r.json().catch(()=>({}))
             last={status:r.status,data}
-            if(r.ok&&data?.version==='0.9.0'){
+            if(r.ok&&data?.version==='0.9.0'&&data?.release===process.env.GITHUB_SHA){
               const blockers=Object.entries(data?.checks||{}).filter(([,ok])=>ok!==true).map(([name])=>name)
               if(blockers.length===0){
-                console.log('Supabase v0.9.0 is live and ready')
+                console.log('Supabase v0.9.0 is live at '+process.env.GITHUB_SHA+' and ready')
                 console.log(JSON.stringify(data.checks||{}))
                 process.exit(0)
               }
               if(blockers.length===1&&blockers[0]==='payments'){
                 console.log('::warning::Payments are intentionally pending: TELEGRAM_PROVIDER_TOKEN is not configured')
-                console.log('Supabase v0.9.0 core runtime is live and ready')
+                console.log('Supabase v0.9.0 core runtime is live at '+process.env.GITHUB_SHA+' and ready')
                 console.log(JSON.stringify(data.checks||{}))
                 process.exit(0)
               }
