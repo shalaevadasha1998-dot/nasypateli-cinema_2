@@ -205,11 +205,20 @@ const hotelObserverCards=[
   {code:'05',title:'наблюдатель аномалий',task:'собирай всё, что нарушает обычную логику мира. твоя задача не объяснять, а замечать.',after:'после титров назови животине первую аномалию, после которой ты перестал верить очевидному объяснению.'}
 ] as const
 
+const mrKObserverCards=[
+  {code:'01',title:'картограф',task:'следи за тем, как к. пытается понять географию отеля: лестницы, коридоры, двери, схемы и повторяющиеся маршруты. отмечай момент, когда карта перестаёт помогать.',after:'после титров скажи животине: в какой момент пространство окончательно перестало подчиняться нормальной логике?'},
+  {code:'02',title:'наблюдатель системы',task:'следи за жильцами и персоналом. замечай правила, которые все принимают как нормальные, хотя для к. они звучат абсурдно.',after:'после титров скажи животине: какое правило отеля оказалось самым человеческим, хотя выглядело самым нелепым?'},
+  {code:'03',title:'архивариус к.',task:'следи за тем, что к. теряет и приобретает: вещи, одежду, статус, роль, уверенность в себе. не пытайся решить, кем он является, пока фильм не закончится.',after:'после титров скажи животине: что к. потерял раньше всего на самом деле?'},
+  {code:'04',title:'адвокат освободителя',task:'смотри на к. как на человека, который решил, что знает, что нужно остальным. отмечай, когда помощь начинает становиться контролем.',after:'после титров вынеси вердикт животине: к. освобождал жильцов, спасал себя или просто строил новую систему?'},
+  {code:'05',title:'пульс отеля',task:'смотри на отель как на живого персонажа. замечай, когда он сжимается, меняется, отвечает людям или будто испытывает их.',after:'после титров скажи животине: отель был ловушкой, организмом, обществом или чем-то ещё?'}
+] as const
+
 function NepokoyObserverCard({data,onChat}:{data:DemoState;onChat:()=>void}){
   if(data.nepokoyCardIndex===undefined||data.registration!=='attended')return null
-  const card=hotelObserverCards[Math.abs(Number(data.nepokoyCardIndex))%hotelObserverCards.length]
+  const filmTitle=String((data.show?.runtime.videoState as any)?.title||data.event.title||'отель')
+  const cards=filmTitle.toLowerCase().includes('мистер')?mrKObserverCards:hotelObserverCards
+  const card=cards[Math.abs(Number(data.nepokoyCardIndex))%cards.length]
   const keyLabel=nepokoyKeyLabel(data.nepokoyHotelKey)
-  const filmTitle=String((data.show?.runtime.videoState as any)?.title||'отель')
   return <section className="nepokoy-observer-card"><div className="nepokoy-card-no">{keyLabel?<>постоялец {keyLabel} · </>:null}карточка {card.code} · только тебе</div><div className="eyebrow">{filmTitle} × {data.creature.name||'животина'}</div><h2>{card.title}</h2><p>{card.task}</p>{keyLabel&&<div className="nepokoy-card-after"><small>твой физический ключ</small><b>{keyLabel}</b></div>}<div className="nepokoy-card-after"><small>после титров</small><b>{card.after}</b></div><Button kind="secondary" onClick={onChat}>открыть животину</Button></section>
 }
 
@@ -219,7 +228,7 @@ function ClosedNepokoyCards({data}:{data:DemoState}){
   return <section className="stack">{rows.map(event=><Card className="nepokoy-observer-card" key={event.id}>
     <div className="row spread"><div><div className="eyebrow">закрытый просмотр</div><h2>{event.title}</h2></div><Pill>{event.invited?'ты в списке':'по приглашению'}</Pill></div>
     <p><b>{event.subtitle}</b> · {eventDate(event.startsAt)} · {eventTime(event.startsAt)}</p>
-    <p className="muted">{event.invited?'место уже закреплено за тобой. в день показа приложение само переключится на сценарий «непокоя».':'это камерное мероприятие без публичной регистрации. попасть внутрь можно только по персональному приглашению.'}</p>
+    <p className="muted">{event.invited?`место уже закреплено за тобой. в день показа приложение само переключится на сценарий «${event.title}».`:'это камерное мероприятие без публичной регистрации. попасть внутрь можно только по персональному приглашению.'}</p>
     {event.invited&&event.venueName&&<p>{event.venueName}{event.venueAddress?<><br/>{event.venueAddress}</>:null}</p>}
     {event.invited&&<div className="success">приглашение принято · закрытый просмотр добавлен в твои события</div>}
   </Card>)}</section>
@@ -899,17 +908,18 @@ function NepokoyEventCreator({busy,run}:{busy:boolean;run:(action:string,payload
   const create=async()=>{
     const iso=moscowIso(startsAt)
     if(!iso)return
-    const result:any=await run('admin-create-nepokoy-event',{startsAt:iso,capacity})
+    const result:any=await run('admin-create-nepokoy-event',{startsAt:iso,capacity,scenario:'mr_k'})
     if(result?.event?.slug)location.hash='#/admin/event/'+result.event.slug
   }
-  return <Card className="nepokoy-pilot-admin"><div className="section-title">отдельное закрытое мероприятие</div><h2>создать «непокой»</h2><p className="muted">создаётся отдельная карточка. текущее мероприятие не меняется. новый просмотр сразу закрыт от публичной регистрации и появится на главной как камерное событие «по приглашению».</p><Field label="дата и время. москва"><input type="datetime-local" value={startsAt} onChange={e=>setStartsAt(e.target.value)}/></Field><Field label="сколько гостей"><input type="number" min="2" max="30" value={capacity} onChange={e=>setCapacity(Number(e.target.value))}/></Field><Button disabled={busy||!moscowIso(startsAt)} onClick={create}>создать закрытый «непокой»</Button></Card>
+  return <Card className="nepokoy-pilot-admin"><div className="section-title">отдельное закрытое мероприятие</div><h2>создать «мистер к»</h2><p className="muted">тот же закрытый live-формат с ключами, персональными ролями, режиссёрским пультом, вопросами и финальным розыгрышем ключа, но сценарий полностью собран вокруг «мистера к».</p><Field label="дата и время. москва"><input type="datetime-local" value={startsAt} onChange={e=>setStartsAt(e.target.value)}/></Field><Field label="сколько гостей"><input type="number" min="2" max="30" value={capacity} onChange={e=>setCapacity(Number(e.target.value))}/></Field><Button disabled={busy||!moscowIso(startsAt)} onClick={create}>создать закрытый «мистер к»</Button></Card>
 }
 
 function NepokoyPilotAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(action:string,payload?:Record<string,unknown>)=>Promise<any>}){
   const show=data.show
   const round=show?.currentRound
   const currentVideo:any=show?.runtime.videoState||{}
-  const inferredScenario:HotelScenarioId=String(currentVideo.title||'').toLowerCase().includes('мистер')?'mr_k':'identity'
+  const lockedMrK=String(data.event.title||'').toLowerCase().includes('мистер')
+  const inferredScenario:HotelScenarioId=lockedMrK||String(currentVideo.title||'').toLowerCase().includes('мистер')?'mr_k':'identity'
   const [scenarioId,setScenarioId]=useState<HotelScenarioId>(inferredScenario)
   const scenario=hotelScenarios[scenarioId]
   const [filmUrl,setFilmUrl]=useState(()=>String(currentVideo.sourceUrl||''))
@@ -921,7 +931,7 @@ function NepokoyPilotAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(act
   const sendInvites=async()=>{const result:any=await run('admin-nepokoy-invite',{usernames:inviteText});if(result?.invites)setInviteResult(result.invites)}
   const invitePanel=<div className="nepokoy-director-player"><div className="section-title">закрытый список гостей</div><p className="muted">telegram username через пробел, запятую или с новой строки. известным боту гостям сообщение уйдёт автоматически, остальным появится персональная ссылка.</p><textarea value={inviteText} onChange={e=>setInviteText(e.target.value)} placeholder={"@user_one\n@user_two"}/><Button disabled={busy||!inviteText.trim()} onClick={sendInvites}>{busy?'добавляем…':'добавить гостей и разослать'}</Button>{inviteResult.length>0&&<div className="stack">{inviteResult.map((row:any)=><div className="prediction" key={row.username}><div className="row spread"><b>{row.username}</b><Pill>{row.delivery==='sent'?'отправлено ботом':row.registered?'добавлен · нужна ссылка':'нужна ссылка'}</Pill></div>{row.deepLink&&row.delivery!=='sent'&&<div className="inline"><input className="share-link" readOnly value={row.deepLink}/><Button kind="secondary" onClick={async()=>{try{await navigator.clipboard.writeText(row.deepLink)}catch{window.prompt('скопируйте ссылку',row.deepLink)}}}>скопировать</Button></div>}</div>)}</div>}</div>
   if(!data.event.nepokoyEnabled)return null
-  if(!show||show.runtime.runStatus==='idle'||!round?.id||round.status!=='active')return <Card className="nepokoy-pilot-admin"><div className="section-title">отель × животина</div><h2>два сценария вечера</h2>{invitePanel}<div className="nepokoy-pilot-buttons"><Button kind={scenarioId==='identity'?'primary':'secondary'} onClick={()=>setScenarioId('identity')}>идентификация</Button><Button kind={scenarioId==='mr_k'?'primary':'secondary'} onClick={()=>setScenarioId('mr_k')}>мистер к</Button></div><p className="muted">выбранный сценарий: {scenario.title}. после запуска режиссёрский пульт поведёт по сценам вручную, без хрупких таймкодов.</p><Button disabled={busy||data.event.status==='DRAFT'} onClick={async()=>{const x=await run('admin-nepokoy-launch');if(x)await run('admin-external-film-control',{op:'ready',title:scenario.title})}}>{busy?'запускаю…':`запустить сценарий «${scenario.title}»`}</Button>{data.event.status==='DRAFT'&&<p className="muted">сначала откройте регистрацию.</p>}</Card>
+  if(!show||show.runtime.runStatus==='idle'||!round?.id||round.status!=='active')return <Card className="nepokoy-pilot-admin"><div className="section-title">отель × животина</div><h2>{lockedMrK?'мистер к':'сценарий вечера'}</h2>{invitePanel}{lockedMrK?<div className="success"><b>выход есть, но ты уже внутри</b><br/>сценарий зафиксирован: «мистер к»</div>:<div className="nepokoy-pilot-buttons"><Button kind={scenarioId==='identity'?'primary':'secondary'} onClick={()=>setScenarioId('identity')}>идентификация</Button><Button kind={scenarioId==='mr_k'?'primary':'secondary'} onClick={()=>setScenarioId('mr_k')}>мистер к</Button></div>}<p className="muted">режиссёрский пульт поведёт по событиям фильма вручную, без хрупких таймкодов.</p><Button disabled={busy||data.event.status==='DRAFT'} onClick={async()=>{const x=await run('admin-nepokoy-launch');if(x)await run('admin-external-film-control',{op:'ready',title:scenario.title})}}>{busy?'запускаю…':`запустить «${scenario.title}»`}</Button>{data.event.status==='DRAFT'&&<p className="muted">сначала откройте регистрацию.</p>}</Card>
 
   const launchQuestion=async(key:string)=>{
     const q=scenario.questions.find(x=>x.key===key);if(!q||!round?.id)return
@@ -942,7 +952,7 @@ function NepokoyPilotAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(act
   return <Card className="nepokoy-pilot-admin">
     <div className="row spread"><div><div className="section-title">режиссёрский пульт · отель</div><h2>{scenario.title} × животина</h2></div><Pill>{currentVideo.status||'ready'}</Pill></div>
     {invitePanel}
-    <div className="nepokoy-director-player"><div className="section-title">01 · сценарий фильма</div><div className="nepokoy-pilot-buttons"><Button kind={scenarioId==='identity'?'primary':'secondary'} disabled={busy} onClick={async()=>{setScenarioId('identity');await run('admin-external-film-control',{op:'ready',title:hotelScenarios.identity.title})}}>идентификация</Button><Button kind={scenarioId==='mr_k'?'primary':'secondary'} disabled={busy} onClick={async()=>{setScenarioId('mr_k');await run('admin-external-film-control',{op:'ready',title:hotelScenarios.mr_k.title})}}>мистер к</Button></div><p className="muted">{scenario.intro}</p></div>
+    <div className="nepokoy-director-player"><div className="section-title">01 · сценарий фильма</div>{lockedMrK?<div className="success"><b>мистер к</b> · выход есть, но ты уже внутри</div>:<div className="nepokoy-pilot-buttons"><Button kind={scenarioId==='identity'?'primary':'secondary'} disabled={busy} onClick={async()=>{setScenarioId('identity');await run('admin-external-film-control',{op:'ready',title:hotelScenarios.identity.title})}}>идентификация</Button><Button kind={scenarioId==='mr_k'?'primary':'secondary'} disabled={busy} onClick={async()=>{setScenarioId('mr_k');await run('admin-external-film-control',{op:'ready',title:hotelScenarios.mr_k.title})}}>мистер к</Button></div>}<p className="muted">{scenario.intro}</p></div>
     <div className="nepokoy-director-player"><div className="section-title">02 · источник</div><div className="inline"><Button kind="secondary" onClick={()=>window.open(searchUrl,'_blank','noopener,noreferrer')}>найти легальный просмотр ↗</Button></div><Field label="ссылка на просмотр"><input type="url" value={filmUrl} onChange={e=>setFilmUrl(e.target.value)} placeholder="https://…"/></Field><div className="nepokoy-player-controls"><Button disabled={busy||!filmUrl.trim()} onClick={openFilm}>открыть фильм ↗</Button><Button disabled={busy} onClick={()=>filmState('playing')}>▶ фильм идёт</Button><Button kind="secondary" disabled={busy} onClick={()=>filmState('paused')}>Ⅱ пауза</Button><Button kind="danger" disabled={busy} onClick={()=>filmState('finished')}>■ титры</Button></div></div>
     <div className="nepokoy-director-player"><div className="section-title">животина говорит тебе сейчас</div><h2>{cue.label}</h2><p><b>ориентир в кадре:</b> {cue.trigger}</p><div className="success"><b>{cue.director}</b></div><div className="inline"><Button kind="secondary" disabled={busy||cueIndex===0} onClick={()=>setCueIndex(x=>Math.max(0,x-1))}>← назад</Button><Button disabled={busy} onClick={()=>void applyCue(Math.min(scenario.cues.length-1,cueIndex+1))}>{cueIndex>=scenario.cues.length-1?'это финал':'сцена наступила →'}</Button></div><small className="muted">шаг {cueIndex+1}/{scenario.cues.length}. переход подтверждаешь ты по событию в кадре, а не по таймкоду.</small></div>
     <div className="nepokoy-key-state-controls"><Button kind="secondary" disabled={busy} onClick={()=>run('admin-nepokoy-key-state',{state:'number_noticed'})}>ключи в руки</Button><Button kind="secondary" disabled={busy} onClick={()=>run('admin-nepokoy-key-state',{state:'post_film'})}>после титров</Button><Button disabled={busy} onClick={()=>run('admin-nepokoy-key-draw')}>выбрать ключ финала</Button></div>

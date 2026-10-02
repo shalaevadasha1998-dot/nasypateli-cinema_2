@@ -778,8 +778,8 @@ async function nepokoySpecialEvents(db:any,userId:string){
     const registration=byEvent.get(String(x.id))||'none'
     const invited=['reserved','paid','attended'].includes(registration)
     return {
-      id:String(x.id),slug:String(x.slug),title:String(x.title||'непокой'),startsAt:x.starts_at,status:String(x.status),
-      subtitle:String(x.settings?.format||'закрытый камерный просмотр'),invited,registration,
+      id:String(x.id),slug:String(x.slug),title:String(x.title||'закрытый просмотр'),startsAt:x.starts_at,status:String(x.status),
+      subtitle:String(x.settings?.subtitle||x.settings?.format||'закрытый камерный просмотр'),invited,registration,
       ...(invited&&x.venue_name?{venueName:String(x.venue_name)}:{}),
       ...(invited&&x.venue_address?{venueAddress:String(x.venue_address)}:{})
     }
@@ -1769,39 +1769,45 @@ export async function handleApi(req:Request){
       if(!rawStarts||!Number.isFinite(startsMs))return err('укажите дату и время закрытого просмотра',422)
       if(startsMs<Date.now()-60*60*1000)return err('дата закрытого просмотра уже прошла',422)
       const capacity=Math.max(2,Math.min(30,Math.round(Number(body.capacity||10)||10)))
+      const scenario=String(body.scenario||'nepokoy')==='mr_k'?'mr_k':'nepokoy'
+      const title=scenario==='mr_k'?'мистер к':'непокой'
+      const slugBase=scenario==='mr_k'?'mr-k':'nepokoy'
+      const blockId=scenario==='mr_k'?'mr_k_cinema':'nepokoy_cinema'
+      const subtitle=scenario==='mr_k'?'выход есть, но ты уже внутри':'закрытый камерный просмотр'
       const now=new Date().toISOString()
-      const slug=`nepokoy-${new Date(startsMs).toISOString().slice(0,10)}-${crypto.randomUUID().replaceAll('-','').slice(0,6)}`
+      const slug=`${slugBase}-${new Date(startsMs).toISOString().slice(0,10)}-${crypto.randomUUID().replaceAll('-','').slice(0,6)}`
       const settings={
-        city:'Москва',format:'закрытый камерный просмотр',homepage_visible:true,
+        city:'Москва',format:'закрытый камерный просмотр',subtitle,homepage_visible:true,
         access:{mode:'invite_only'},
-        modes:{nepokoy:{enabled:true,updated_at:now}}
+        modes:{nepokoy:{enabled:true,scenario,updated_at:now}}
       }
       let created:any=null
       try{
         const eventInsert=await db.from('events').insert({
-          slug,title:'непокой',starts_at:new Date(startsMs).toISOString(),capacity,ticket_price_rub:0,max_movie_runtime_min:180,
+          slug,title,starts_at:new Date(startsMs).toISOString(),capacity,ticket_price_rub:0,max_movie_runtime_min:180,
           status:'CHECKIN',settings
         }).select('*').single()
         if(eventInsert.error)throw eventInsert.error
         created=eventInsert.data
         const program={version:1,rounds_target:1,rewards:{join:0,vote:0,round:0,finale:0},blocks:[
-          {id:'nepokoy_cinema',type:'cinema_rounds',title:'непокой',duration_min:150,rounds_target:1,enabled:true}
+          {id:blockId,type:'cinema_rounds',title,duration_min:150,rounds_target:1,enabled:true}
         ]}
+        const initialVideoState=scenario==='mr_k'?{status:'ready',external:true,title:'мистер к',sourceUrl:null,updatedAt:now}:{status:'idle'}
         const [programInsert,runtimeInsert]=await Promise.all([
           db.from('event_programs').insert({event_id:created.id,config:program}),
-          db.from('event_runtime').insert({event_id:created.id,current_block_id:'nepokoy_cinema',current_block_index:0,current_round:0})
+          db.from('event_runtime').insert({event_id:created.id,current_block_id:blockId,current_block_index:0,current_round:0,video_state:initialVideoState})
         ])
         if(programInsert.error)throw programInsert.error
         if(runtimeInsert.error)throw runtimeInsert.error
         return json({ok:true,event:{id:created.id,slug:created.slug,title:created.title,startsAt:created.starts_at,capacity:created.capacity}})
       }catch(e){
-        if(created?.id){const cleanup=await db.from('events').delete().eq('id',created.id);if(cleanup.error)console.error('nepokoy create cleanup failed',cleanup.error)}
+        if(created?.id){const cleanup=await db.from('events').delete().eq('id',created.id);if(cleanup.error)console.error('hotel event create cleanup failed',cleanup.error)}
         throw e
       }
     }
 
     if(action==='admin-nepokoy-invite'){
-      if(!nepokoyEnabled(event)||!inviteOnlyEvent(event))return err('приглашения доступны только у закрытого мероприятия «непокой»',409)
+      if(!nepokoyEnabled(event)||!inviteOnlyEvent(event))return err('приглашения доступны только у закрытого камерного мероприятия',409)
       const raw=Array.isArray(body.usernames)?body.usernames:String(body.usernames||'').split(/[\s,;]+/)
       const usernames=[...new Set(raw.map(normalizeTelegramUsername).filter(Boolean))].slice(0,50)
       if(!usernames.length)return err('вставьте хотя бы один telegram username',422)
@@ -1845,7 +1851,7 @@ export async function handleApi(req:Request){
             try{
               await telegramBot('sendMessage',{
                 chat_id:Number(found.data.telegram_id),
-                text:`тебя добавили в закрытый камерный просмотр «непокой». место уже закреплено за тобой. подробности живут внутри приложения.`,
+                text:`тебя добавили в закрытый камерный просмотр «${String(event.title||'кино')}». место уже закреплено за тобой. подробности живут внутри приложения.`,
                 ...(webAppUrl?{reply_markup:{inline_keyboard:[[{text:'открыть закрытый просмотр',web_app:{url:webAppUrl}}]]}}:{})
               })
               sent=true
@@ -2390,7 +2396,9 @@ export async function handleApi(req:Request){
         const roundNo=Number(from.current_round||0)+1
         const round=await db.from('event_rounds').insert({event_id:event.id,round_no:roundNo,block_id:block.id,status:'active',started_at:now}).select('id').single()
         if(round.error)throw round.error
-        const videoState={status:'ready',external:true,title:'непокой',sourceUrl:null,updatedAt:now}
+        const configuredScenario=String(event.settings?.modes?.nepokoy?.scenario||'')
+        const configuredTitle=configuredScenario==='mr_k'||String(event.title||'').toLowerCase().includes('мистер')?'мистер к':'непокой'
+        const videoState={status:'ready',external:true,title:configuredTitle,sourceUrl:null,updatedAt:now}
         const updated=await db.from('event_runtime').update({
           run_status:'running',current_block_id:block.id,current_block_index:idx,current_round:roundNo,current_round_id:round.data.id,
           current_movie_id:null,current_question:null,vote_state:'closed',results_visible:false,video_state:videoState,
