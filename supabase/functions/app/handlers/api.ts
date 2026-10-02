@@ -21,6 +21,11 @@ const checkinOpenStatuses=new Set([
 
 const defaultTaste={weirdness:50,heaviness:50,atmosphere:50,oldness:50,experimental:50,slowness:50,surrealism:50}
 const allowedChatModes=new Set(['general','idea_coach','post_film','taste'])
+const nepokoyKeyMarks=['rosa','снова','out','тише','?'] as const
+function nepokoyKeyMark(role:any){
+  const index=Math.abs(Math.trunc(Number(role)||0))%nepokoyKeyMarks.length
+  return nepokoyKeyMarks[index]
+}
 
 function splitList(x:any){
   if(Array.isArray(x))return x.map(v=>String(v).trim()).filter(Boolean).slice(0,30)
@@ -548,7 +553,7 @@ async function adminParticipantRows(db:any,eventId:string){
   if(hotelKeys.error)throw hotelKeys.error
   const userMap=new Map((users.data||[]).map((x:any)=>[x.id,x]))
   const profileMap=new Map((profiles.data||[]).map((x:any)=>[x.user_id,x.profile_json||{}]))
-  const hotelKeyMap=new Map((hotelKeys.data||[]).map((x:any)=>[x.user_id,x]))
+  const hotelKeyMap=new Map((hotelKeys.data||[]).map((x:any)=>[x.user_id,{...x,key_mark:nepokoyKeyMark(x.observer_role)}]))
   return (regs.data||[]).map((r:any)=>{
     const u:any=userMap.get(r.user_id)||{}
     const p:any=profileMap.get(r.user_id)||{}
@@ -809,7 +814,7 @@ async function chatContext(db:any,event:any,user:any,profile:any){
   for(const r of [memories,clubMem,registration,movie,answers,reaction,review])if(r.error)throw r.error
   const hotelKey=nepokoyEnabled(event)?await db.from('event_hotel_keys').select('room_number,observer_role,key_state').eq('event_id',event.id).eq('user_id',user.id).maybeSingle():{data:null,error:null} as any
   if(hotelKey.error)throw hotelKey.error
-  const creature=await creatureState(db,user.id);return {profile,creature:{name:creature.name,stage:creature.stage,traits:creature.traits,storyCount:creature.storyCount,recentStories:creature.timeline.slice(0,8)},userMemory:memories.data||[],clubMemory:clubMem.data||[],event:{id:event.id,title:event.title,status:event.status,mechanicEnabled:nonexistentFilmEnabled(event),registration:effectiveRegistrationStatus(registration.data)},nepokoyHotelKey:hotelKey.data||null,selectedMovie:(movie.data as any)?.movie_candidates||null,predictions:answers.data||[],reaction:reaction.data||null,finalReview:review.data||null}
+  const creature=await creatureState(db,user.id);return {profile,creature:{name:creature.name,stage:creature.stage,traits:creature.traits,storyCount:creature.storyCount,recentStories:creature.timeline.slice(0,8)},userMemory:memories.data||[],clubMemory:clubMem.data||[],event:{id:event.id,title:event.title,status:event.status,mechanicEnabled:nonexistentFilmEnabled(event),registration:effectiveRegistrationStatus(registration.data)},nepokoyHotelKey:hotelKey.data?{...hotelKey.data,key_mark:nepokoyKeyMark(hotelKey.data.observer_role)}:null,selectedMovie:(movie.data as any)?.movie_candidates||null,predictions:answers.data||[],reaction:reaction.data||null,finalReview:review.data||null}
 }
 
 async function processChatAftermath(db:any,userId:string,message:string,reply:string,occurrenceKey:string,eventId?:string){
@@ -1146,7 +1151,7 @@ export async function handleApi(req:Request){
       if(nepokoyEnabled(event)&&effectiveRegistrationStatus(reg.data)==='attended'){
         const key=await db.from('event_hotel_keys').select('room_number,observer_role,key_state').eq('event_id',event.id).eq('user_id',user.id).maybeSingle()
         if(key.error)throw key.error
-        if(key.data){nepokoyHotelKey=key.data;nepokoyCardIndex=Number(key.data.observer_role)}
+        if(key.data){nepokoyHotelKey={...key.data,key_mark:nepokoyKeyMark(key.data.observer_role)};nepokoyCardIndex=Number(key.data.observer_role)}
       }
       return json({...common,show,isAdmin,user,profile,filmAssignments,filmLive,nepokoyCardIndex,nepokoyHotelKey,onboardingComplete:profile.completed,registration:effectiveRegistrationStatus(reg.data),queuePosition:effectiveRegistrationStatus(reg.data)==='waitlist'?Number(reg.data?.queue_position||0)||undefined:undefined,reservationExpiresAt:effectiveRegistrationStatus(reg.data)==='reserved'?reg.data?.reservation_expires_at||undefined:undefined,idea:idea.data||undefined,predictions:(common.predictions||[]).map((p:any)=>({...p,answer:answerMap.get(p.id)})),predictionSubmitted:(answers.data||[]).length>0,thought:thought.data?.text,reaction:reaction.data?{rating:reaction.data.rating,stateWord:reaction.data.state_word,thought:reaction.data.thought,recommendation:reaction.data.recommendation}:undefined,review:review.data?{rating:review.data.rating,sentence:review.data.final_sentence}:undefined,feedback:feedback.data?{returnIntent:feedback.data.return_intent,strongest:feedback.data.strongest_part||'',improve:feedback.data.improve_text||'',willingness:feedback.data.willingness_to_pay||0,durationFeel:feedback.data.duration_feel||'нормально',inviteFriend:feedback.data.invite_friend===null||feedback.data.invite_friend===undefined?8:Number(feedback.data.invite_friend)}:undefined,...extras,creature,...datingBundle,notificationPrefs:{writeAccess:!!notif.data?.write_access,events:notif.data?.events!==false,creature:notif.data?.creature!==false,stories:notif.data?.stories!==false,matches:notif.data?.matches!==false,tickets:notif.data?.tickets!==false,reminders:notif.data?.reminders!==false,quietHours:notif.data?.quiet_hours!==false}})
     }
@@ -2452,7 +2457,7 @@ export async function handleApi(req:Request){
       }
       const saved=await db.from('event_hotel_keys').upsert({event_id:event.id,user_id:reg.data.user_id,room_number:roomNumber,observer_role:role,key_state:existing.data?.key_state||'checked_in',updated_at:new Date().toISOString()},{onConflict:'event_id,user_id'}).select('room_number,observer_role,key_state').single()
       if(saved.error){if(String(saved.error.code)==='23505')return err('этот номер уже выдан другому гостю',409);throw saved.error}
-      return json({ok:true,key:saved.data})
+      return json({ok:true,key:{...saved.data,key_mark:nepokoyKeyMark(saved.data.observer_role)}})
     }
     if(action==='admin-nepokoy-key-state'){
       if(!nepokoyEnabled(event))return err('режим «непокой» не включён для этого события',409)
@@ -2463,7 +2468,7 @@ export async function handleApi(req:Request){
     }
     if(action==='admin-nepokoy-key-draw'){
       if(!nepokoyEnabled(event))return err('режим «непокой» не включён для этого события',409)
-      const keys=await db.from('event_hotel_keys').select('id,user_id,room_number,key_state').eq('event_id',event.id).order('room_number');if(keys.error)throw keys.error
+      const keys=await db.from('event_hotel_keys').select('id,user_id,room_number,observer_role,key_state').eq('event_id',event.id).order('room_number');if(keys.error)throw keys.error
       if(!(keys.data||[]).length)return err('сначала раздайте ключи',409)
       let winner=(keys.data||[]).find((x:any)=>String(x.key_state)==='selected')
       if(!winner){
@@ -2472,8 +2477,9 @@ export async function handleApi(req:Request){
         const win=await db.from('event_hotel_keys').update({key_state:'selected',updated_at:new Date().toISOString()}).eq('id',winner.id);if(win.error)throw win.error
       }
       const c=await db.from('creatures').select('name').eq('user_id',winner.user_id).maybeSingle();if(c.error)throw c.error
-      await setProjectorState(db,event,'assignment_winner',null,null,{animalName:c.data?.name||'животина',filmTitle:'ключ от «розы»',roomNumber:winner.room_number})
-      return json({ok:true,winner:{roomNumber:winner.room_number,animalName:c.data?.name||'животина'}})
+      const keyMark=nepokoyKeyMark(winner.observer_role)
+      await setProjectorState(db,event,'assignment_winner',null,null,{animalName:c.data?.name||'животина',filmTitle:'ключ от «розы»',roomNumber:winner.room_number,keyMark})
+      return json({ok:true,winner:{roomNumber:winner.room_number,keyMark,animalName:c.data?.name||'животина'}})
     }
 
     if(action==='admin-external-film-control'){
