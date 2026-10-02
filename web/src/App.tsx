@@ -185,6 +185,20 @@ function ParticipantShow({data,reload}:{data:DemoState;reload:(fresh?:boolean)=>
   </section>
 }
 
+const nepokoyObserverCards=[
+  {code:'01',title:'следопыт выхода',task:'следи за каждой попыткой выбраться из «розы». запомни момент, когда ты впервые понял(а): проблема уже не в дороге.',after:'после титров скажи животине: в какой момент выход перестал быть просто выходом?'},
+  {code:'02',title:'архивариус кроликов',task:'следи за розовыми кроликами. не пытайся сразу их расшифровать. замечай, рядом с какими чувствами, людьми и событиями они появляются.',after:'после титров скажи животине: что лично для тебя принесли с собой кролики?'},
+  {code:'03',title:'букмекер шаров',task:'следи за бильярдными шарами и особенно за номерами. твоя задача — раньше остальных понять, существует ли у них правило.',after:'после титров скажи животине: когда ты понял(а), что числа могут быть не случайными?'},
+  {code:'04',title:'наблюдатель бегунов',task:'следи за бегунами. каждый раз решай про себя: это опасность снаружи, наказание, случайность или вообще что-то другое.',after:'после титров скажи животине: чего ты боялся(ась) сильнее — того, что снаружи, или того, что происходит внутри «розы»?'},
+  {code:'05',title:'адвокат мадам',task:'смотри на мадам так, будто тебе придётся её защищать. ищи моменты, где она не злодей, а человек, который удерживает свой мир от распада.',after:'после титров вынеси животине вердикт: мадам удерживает людей, спасает их или просто живёт по правилам этого места?'}
+] as const
+
+function NepokoyObserverCard({data,onChat}:{data:DemoState;onChat:()=>void}){
+  if(data.nepokoyCardIndex===undefined||data.registration!=='attended')return null
+  const card=nepokoyObserverCards[Math.abs(Number(data.nepokoyCardIndex))%nepokoyObserverCards.length]
+  return <section className="nepokoy-observer-card"><div className="nepokoy-card-no">карточка {card.code} · только тебе</div><div className="eyebrow">непокой × {data.creature.name||'животина'}</div><h2>{card.title}</h2><p>{card.task}</p><div className="nepokoy-card-after"><small>после титров</small><b>{card.after}</b></div><Button kind="secondary" onClick={onChat}>открыть животину</Button></section>
+}
+
 function Home(){
   const {data,error,reload}=useStateData();const nav=useNavigate();const [buyError,setBuyError]=useState('');const [buyNotice,setBuyNotice]=useState('');const [buyBusy,setBuyBusy]=useState(false);const [claimBusy,setClaimBusy]=useState(false);const [claimError,setClaimError]=useState('');const [cancelBusy,setCancelBusy]=useState(false);const [cancelError,setCancelError]=useState('');const [ticketOpen,setTicketOpen]=useState(false);const [encounterMsg,setEncounterMsg]=useState('');const [now,setNow]=useState(()=>Date.now());useEffect(()=>{if(!data?.creature?.born)return;const u=new URL(location.href);const token=u.searchParams.get('encounter');if(!token)return;u.searchParams.delete('encounter');history.replaceState({},'',u.toString());callApi<any>('encounter',{token}).then(r=>{setEncounterMsg(r.kind==='event_checkin'?'вы внутри. животина запомнила, что вы пришли':'животины встретились');reload()}).catch(e=>setEncounterMsg(e.message))},[data?.creature?.born]);useEffect(()=>{if(!['reserved','waitlist'].includes(data?.registration||''))return;const timer=window.setInterval(()=>{if(document.visibilityState==='visible')void reload(true)},10000);return()=>window.clearInterval(timer)},[data?.registration]);useEffect(()=>{if(data?.registration!=='reserved'||!data.reservationExpiresAt)return;setNow(Date.now());const tick=window.setInterval(()=>setNow(Date.now()),1000);const remaining=Math.max(0,new Date(data.reservationExpiresAt).getTime()-Date.now());const expiry=window.setTimeout(()=>void reload(true),remaining+250);return()=>{window.clearInterval(tick);window.clearTimeout(expiry)}},[data?.registration,data?.reservationExpiresAt]);useEffect(()=>{if(!data)return;if(['paid','attended'].includes(data.registration)){setBuyNotice('');setBuyError('');return}if(data.registration==='reserved'){setBuyNotice(prev=>prev.includes('листе ожидания')?'':prev)}if(data.registration==='none'){setBuyNotice(prev=>prev.includes('место пока')||prev.includes('резерв')?'резерв истёк. можно оформить билет заново':prev);setBuyError(prev=>prev.includes('место пока')?'резерв истёк. попробуйте оформить билет заново':prev)}},[data?.registration]);if(!data)return <Loading error={error}/>
   const e=data.event;const held=Number(e.held||0);const left=Math.max(0,e.capacity-e.sold-held);const salesOpen=e.status==='SALES_OPEN';const freeEntry=Number(e.ticketPriceRub)===0;const freeClaimOpen=freeEntry&&['SALES_OPEN','CHECKIN'].includes(e.status);const checkoutAvailable=salesOpen&&e.paymentsAvailable;const reserveSeconds=data.registration==='reserved'&&data.reservationExpiresAt?Math.max(0,Math.ceil((new Date(data.reservationExpiresAt).getTime()-now)/1000)):0;const reserveCountdown=data.registration==='reserved'&&data.reservationExpiresAt?`${Math.floor(reserveSeconds/60)}:${String(reserveSeconds%60).padStart(2,'0')}`:''
@@ -202,6 +216,7 @@ function Home(){
     </section>
     {encounterMsg&&<div className="success floating-success">{encounterMsg}</div>}
     <FilmMissionCards data={data} onOpen={id=>nav('/mission/'+id)}/>
+    <NepokoyObserverCard data={data} onChat={()=>nav('/zhivotina')}/>
     <section className="home-event-hero">
       <div className="home-event-date"><div className="eyebrow">ближайший вечер</div><h1>{eventDate(e.startsAt)}</h1><p>{eventTime(e.startsAt)}. {e.venueName?e.venueName:'место объявим позже'}. москва{e.venueAddress&&<><br/>{e.venueAddress}</>}</p></div>
       <div className="home-event-ticket">
@@ -794,6 +809,26 @@ function ReviewQueueAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(acti
   </Card>
 }
 
+const nepokoyPilotQuestions=[
+  {key:'nepokoy_before',label:'01 · до фильма',prompt:'что здесь будет страшнее всего?',options:['не суметь уйти','остаться одному','перестать понимать, что реально','привыкнуть и больше не захотеть уходить']},
+  {key:'nepokoy_ball',label:'02 · стоп на шаре',prompt:'что, по-твоему, означает номер на бильярдном шаре?',options:['номер комнаты следующего исчезнувшего','сколько циклов осталось','комнату, где появится выход','ничего. это случайность']},
+  {key:'nepokoy_force',label:'03 · после титров',prompt:'что сильнее всего держит героев в «розе»?',options:['прошлое и вина','внешняя сила','привычка и принятие','у этого нет одного ответа']},
+  {key:'nepokoy_after',label:'04 · до / после',prompt:'после фильма что пугает тебя больше всего?',options:['не суметь уйти','остаться одному','перестать понимать, что реально','привыкнуть и больше не захотеть уходить']},
+  {key:'nepokoy_rating',label:'05 · оценка',prompt:'сколько «непокоя» осталось в тебе?',options:['1–2 / почти отпустило','3–4','5–6','7–8','9–10 / я всё ещё в «розе»']}
+] as const
+
+function NepokoyPilotAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(action:string,payload?:Record<string,unknown>)=>Promise<any>}){
+  if(!String(data.event.title||'').toLocaleLowerCase('ru-RU').includes('непокой'))return null
+  const round=data.show?.currentRound
+  const launch=async(q:typeof nepokoyPilotQuestions[number])=>{
+    if(!round?.id||round.status!=='active')return
+    await run('admin-round-question',{question:{key:q.key,prompt:q.prompt,options:[...q.options]}})
+    await run('admin-vote-control',{op:'hide'})
+    await run('admin-vote-control',{op:'open'})
+  }
+  return <Card className="nepokoy-pilot-admin"><div className="row spread"><div><div className="section-title">завтрашний пилот</div><h2>непокой × животина</h2></div><Pill>{round?.status==='active'?'раунд готов':'нужен раунд'}</Pill></div><p className="muted">одна остановка фильма. остальные механики идут до и после просмотра. кнопка сразу подставляет вопрос, скрывает старые результаты и открывает голосование.</p><div className="nepokoy-pilot-cue"><b>единственный стоп фильма</b><span>ставим паузу после появления бильярдного шара с номером, когда зритель уже видел странность, но ещё может сам построить правило. запускаем вопрос 02.</span></div><div className="nepokoy-pilot-buttons">{nepokoyPilotQuestions.map(q=><Button key={q.key} kind="secondary" disabled={busy||!round?.id||round.status!=='active'} onClick={()=>void launch(q)}>{q.label}</Button>)}</div><div className="inline"><Button disabled={busy||!round?.id} onClick={()=>run('admin-vote-control',{op:'close'})}>закрыть ответ</Button><Button kind="secondary" disabled={busy||!round?.id} onClick={()=>run('admin-vote-control',{op:'show'})}>показать результаты</Button></div><details><summary>шпаргалка ведущего</summary><p><b>до фильма:</b> вопрос 01 → показать результаты → «запомните свой ответ. животина вернётся к нему после титров».</p><p><b>во время:</b> только один стоп на шаре → вопрос 02 → результаты → сразу продолжить фильм.</p><p><b>после:</b> телефоны в руки → каждый отвечает своей карточке в чате → вопрос 03 → вопрос 04 → сравнить с 01 → вопрос 05.</p><p><b>финал:</b> открыть знакомства и проверить лайк → взаимный мэтч → telegram-уведомление.</p></details></Card>
+}
+
 function Admin(){
   const {slug}=useParams()
   const privileged=usePrivilegedState('admin',slug)
@@ -829,6 +864,7 @@ function Admin(){
       {preflight?.checkedAt&&<small className="event-preflight-time">проверено {new Date(preflight.checkedAt).toLocaleString('ru-RU')}</small>}
     </Card>
     <ShowControl data={data} busy={busy} run={run}/>
+    <NepokoyPilotAdmin data={data} busy={busy} run={run}/>
     <ShowRoundControl data={data} busy={busy} run={run}/>
     <RoundFilmFlowAdmin data={data} busy={busy} run={run}/>
     <AdminParticipants data={data} reload={reload} adminToken={privileged.token}/>
