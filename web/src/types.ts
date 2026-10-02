@@ -130,7 +130,7 @@ export type AdminParticipant = {
   photoVideoConsent:boolean
   paidAt?:string
   registeredAt:string
-  nepokoyHotelKey?:{room_number:string;observer_role:number;key_state:string}
+  nepokoyHotelKey?:{room_number:string;observer_role:number;key_state:string;key_mark?:string}
 }
 
 export type CreatureTrait = 'curiosity'|'argumentative'|'social'|'romantic'|'chaotic'|'cinephile'
@@ -360,7 +360,7 @@ export type ProjectorState = {
 export type DemoState = {
   isAdmin?:boolean
   nepokoyCardIndex?:number
-  nepokoyHotelKey?:{room_number:string;observer_role:number;key_state:string}
+  nepokoyHotelKey?:{room_number:string;observer_role:number;key_state:string;key_mark?:string}
   event: EventInfo
   profile: CinemaProfile
   onboardingComplete:boolean
