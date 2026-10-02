@@ -72,18 +72,20 @@ function normalizeBootstrap(raw:any):DemoState{
   } as DemoState
 }
 
-let bootstrapInFlight:Promise<unknown>|null=null
-let bootstrapCache:{at:number;value:unknown}|null=null
+let bootstrapInFlight:{key:string;promise:Promise<unknown>}|null=null
+let bootstrapCache:{key:string;at:number;value:unknown}|null=null
 export async function callApi<T=unknown>(action:string,payload:Record<string,unknown>={}):Promise<T>{
   if(action==='bootstrap'){
     const fresh=payload.fresh===true
+    const key=String(payload.slug||'__default__')
     const now=Date.now()
-    if(!fresh&&bootstrapCache&&now-bootstrapCache.at<15000)return bootstrapCache.value as T
-    if(!fresh&&bootstrapInFlight)return bootstrapInFlight as Promise<T>
-    const run=requestApi<any>(action,payload).then(value=>{const normalized=normalizeBootstrap(value);bootstrapCache={at:Date.now(),value:normalized};return normalized})
+    if(!fresh&&bootstrapCache?.key===key&&now-bootstrapCache.at<15000)return bootstrapCache.value as T
+    if(!fresh&&bootstrapInFlight?.key===key)return bootstrapInFlight.promise as Promise<T>
+    const run=requestApi<any>(action,payload).then(value=>{const normalized=normalizeBootstrap(value);bootstrapCache={key,at:Date.now(),value:normalized};return normalized})
     if(fresh)return run as Promise<T>
-    bootstrapInFlight=run.finally(()=>{bootstrapInFlight=null})
-    return bootstrapInFlight as Promise<T>
+    const promise=run.finally(()=>{if(bootstrapInFlight?.key===key)bootstrapInFlight=null})
+    bootstrapInFlight={key,promise}
+    return promise as Promise<T>
   }
   const result=await requestApi<T>(action,payload)
   bootstrapCache=null
