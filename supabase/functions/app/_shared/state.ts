@@ -13,7 +13,7 @@ export async function eventBySlug(db:any,slugOrId:string){
 }
 
 export async function nextEvent(db:any){
-  const r=await db.from('events').select('*').order('starts_at',{ascending:true}).gte('starts_at',new Date(Date.now()-86400000).toISOString()).limit(1).maybeSingle()
+  const r=await db.from('events').select('*').not('slug','like','test-%').order('starts_at',{ascending:true}).gte('starts_at',new Date(Date.now()-86400000).toISOString()).limit(1).maybeSingle()
   if(r.error)throw r.error
   return r.data||null
 }

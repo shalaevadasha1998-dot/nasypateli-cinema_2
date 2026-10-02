@@ -566,6 +566,19 @@ function tokenMatches(req:Request,header:string,envName:string){
   if(!expected||!got||expected.length!==got.length)return false
   let diff=0;for(let i=0;i<expected.length;i++)diff|=expected.charCodeAt(i)^got.charCodeAt(i);return diff===0
 }
+async function sha256Hex(value:string){
+  const digest=new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))
+  return [...digest].map(x=>x.toString(16).padStart(2,'0')).join('')
+}
+async function testRoomTokenMatches(event:any,token:string){
+  if(event?.settings?.test_room!==true)return false
+  const expected=String(event?.settings?.test_room_token_hash||'')
+  if(!expected||!token)return false
+  const got=await sha256Hex(token)
+  if(expected.length!==got.length)return false
+  let diff=0;for(let i=0;i<expected.length;i++)diff|=expected.charCodeAt(i)^got.charCodeAt(i)
+  return diff===0
+}
 function isUuid(value:string){return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)}
 function notificationQuietUntil(pref:any){
   if(pref?.quiet_hours!==true)return null
@@ -810,11 +823,13 @@ export async function handleApi(req:Request){
   try{
     const body=await req.json();const action=String(body.action||'');const db=adminDb()
     const adminTokenOk=tokenMatches(req,'x-admin-token','ADMIN_ACCESS_TOKEN');const screenTokenOk=tokenMatches(req,'x-screen-token','SCREEN_ACCESS_TOKEN');const cronTokenOk=tokenMatches(req,'x-cron-token','CRON_ACCESS_TOKEN')
+    const testRoomHeader=req.headers.get('x-test-room-token')||''
     if(action==='health')return json(await runtimeHealth(db))
 
     if(action==='screen-bootstrap'){
-      if(!screenTokenOk)return err('Доступ к экрану запрещён',401)
       const event=await eventBySlug(db,String(body.slug||'2026-10-03'))
+      const testScreenOk=await testRoomTokenMatches(event,req.headers.get('x-screen-token')||'')
+      if(!screenTokenOk&&!testScreenOk)return err('Доступ к экрану запрещён',401)
       const [state,attended]=await Promise.all([
         buildEventState(db,event,{includeActuals:false}),
         db.from('registrations').select('user_id,created_at').eq('event_id',event.id).eq('status','attended').order('created_at')
@@ -845,14 +860,15 @@ export async function handleApi(req:Request){
       })
     }
     if(action==='admin-bootstrap'){
-      if(!adminTokenOk){
+      const event=await eventBySlug(db,String(body.slug||'2026-10-03'))
+      const testAdminOk=await testRoomTokenMatches(event,req.headers.get('x-admin-token')||'')
+      if(!adminTokenOk&&!testAdminOk){
         try{
           const adminTg=await telegramUserFromRequest(req)
           const adminUser=await getOrCreateUser(db,adminTg)
           await mustAdmin(db,adminUser,adminTg)
         }catch{return err('Доступ к пульту запрещён',401)}
       }
-      const event=await eventBySlug(db,String(body.slug||'2026-10-03'))
       const [state,adminParticipants,movieCatalog,showLog,movieSources]=await Promise.all([
         buildEventState(db,event,{includeActuals:true,includePrivateOutputs:true}),
         adminParticipantRows(db,event.id),
@@ -990,8 +1006,23 @@ export async function handleApi(req:Request){
     }
 
     const isAdminAction=action.startsWith('admin-')||action.startsWith('ai-')||action.startsWith('draw-')
-    let tg:any=null,user:any=null
-    if(!isAdminAction||!adminTokenOk){tg=await telegramUserFromRequest(req);user=await getOrCreateUser(db,tg)}
+    let tg:any=null,user:any=null,testEvent:any=null,testParticipantAccess=false
+    const requestedSlug=String(body.slug||'')
+    if(testRoomHeader&&requestedSlug){
+      try{
+        const candidate=await eventBySlug(db,requestedSlug)
+        if(await testRoomTokenMatches(candidate,testRoomHeader)){
+          const testUserId=String(candidate?.settings?.test_user_id||'')
+          if(!isUuid(testUserId))return err('Тестовая комната настроена некорректно',500)
+          const testUser=await db.from('users').select('*').eq('id',testUserId).maybeSingle()
+          if(testUser.error)throw testUser.error
+          if(!testUser.data)return err('Тестовый участник не найден',500)
+          testEvent=candidate;testParticipantAccess=true;user=testUser.data;tg={id:0,first_name:'тестовый участник'}
+        }
+      }catch(e:any){if(e?.message!=='EVENT_NOT_FOUND')throw e}
+    }
+    const suppliedAdminToken=req.headers.get('x-admin-token')||''
+    if(!user&&(!isAdminAction||(!adminTokenOk&&!suppliedAdminToken))){tg=await telegramUserFromRequest(req);user=await getOrCreateUser(db,tg)}
 
     if(action==='creature-tasks'){
       const creature=await ensureCreature(db,user.id)
@@ -1081,7 +1112,11 @@ export async function handleApi(req:Request){
     }
 
     if(action==='bootstrap'){
-      let event=await nextEvent(db)
+      let event:any=null
+      if(requestedSlug){
+        event=testParticipantAccess&&testEvent?testEvent:await eventBySlug(db,requestedSlug)
+        if(event?.settings?.test_room===true&&!testParticipantAccess)return err('Тестовая комната закрыта',403)
+      }else event=await nextEvent(db)
       if(!event){
         const activeMission=await db.from('film_assignments').select('event_id').eq('user_id',user.id).neq('status','published').order('assigned_at',{ascending:false}).limit(1).maybeSingle()
         if(activeMission.error)throw activeMission.error
@@ -1293,6 +1328,8 @@ export async function handleApi(req:Request){
     }
 
     const slug=String(body.slug||'2026-10-03');const event=await eventBySlug(db,slug)
+    const testAdminTokenOk=await testRoomTokenMatches(event,req.headers.get('x-admin-token')||'')
+    if(event?.settings?.test_room===true&&!testParticipantAccess&&!testAdminTokenOk&&!adminTokenOk)return err('Тестовая комната закрыта',403)
 
     if(action==='claim-event-ticket'){
       if(Number(event.ticket_price_rub)!==0)return err('этот билет нельзя получить без оплаты',409)
@@ -1673,7 +1710,10 @@ export async function handleApi(req:Request){
       return json({ok:true,reviewId:inserted.data.id,status:'submitted'})
     }
 
-    if(!adminTokenOk)await mustAdmin(db,user,tg)
+    if(!adminTokenOk&&!testAdminTokenOk){
+      if(!user||!tg)return err('Доступ к пульту запрещён',401)
+      await mustAdmin(db,user,tg)
+    }
 
     if(action==='admin-round-pitches-open'){
       return await withEventOperation(db,event.id,'round-pitches-open',async()=>{
