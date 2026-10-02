@@ -7,7 +7,7 @@ import { creatureState, emitStoryTrigger, ensureCreature } from '../_shared/stor
 import { allowedGender, connectionKind, datingState, intentsCompatible } from '../_shared/dating.ts'
 import { JIPITINA, jipitinaInstructions } from '../_shared/jipitina.ts'
 import { discoverMovieSources, validateMovieTitle } from '../_shared/movies.ts'
-import { buildEventState, buildShowState, eventBySlug, nextEvent, nonexistentFilmEnabled } from '../_shared/state.ts'
+import { buildEventState, buildShowState, eventBySlug, nextEvent, nonexistentFilmEnabled, nepokoyEnabled } from '../_shared/state.ts'
 
 const manualTransitions:Record<string,string>={
   DRAFT:'SALES_OPEN',SALES_OPEN:'CHECKIN',CHECKIN:'IDEAS_OPEN',IDEAS_OPEN:'IDEAS_LOCKED',
@@ -27,6 +27,26 @@ function splitList(x:any){
   return String(x||'').split(',').map((s:string)=>s.trim()).filter(Boolean).slice(0,30)
 }
 function clamp100(x:any){const n=Number(x);return Number.isFinite(n)?Math.max(0,Math.min(100,Math.round(n))):50}
+
+async function liveRegisteredEvent(db:any,userId:string){
+  const regs=await db.from('registrations').select('event_id,status,created_at').eq('user_id',userId).in('status',['reserved','paid','attended','waitlist']).order('created_at',{ascending:false}).limit(12)
+  if(regs.error)throw regs.error
+  const eventIds=[...new Set((regs.data||[]).map((x:any)=>String(x.event_id)).filter(Boolean))]
+  if(!eventIds.length)return null
+  const [events,runtimes]=await Promise.all([
+    db.from('events').select('*').in('id',eventIds).neq('status','CLOSED'),
+    db.from('event_runtime').select('event_id,run_status,updated_at').in('event_id',eventIds)
+  ])
+  if(events.error)throw events.error
+  if(runtimes.error)throw runtimes.error
+  const liveIds=new Set((runtimes.data||[]).filter((x:any)=>['running','paused'].includes(String(x.run_status))).map((x:any)=>String(x.event_id)))
+  if(!liveIds.size)return null
+  const priority:Record<string,number>={attended:0,paid:1,reserved:2,waitlist:3}
+  const liveRegs=(regs.data||[]).filter((x:any)=>liveIds.has(String(x.event_id))).sort((a:any,b:any)=>(priority[String(a.status)]??9)-(priority[String(b.status)]??9)||String(b.created_at||'').localeCompare(String(a.created_at||'')))
+  const byId=new Map((events.data||[]).map((x:any)=>[String(x.id),x]))
+  for(const reg of liveRegs){const event=byId.get(String(reg.event_id));if(event)return event}
+  return null
+}
 
 async function resolvedMovieSource(db:any,movieId:string){
   const resolved=await db.rpc('resolve_movie_source',{p_movie_candidate_id:movieId})
@@ -787,7 +807,7 @@ async function chatContext(db:any,event:any,user:any,profile:any){
     db.from('final_reviews').select('rating,final_sentence').eq('event_id',event.id).eq('user_id',user.id).maybeSingle()
   ])
   for(const r of [memories,clubMem,registration,movie,answers,reaction,review])if(r.error)throw r.error
-  const hotelKey=String(event.title||'').toLocaleLowerCase('ru-RU').includes('непокой')?await db.from('event_hotel_keys').select('room_number,observer_role,key_state').eq('event_id',event.id).eq('user_id',user.id).maybeSingle():{data:null,error:null} as any
+  const hotelKey=nepokoyEnabled(event)?await db.from('event_hotel_keys').select('room_number,observer_role,key_state').eq('event_id',event.id).eq('user_id',user.id).maybeSingle():{data:null,error:null} as any
   if(hotelKey.error)throw hotelKey.error
   const creature=await creatureState(db,user.id);return {profile,creature:{name:creature.name,stage:creature.stage,traits:creature.traits,storyCount:creature.storyCount,recentStories:creature.timeline.slice(0,8)},userMemory:memories.data||[],clubMemory:clubMem.data||[],event:{id:event.id,title:event.title,status:event.status,mechanicEnabled:nonexistentFilmEnabled(event),registration:effectiveRegistrationStatus(registration.data)},nepokoyHotelKey:hotelKey.data||null,selectedMovie:(movie.data as any)?.movie_candidates||null,predictions:answers.data||[],reaction:reaction.data||null,finalReview:review.data||null}
 }
@@ -1083,7 +1103,7 @@ export async function handleApi(req:Request){
     }
 
     if(action==='bootstrap'){
-      let event=await nextEvent(db)
+      let event=await liveRegisteredEvent(db,user.id) || await nextEvent(db)
       if(!event){
         const activeMission=await db.from('film_assignments').select('event_id').eq('user_id',user.id).neq('status','published').order('assigned_at',{ascending:false}).limit(1).maybeSingle()
         if(activeMission.error)throw activeMission.error
@@ -1123,7 +1143,7 @@ export async function handleApi(req:Request){
       }
       const [filmAssignments,filmLive]=await Promise.all([userFilmAssignments(db,user.id),filmLiveState(db,event,user.id)])
       let nepokoyCardIndex: number|undefined,nepokoyHotelKey:any=undefined
-      if(String(event.title||'').toLocaleLowerCase('ru-RU').includes('непокой')&&effectiveRegistrationStatus(reg.data)==='attended'){
+      if(nepokoyEnabled(event)&&effectiveRegistrationStatus(reg.data)==='attended'){
         const key=await db.from('event_hotel_keys').select('room_number,observer_role,key_state').eq('event_id',event.id).eq('user_id',user.id).maybeSingle()
         if(key.error)throw key.error
         if(key.data){nepokoyHotelKey=key.data;nepokoyCardIndex=Number(key.data.observer_role)}
@@ -2177,6 +2197,53 @@ export async function handleApi(req:Request){
       return json({ok:true,show:await buildShowState(db,event)})
     }
 
+    if(action==='admin-nepokoy-launch'){
+      if(!nepokoyEnabled(event))return err('сначала включите режим «непокой» для этого события',409)
+      if(event.status==='DRAFT')return err('сначала откройте регистрацию события',409)
+      return await withEventOperation(db,event.id,'nepokoy-launch',async()=>{
+        const [programR,runtimeR]=await Promise.all([
+          db.from('event_programs').select('config').eq('event_id',event.id).single(),
+          db.from('event_runtime').select('*').eq('event_id',event.id).single()
+        ])
+        if(programR.error)throw programR.error
+        if(runtimeR.error)throw runtimeR.error
+        const blocks=sanitizeProgramBlocks(programR.data.config?.blocks)||[]
+        if(!blocks.length)return err('программа события пустая',409)
+        const from=runtimeR.data
+        if(['running','paused'].includes(String(from.run_status))&&from.current_round_id)return json({ok:true,alreadyRunning:true,show:await buildShowState(db,event)})
+        if(String(from.run_status)==='finished')return err('мероприятие уже завершено',409)
+        const cinemaIndex=blocks.findIndex((x:any)=>String(x.type)==='cinema_rounds')
+        const idx=cinemaIndex>=0?cinemaIndex:0
+        const block=blocks[idx]
+        const now=new Date().toISOString()
+        if(from.current_round_id){
+          const close=await db.from('event_rounds').update({status:'closed',closed_at:now,updated_at:now,vote_state:'closed'}).eq('id',from.current_round_id).eq('event_id',event.id).eq('status','active')
+          if(close.error)throw close.error
+        }
+        const roundNo=Number(from.current_round||0)+1
+        const round=await db.from('event_rounds').insert({event_id:event.id,round_no:roundNo,block_id:block.id,status:'active',started_at:now}).select('id').single()
+        if(round.error)throw round.error
+        const videoState={status:'ready',external:true,title:'непокой',sourceUrl:null,updatedAt:now}
+        const updated=await db.from('event_runtime').update({
+          run_status:'running',current_block_id:block.id,current_block_index:idx,current_round:roundNo,current_round_id:round.data.id,
+          current_movie_id:null,current_question:null,vote_state:'closed',results_visible:false,video_state:videoState,
+          started_at:from.started_at||now,block_started_at:now,paused_at:null,revision:Number(from.revision||0)+1,updated_at:now
+        }).eq('event_id',event.id).eq('revision',from.revision).select('*').maybeSingle()
+        if(updated.error)throw updated.error
+        if(!updated.data)return err('пульт уже изменился в другой вкладке · обновите экран',409)
+        await setProjectorState(db,event,'idle',null,null,{})
+        let lifecycleStatus=event.status
+        if(event.status==='SALES_OPEN'){
+          const e=await db.from('events').update({status:'CHECKIN'}).eq('id',event.id).eq('status','SALES_OPEN').select('status').maybeSingle()
+          if(e.error)throw e.error
+          if(e.data)lifecycleStatus='CHECKIN'
+        }
+        const log=await db.from('event_runtime_log').insert({event_id:event.id,action:'nepokoy_launch',actor_user_id:user?.id||null,from_state:from,to_state:updated.data})
+        if(log.error)console.error('nepokoy runtime log failed',log.error)
+        return json({ok:true,eventStatus:lifecycleStatus,show:await buildShowState(db,{...event,status:lifecycleStatus})})
+      })
+    }
+
     if(action==='admin-show-control'){
       const op=String(body.op||'').trim()
       const allowed=new Set(['start','next','back','jump','pause','resume','restart','skip','start_music','end_music','end_event'])
@@ -2371,39 +2438,46 @@ export async function handleApi(req:Request){
     }
 
     if(action==='admin-nepokoy-key-assign'){
+      if(!nepokoyEnabled(event))return err('режим «непокой» не включён для этого события',409)
       const registrationId=String(body.registrationId||''),roomNumber=String(body.roomNumber||'').trim().slice(0,12)
       if(!registrationId||!roomNumber)return err('нужны участник и номер ключа',422)
       const reg=await db.from('registrations').select('user_id,status').eq('id',registrationId).eq('event_id',event.id).maybeSingle();if(reg.error)throw reg.error
       if(!reg.data||reg.data.status!=='attended')return err('сначала отметьте участника пришедшим',409)
-      const existing=await db.from('event_hotel_keys').select('observer_role').eq('event_id',event.id).eq('user_id',reg.data.user_id).maybeSingle();if(existing.error)throw existing.error
+      const existing=await db.from('event_hotel_keys').select('observer_role,key_state').eq('event_id',event.id).eq('user_id',reg.data.user_id).maybeSingle();if(existing.error)throw existing.error
       let role=existing.data?.observer_role
       if(role===undefined||role===null){
         const used=await db.from('event_hotel_keys').select('observer_role').eq('event_id',event.id);if(used.error)throw used.error
         const taken=new Set((used.data||[]).map((x:any)=>Number(x.observer_role)))
         role=[0,1,2,3,4].find(x=>!taken.has(x))??((used.data||[]).length%5)
       }
-      const saved=await db.from('event_hotel_keys').upsert({event_id:event.id,user_id:reg.data.user_id,room_number:roomNumber,observer_role:role,key_state:'checked_in',updated_at:new Date().toISOString()},{onConflict:'event_id,user_id'}).select('room_number,observer_role,key_state').single()
+      const saved=await db.from('event_hotel_keys').upsert({event_id:event.id,user_id:reg.data.user_id,room_number:roomNumber,observer_role:role,key_state:existing.data?.key_state||'checked_in',updated_at:new Date().toISOString()},{onConflict:'event_id,user_id'}).select('room_number,observer_role,key_state').single()
       if(saved.error){if(String(saved.error.code)==='23505')return err('этот номер уже выдан другому гостю',409);throw saved.error}
       return json({ok:true,key:saved.data})
     }
     if(action==='admin-nepokoy-key-state'){
+      if(!nepokoyEnabled(event))return err('режим «непокой» не включён для этого события',409)
       const state=String(body.state||'')
       if(!['checked_in','number_noticed','post_film'].includes(state))return err('неизвестное состояние ключей',422)
       const x=await db.from('event_hotel_keys').update({key_state:state,updated_at:new Date().toISOString()}).eq('event_id',event.id).neq('key_state','selected');if(x.error)throw x.error
       return json({ok:true,state})
     }
     if(action==='admin-nepokoy-key-draw'){
-      const keys=await db.from('event_hotel_keys').select('id,user_id,room_number').eq('event_id',event.id).order('room_number');if(keys.error)throw keys.error
+      if(!nepokoyEnabled(event))return err('режим «непокой» не включён для этого события',409)
+      const keys=await db.from('event_hotel_keys').select('id,user_id,room_number,key_state').eq('event_id',event.id).order('room_number');if(keys.error)throw keys.error
       if(!(keys.data||[]).length)return err('сначала раздайте ключи',409)
-      const bytes=new Uint32Array(1);crypto.getRandomValues(bytes);const winner=(keys.data||[])[bytes[0]%(keys.data||[]).length]
-      const reset=await db.from('event_hotel_keys').update({key_state:'post_film',updated_at:new Date().toISOString()}).eq('event_id',event.id);if(reset.error)throw reset.error
-      const win=await db.from('event_hotel_keys').update({key_state:'selected',updated_at:new Date().toISOString()}).eq('id',winner.id);if(win.error)throw win.error
+      let winner=(keys.data||[]).find((x:any)=>String(x.key_state)==='selected')
+      if(!winner){
+        const bytes=new Uint32Array(1);crypto.getRandomValues(bytes);winner=(keys.data||[])[bytes[0]%(keys.data||[]).length]
+        const reset=await db.from('event_hotel_keys').update({key_state:'post_film',updated_at:new Date().toISOString()}).eq('event_id',event.id);if(reset.error)throw reset.error
+        const win=await db.from('event_hotel_keys').update({key_state:'selected',updated_at:new Date().toISOString()}).eq('id',winner.id);if(win.error)throw win.error
+      }
       const c=await db.from('creatures').select('name').eq('user_id',winner.user_id).maybeSingle();if(c.error)throw c.error
-      await setProjectorState(db,event,'assignment_winner',{animalName:c.data?.name||'животина',filmTitle:'ключ от «розы»',roomNumber:winner.room_number})
+      await setProjectorState(db,event,'assignment_winner',null,null,{animalName:c.data?.name||'животина',filmTitle:'ключ от «розы»',roomNumber:winner.room_number})
       return json({ok:true,winner:{roomNumber:winner.room_number,animalName:c.data?.name||'животина'}})
     }
 
     if(action==='admin-external-film-control'){
+      if(!nepokoyEnabled(event))return err('режим «непокой» не включён для этого события',409)
       const op=String(body.op||'')
       if(!['ready','playing','paused','finished'].includes(op))return err('неизвестное состояние фильма',422)
       const sourceUrl=String(body.sourceUrl||'').trim().slice(0,1800)
@@ -2645,6 +2719,17 @@ export async function handleApi(req:Request){
     if(action==='admin-award-story'){
       const target=String(body.userId||'');const code=String(body.storyCode||'');if(!target||!code)return err('userId и storyCode обязательны',422);const r=await db.rpc('award_story',{p_user_id:target,p_story_code:code,p_event_id:event.id,p_occurrence_key:'once',p_context:{source:'admin'}});if(r.error)throw r.error;return json({ok:true,result:r.data})
     }
+    if(action==='admin-set-nepokoy'){
+      if(!['DRAFT','SALES_OPEN','CHECKIN'].includes(event.status))return err('режим «непокой» можно менять только до запуска основной механики',409)
+      const show=await buildShowState(db,event)
+      if(show.runtime.runStatus!=='idle')return err('сначала остановите текущее мероприятие',409)
+      const enabled=body.enabled===true
+      const settings={...(event.settings||{}),modes:{...(event.settings?.modes||{}),nepokoy:{...(event.settings?.modes?.nepokoy||{}),enabled,updated_at:new Date().toISOString()}}}
+      const r=await db.from('events').update({settings}).eq('id',event.id).eq('status',event.status).select('id').maybeSingle();if(r.error)throw r.error
+      if(!r.data)return err('событие уже изменилось в другой вкладке. обновите пульт',409)
+      return json({ok:true,enabled})
+    }
+
     if(action==='admin-set-mechanic'){
       if(!['DRAFT','SALES_OPEN','CHECKIN'].includes(event.status))return err('Режим нельзя менять после открытия приёма идей',409)
       const enabled=body.enabled===true;const settings={...(event.settings||{}),modes:{...(event.settings?.modes||{}),nonexistent_film:{...(event.settings?.modes?.nonexistent_film||{}),enabled,updated_at:new Date().toISOString()}}}
