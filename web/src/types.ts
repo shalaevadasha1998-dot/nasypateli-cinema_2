@@ -357,6 +357,7 @@ export type ProjectorState = {
 
 export type DemoState = {
   isAdmin?:boolean
+  nepokoyCardIndex?:number
   event: EventInfo
   profile: CinemaProfile
   onboardingComplete:boolean

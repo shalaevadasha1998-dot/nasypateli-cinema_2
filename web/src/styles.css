@@ -3390,3 +3390,30 @@ html.chat-keyboard-open .chat-compose-inline{
 .dating-notification-toggle>i.on:after{transform:translateX(19px);background:var(--acid)}
 .dating-notification-toggle:disabled{opacity:.55}
 .dating-notification-error{margin:-8px 4px 16px}
+
+
+/* v0.13.0 — «непокой» five-person creature lab */
+.nepokoy-observer-card{
+  position:relative;
+  overflow:hidden;
+  margin:18px 0;
+  padding:22px;
+  border:1px solid rgba(238,233,223,.16);
+  border-radius:26px;
+  background:linear-gradient(145deg,rgba(190,120,135,.13),rgba(177,190,116,.06) 58%,rgba(238,233,223,.025));
+}
+.nepokoy-observer-card:after{content:'роза';position:absolute;right:-8px;bottom:-20px;font-size:76px;font-weight:900;letter-spacing:-.08em;opacity:.035;pointer-events:none}
+.nepokoy-card-no{margin-bottom:18px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.nepokoy-observer-card h2{margin:7px 0 12px;font-size:31px;line-height:.95}
+.nepokoy-observer-card>p{max-width:34rem;line-height:1.45}
+.nepokoy-card-after{display:grid;gap:6px;margin:20px 0;padding:15px 0;border-top:1px solid rgba(238,233,223,.12);border-bottom:1px solid rgba(238,233,223,.12)}
+.nepokoy-card-after small{color:var(--muted);text-transform:lowercase}
+.nepokoy-card-after b{font-size:14px;line-height:1.35}
+.nepokoy-pilot-admin{border-color:rgba(190,120,135,.32)}
+.nepokoy-pilot-admin h2{margin:5px 0 0}
+.nepokoy-pilot-cue{display:grid;gap:5px;margin:16px 0;padding:15px;border-radius:16px;background:rgba(190,120,135,.09)}
+.nepokoy-pilot-cue span{font-size:13px;line-height:1.4;color:var(--muted)}
+.nepokoy-pilot-buttons{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:14px 0}
+.nepokoy-pilot-admin details{margin-top:16px}
+.nepokoy-pilot-admin details p{font-size:13px;line-height:1.45}
+@media(max-width:620px){.nepokoy-pilot-buttons{grid-template-columns:1fr}.nepokoy-observer-card h2{font-size:27px}}
