@@ -137,7 +137,7 @@ function FilmLiveParticipant({data,reload}:{data:DemoState;reload:(fresh?:boolea
     const roomNumber=String(live.payload?.roomNumber||'')
     const keyMark=String(live.payload?.keyMark||'')
     const finalKey=keyMark?roomNumber+' / '+keyMark:roomNumber
-    if(roomNumber)return <section className={mineWinner?'participant-show film-live film-winner':'participant-show film-live'}><div className="eyebrow">{mineWinner?'«роза» выбрала твой ключ':'ключ финала'}</div><h2>{finalKey}</h2><p>{mineWinner?'не отдавай его. этот ключ остаётся твоим финальным следом после «непокоя».':winner+' остаётся с ключом '+finalKey+'.'}</p></section>
+    if(roomNumber)return <section className={mineWinner?'participant-show film-live film-winner':'participant-show film-live'}><div className="eyebrow">{mineWinner?'«роза» выбрала твой ключ':'ключ финала'}</div><h2>{finalKey}</h2><p>{mineWinner?`не отдавай его. этот ключ остаётся твоим финальным следом после «${data.event.title}».`:winner+' остаётся с ключом '+finalKey+'.'}</p></section>
     const assignment=(data.filmAssignments||[]).find(x=>x.filmPackageId===live.filmPackageId)
     return <section className={mineWinner?'participant-show film-live film-winner':'participant-show film-live'}><div className="eyebrow">{mineWinner?'это ты':'фильм достался'}</div><h2>{winner}</h2><p>{mineWinner?'тебе смотреть этот фильм. потом животина ждёт рецензию.':'у '+winner+' теперь есть фильм до следующей субботы.'}</p>{assignment&&<p className="muted">дедлайн: {eventDate(assignment.dueAt)}</p>}{mineWinner&&assignment&&<Button onClick={()=>{location.hash='#/mission/'+assignment.id}}>открыть задание</Button>}</section>
   }
@@ -176,7 +176,7 @@ function ParticipantShow({data,reload}:{data:DemoState;reload:(fresh?:boolean)=>
     }catch(e:any){setMessage(e.message||'не получилось отправить ответ')}
     finally{setBusy(false)}
   }
-  if(data.event.nepokoyEnabled&&externalVideo.external&&externalVideo.status==='playing')return <section className="participant-show film-live"><div className="eyebrow">непокой</div><h2>фильм идёт</h2><p>телефон вниз. следи за своей ролью и не теряй ключ.</p></section>
+  if(data.event.nepokoyEnabled&&externalVideo.external&&externalVideo.status==='playing')return <section className="participant-show film-live"><div className="eyebrow">{data.event.title}</div><h2>фильм идёт</h2><p>телефон вниз. следи за своей ролью и не теряй ключ.</p></section>
   if(data.event.nepokoyEnabled&&externalVideo.external&&externalVideo.status==='paused'&&!(question&&round?.voteState==='open'))return <section className="participant-show film-live"><div className="eyebrow">пауза</div><h2>телефон в руки</h2><p>животина кое-что заметила.</p></section>
   if(data.event.nepokoyEnabled&&externalVideo.external&&externalVideo.status==='finished'&&!(question&&round?.voteState==='open'))return <section className="participant-show film-live"><div className="eyebrow">титры</div><h2>не расходиться</h2><p>сейчас пригодятся ключ, твоя карточка и животина.</p></section>
   if(block.type==='music_live')return <section className="participant-show music"><div className="eyebrow">сейчас</div><h2>{block.title}</h2><p>убери телефон. там люди играют музыку</p></section>
