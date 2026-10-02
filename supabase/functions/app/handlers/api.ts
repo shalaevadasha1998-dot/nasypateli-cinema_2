@@ -2365,6 +2365,32 @@ export async function handleApi(req:Request){
       return json({ok:true,show:await buildShowState(db,event)})
     }
 
+    if(action==='admin-external-film-control'){
+      const op=String(body.op||'')
+      if(!['ready','playing','paused','finished'].includes(op))return err('неизвестное состояние фильма',422)
+      const sourceUrl=String(body.sourceUrl||'').trim().slice(0,1800)
+      if(sourceUrl&&!/^https?:\/\//i.test(sourceUrl))return err('нужна ссылка http/https',422)
+      const show=await buildShowState(db,event)
+      if(!show.currentRound?.id||show.currentRound.status!=='active')return err('сначала запустите раунд',409)
+      const previous:any=show.runtime.videoState||{}
+      const now=new Date().toISOString()
+      const videoState={
+        ...previous,
+        status:op,
+        external:true,
+        sourceUrl:sourceUrl||previous.sourceUrl||null,
+        title:String(body.title||previous.title||'непокой').slice(0,180),
+        updatedAt:now,
+        ...(op==='playing'?{startedAt:previous.startedAt||now}:{}),
+        ...(op==='finished'?{finishedAt:now}:{})
+      }
+      const a=await db.from('event_rounds').update({video_state:videoState,updated_at:now}).eq('id',show.currentRound.id);if(a.error)throw a.error
+      const rt=await db.from('event_runtime').select('revision').eq('event_id',event.id).single();if(rt.error)throw rt.error
+      const b=await db.from('event_runtime').update({video_state:videoState,revision:Number(rt.data.revision||0)+1,updated_at:now}).eq('event_id',event.id).eq('revision',rt.data.revision).select('event_id').maybeSingle();if(b.error)throw b.error
+      if(!b.data)return err('пульт уже изменился в другой вкладке · обновите экран',409)
+      return json({ok:true,videoState,show:await buildShowState(db,event)})
+    }
+
     if(action==='admin-video-control'){
       const op=String(body.op||'')
       if(!['play','stop','reset'].includes(op))return err('неизвестное действие видео',422)
