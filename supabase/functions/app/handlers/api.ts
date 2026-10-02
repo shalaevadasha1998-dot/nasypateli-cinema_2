@@ -124,6 +124,132 @@ async function discoverAndPersistMovieSources(db:any,event:any,movie:any){
   return {discovery,preferred}
 }
 
+type CaptionCue={start:number;end:number;text:string}
+
+function extractJsonArrayAfter(source:string,marker:string){
+  const at=source.indexOf(marker)
+  if(at<0)return null
+  const start=source.indexOf('[',at+marker.length)
+  if(start<0)return null
+  let depth=0,inString=false,escape=false
+  for(let i=start;i<source.length;i++){
+    const ch=source[i]
+    if(inString){
+      if(escape){escape=false;continue}
+      if(ch==='\\'){escape=true;continue}
+      if(ch==='"')inString=false
+      continue
+    }
+    if(ch==='"'){inString=true;continue}
+    if(ch==='[')depth++
+    if(ch===']'){depth--;if(depth===0)return source.slice(start,i+1)}
+  }
+  return null
+}
+
+async function youtubeCaptionCues(videoId:string):Promise<{language:string;cues:CaptionCue[]}|null>{
+  try{
+    const watch=await fetch('https://www.youtube.com/watch?v='+encodeURIComponent(videoId),{
+      headers:{'user-agent':'Mozilla/5.0 (compatible; NasypateliCinema/1.0)','accept-language':'en,ru;q=0.9'}
+    })
+    if(!watch.ok)return null
+    const html=await watch.text()
+    const raw=extractJsonArrayAfter(html,'"captionTracks":')
+    if(!raw)return null
+    const tracks=JSON.parse(raw)
+    if(!Array.isArray(tracks)||!tracks.length)return null
+    const track=tracks.find((x:any)=>String(x.languageCode||'').toLowerCase().startsWith('en'))
+      ||tracks.find((x:any)=>String(x.languageCode||'').toLowerCase().startsWith('ru'))
+      ||tracks.find((x:any)=>x.kind!=='asr')
+      ||tracks[0]
+    const baseUrl=String(track?.baseUrl||'')
+    if(!baseUrl)return null
+    const cap=await fetch(baseUrl+(baseUrl.includes('?')?'&':'?')+'fmt=json3',{headers:{'user-agent':'NasypateliCinema/1.0'}})
+    if(!cap.ok)return null
+    const j=await cap.json()
+    const cues:CaptionCue[]=[]
+    for(const ev of j?.events||[]){
+      const start=Math.max(0,Number(ev?.tStartMs||0)/1000)
+      const dur=Math.max(.1,Number(ev?.dDurationMs||0)/1000)
+      const text=Array.isArray(ev?.segs)?ev.segs.map((s:any)=>String(s?.utf8||'')).join('').replace(/\s+/g,' ').trim():''
+      if(text)cues.push({start,end:start+dur,text})
+    }
+    return cues.length?{language:String(track?.languageCode||''),cues}:null
+  }catch{return null}
+}
+
+function captionText(cues:CaptionCue[],start:number,end:number){
+  return cues.filter(x=>x.end>=start&&x.start<=end).map(x=>x.text).join(' ').replace(/\s+/g,' ').trim().slice(0,5000)
+}
+
+function stableThreeOptions(options:any[],correct:any,seed:string){
+  const correctKey=JSON.stringify(correct)
+  const wrong=(Array.isArray(options)?options:[]).filter(x=>JSON.stringify(x)!==correctKey).slice(0,2)
+  const trio=[correct,...wrong]
+  if(trio.length<3)return Array.isArray(options)?options.slice(0,3):[]
+  let n=0;for(const ch of seed)n=(n+ch.charCodeAt(0))%997
+  const pos=n%3
+  const out=[...wrong]
+  out.splice(pos,0,correct)
+  return out.slice(0,3)
+}
+
+async function buildTranscriptQuestionPackage(movie:any,source:any){
+  if(!source?.videoId)return null
+  const transcript=await youtubeCaptionCues(String(source.videoId))
+  if(!transcript?.cues?.length)return null
+  const cues=transcript.cues
+  const first=Math.max(0,Math.floor(cues[0].start))
+  const last=Math.floor(cues[cues.length-1].end)
+  if(last-first<72)return null
+  const base=first
+  const introEnd=base+27
+  const windows=[
+    {start:introEnd,end:introEnd+15},
+    {start:introEnd+15,end:introEnd+30},
+    {start:introEnd+30,end:introEnd+45}
+  ]
+  const segments=windows.map((w,index)=>({
+    position:index+1,
+    before:captionText(cues,Math.max(base,w.start-30),w.start-.1),
+    reveal:captionText(cues,w.start,w.end),
+    start:w.start,end:w.end
+  }))
+  if(segments.some(x=>x.reveal.length<8))return null
+  const schema={type:'object',additionalProperties:false,properties:{
+    questions:{type:'array',minItems:3,maxItems:3,items:{type:'object',additionalProperties:false,properties:{
+      position:{type:'integer',minimum:1,maximum:3},
+      prompt:{type:'string',minLength:3,maxLength:280},
+      options:{type:'array',minItems:3,maxItems:3,items:{type:'string',minLength:1,maxLength:220}},
+      correctAnswer:{type:'string',minLength:1,maxLength:220},
+      revealText:{type:'string',minLength:1,maxLength:500}
+    },required:['position','prompt','options','correctAnswer','revealText']}}
+  },required:['questions']}
+  const ai=await structuredResponse<any>({
+    name:'live_next_three',
+    schema,
+    instructions:'ты делаешь игру «что будет дальше?» по реальному видео. для каждого из трёх шагов используй ТОЛЬКО переданный реальный transcript reveal как правильное продолжение. вопрос короткий и понятный по-русски. ровно 3 варианта: один фактически соответствует reveal, два правдоподобных, но неверных. correctAnswer обязан буквально совпадать с одним из options. revealText кратко пересказывает фактический reveal. не выдумывай событий сверх транскрипта.',
+    input:JSON.stringify({film:{title:movie.title,originalTitle:movie.original_title,year:movie.year},captionLanguage:transcript.language,segments}),
+    maxOutputTokens:1800,reasoningEffort:'low'
+  })
+  const questions=(Array.isArray(ai.questions)?ai.questions:[]).sort((a:any,b:any)=>Number(a.position)-Number(b.position))
+  if(questions.length!==3)return null
+  for(let i=0;i<3;i++){
+    const q=questions[i]
+    const opts=(Array.isArray(q.options)?q.options:[]).map((x:any)=>String(x).trim()).filter(Boolean)
+    if(opts.length!==3||!opts.includes(String(q.correctAnswer||'').trim()))return null
+  }
+  const mediaBase={
+    sourcePlatform:'youtube',videoId:String(source.videoId),sourceUrl:String(source.sourceUrl||''),
+    startSec:base,endSec:introEnd
+  }
+  const fragments=[
+    {...mediaBase,label:'первый фрагмент'},
+    ...windows.map((w,index)=>({...mediaBase,label:'продолжение '+(index+1),startSec:w.start,endSec:w.end}))
+  ]
+  return {language:transcript.language,fragments,segments,questions}
+}
+
 function normalizeProfile(user:any,row:any,registration:any,tg:any){
   const j=row?.profile_json||{}
   const t=j.taste||{}
@@ -1835,47 +1961,123 @@ export async function handleApi(req:Request){
         if(pitch.error)throw pitch.error
         if(!pitch.data)return err('идея не найдена',404)
         await db.from('event_rounds').update({flow_status:'searching_movie',updated_at:new Date().toISOString()}).eq('id',round.id)
-        await setProjectorState(db,event,'movie_searching',round.id,null,{pitch:{animalName:pitch.data.animal_name_snapshot,title:pitch.data.title,description:pitch.data.description}})
-        const packages=await db.from('film_packages').select('id,movie_candidate_id,title_snapshot,fragments,status').eq('event_id',event.id).eq('status','ready')
-        if(packages.error)throw packages.error
-        const packageRows=packages.data||[]
-        if(!packageRows.length)return err('нет заранее подготовленных киноблоков',409)
-        const movieIds=packageRows.map((x:any)=>String(x.movie_candidate_id))
-        const movies=await db.from('movie_candidates').select('id,title,original_title,year,genre,reason,metadata').in('id',movieIds)
+        await setProjectorState(db,event,'movie_searching',round.id,null,{pitch:{animalName:pitch.data.animal_name_snapshot,title:pitch.data.title,description:pitch.data.description},scope:'worldwide'})
+
+        const candidateSchema={type:'object',additionalProperties:false,properties:{
+          candidates:{type:'array',minItems:10,maxItems:14,items:{type:'object',additionalProperties:false,properties:{
+            title:{type:'string'},originalTitle:{type:'string'},internationalTitle:{type:'string'},year:{type:['integer','null']},
+            country:{type:'string'},language:{type:'string'},similarityScore:{type:'number',minimum:0,maximum:100},reason:{type:'string'}
+          },required:['title','originalTitle','internationalTitle','year','country','language','similarityScore','reason']}}
+        },required:['candidates']}
+        const ai=await structuredResponse<any>({
+          name:'worldwide_movie_match',
+          schema:candidateSchema,
+          instructions:'по названию и описанию придуманного фильма найди максимально похожие РЕАЛЬНО СУЩЕСТВУЮЩИЕ полнометражные фильмы мирового кино. ищи без языковых и страновых ограничений: европа, азия, латинская америка, ближний восток, африка, сша, ссср/россия и т.д. можно предлагать малоизвестные фильмы, если сходство сильнее. обязательно дай оригинальное название на языке фильма и международное/английское название, если есть. не выдумывай фильмы. сортируй прежде всего по сходству сюжета, конфликта, атмосферы и ключевой идеи.',
+          input:JSON.stringify({invented:{title:pitch.data.title,description:pitch.data.description}}),
+          maxOutputTokens:3600,model:Deno.env.get('OPENAI_FILM_MODEL')||'gpt-5.6-terra',reasoningEffort:'medium'
+        })
+
+        const validated:any[]=[]
+        for(const c of ai.candidates||[]){
+          if(validated.length>=10)break
+          const names=[c.originalTitle,c.internationalTitle,c.title].map((x:any)=>String(x||'').trim()).filter(Boolean)
+          let v:any=null
+          for(const name of [...new Set(names)]){
+            v=await validateMovieTitle(name,c.year||undefined)
+            if(v)break
+          }
+          if(!v?.runtimeMin||v.runtimeMin>event.max_movie_runtime_min)continue
+          validated.push({
+            ...c,...v,
+            originalTitle:String(c.originalTitle||v.originalTitle||v.title),
+            searchTitles:[...new Set([...names,...(Array.isArray(v.searchTitles)?v.searchTitles:[])])].slice(0,30)
+          })
+        }
+        validated.sort((x:any,y:any)=>Number(y.similarityScore||0)-Number(x.similarityScore||0))
+
+        const sourceTrace:any[]=[]
+        for(const c of validated.slice(0,8)){
+          const inserted=await db.from('movie_candidates').insert({
+            event_id:event.id,provider:'wikidata',provider_id:c.wikidataId,title:c.title,original_title:c.originalTitle||c.title,
+            year:c.year||null,runtime_min:c.runtimeMin||null,validated:true,similarity_score:c.similarityScore,
+            audience_fit_score:0,reason:c.reason,genre:null,country:String(c.country||'').slice(0,120)||null,
+            metadata:{wikidata_url:c.url,description:c.description,round_id:round.id,origin_submission_id:pitch.data.id,language:c.language,search_titles:c.searchTitles}
+          }).select('*').single()
+          if(inserted.error)throw inserted.error
+          const movie=inserted.data
+          try{
+            const resolved=await discoverAndPersistMovieSources(db,event,movie)
+            const sourceCandidates=(resolved.discovery?.candidates||[]).filter((x:any)=>x.videoId&&x.verified&&x.embeddable&&x.rightsStatus!=='blocked').sort((x:any,y:any)=>Number(y.confidence||0)-Number(x.confidence||0))
+            sourceTrace.push({movieId:movie.id,title:movie.title,sources:sourceCandidates.length})
+            for(const source of sourceCandidates.slice(0,5)){
+              try{
+                const livePack=await buildTranscriptQuestionPackage(movie,source)
+                if(!livePack)continue
+                await applyMovieSourceToCandidate(db,event,movie.id,source)
+                const pack=await db.from('film_packages').insert({
+                  event_id:event.id,movie_candidate_id:movie.id,title_snapshot:movie.title,fragments:livePack.fragments,status:'ready',
+                  origin_submission_id:pitch.data.id,
+                  match_data:{mode:'live_worldwide',captionLanguage:livePack.language,similarityScore:c.similarityScore,reason:c.reason,sourceTrace}
+                }).select('*').single()
+                if(pack.error)throw pack.error
+                const questionRows=livePack.questions.map((q:any,index:number)=>{
+                  const segment=livePack.segments[index]
+                  return {
+                    film_package_id:pack.data.id,position:index+1,prompt:String(q.prompt).trim().slice(0,500),
+                    options:q.options,correct_answer:String(q.correctAnswer).trim(),
+                    reveal_text:String(q.revealText).trim().slice(0,1000),
+                    reveal_fragment:livePack.fragments[index+1],
+                    real_outcome:String(q.revealText).trim().slice(0,1000),
+                    verification_data:{type:'youtube_captions',language:livePack.language,videoId:source.videoId,startSec:segment.start,endSec:segment.end,transcript:segment.reveal}
+                  }
+                })
+                const qs=await db.from('film_questions').insert(questionRows)
+                if(qs.error)throw qs.error
+                const now=new Date().toISOString()
+                const ru=await db.from('event_rounds').update({movie_candidate_id:movie.id,flow_status:'movie_found',question_target:3,question_position:0,updated_at:now}).eq('id',round.id).eq('event_id',event.id)
+                if(ru.error)throw ru.error
+                const runtime=await db.from('event_runtime').select('revision').eq('event_id',event.id).maybeSingle()
+                if(runtime.error)throw runtime.error
+                if(runtime.data){
+                  const up=await db.from('event_runtime').update({current_movie_id:movie.id,revision:Number(runtime.data.revision||0)+1,updated_at:now}).eq('event_id',event.id).eq('revision',runtime.data.revision)
+                  if(up.error)throw up.error
+                }
+                const projector=await setProjectorState(db,event,'movie_found',round.id,pack.data.id,{found:true,filmTitle:movie.title,year:movie.year,reason:c.reason,fragment:livePack.fragments[0],searchMode:'live_worldwide'})
+                return json({ok:true,found:true,searchMode:'live_worldwide',movie:{id:movie.id,title:movie.title,year:movie.year,reason:c.reason},filmPackageId:pack.data.id,projector,sourceTrace})
+              }catch(e:any){sourceTrace.push({movieId:movie.id,title:movie.title,source:String(source.videoId||source.sourceUrl||''),error:String(e?.message||e)})}
+            }
+          }catch(e:any){sourceTrace.push({movieId:movie.id,title:movie.title,error:String(e?.message||e)})}
+        }
+
+        const fallbackPackages=await db.from('film_packages').select('id,movie_candidate_id,title_snapshot,fragments,status').eq('event_id',event.id).eq('status','ready').is('origin_submission_id',null)
+        if(fallbackPackages.error)throw fallbackPackages.error
+        const rows=fallbackPackages.data||[]
+        if(!rows.length){
+          await db.from('event_rounds').update({flow_status:'movie_found',movie_candidate_id:null,updated_at:new Date().toISOString()}).eq('id',round.id)
+          const projector=await setProjectorState(db,event,'movie_found',round.id,null,{found:false,message:'не нашли проверяемый фрагмент'})
+          return json({ok:true,found:false,searchMode:'live_failed',sourceTrace,projector})
+        }
+        const ids=rows.map((x:any)=>String(x.movie_candidate_id))
+        const movies=await db.from('movie_candidates').select('id,title,original_title,year,genre,reason').in('id',ids)
         if(movies.error)throw movies.error
         const movieMap=new Map((movies.data||[]).map((x:any)=>[String(x.id),x]))
-        const candidates=packageRows.map((p:any)=>({package:p,movie:movieMap.get(String(p.movie_candidate_id))})).filter((x:any)=>x.movie)
-        if(!candidates.length)return err('подготовленные фильмы не найдены',409)
-        let chosen:any=candidates[0]
-        let matchReason=String(chosen.movie.reason||'самый близкий из заранее подготовленных фильмов')
+        const fallbacks=rows.map((p:any)=>({package:p,movie:movieMap.get(String(p.movie_candidate_id))})).filter((x:any)=>x.movie)
+        let chosen:any=fallbacks[0]
         try{
-          const ids=candidates.map((x:any)=>String(x.movie.id))
           const match=await structuredResponse<any>({
-            name:'prepared_round_movie_match',
-            schema:{type:'object',additionalProperties:false,properties:{
-              movieId:{type:'string',enum:ids},
-              reason:{type:'string',minLength:1,maxLength:500}
-            },required:['movieId','reason']},
-            instructions:'выбери ровно один фильм из переданного списка, который тематически, сюжетно или по настроению ближе всего к придуманному зрителем фильму. нельзя придумывать другие фильмы. объяснение короткое, по-русски.',
-            input:JSON.stringify({
-              invented:{title:pitch.data.title,description:pitch.data.description},
-              candidates:candidates.map((x:any)=>({id:String(x.movie.id),title:x.movie.title,originalTitle:x.movie.original_title,year:x.movie.year,genre:x.movie.genre}))
-            }),
-            maxOutputTokens:350,reasoningEffort:'none'
+            name:'prepared_fallback_match',
+            schema:{type:'object',additionalProperties:false,properties:{movieId:{type:'string',enum:fallbacks.map((x:any)=>String(x.movie.id))}},required:['movieId']},
+            instructions:'выбери из резервного списка фильм, наиболее похожий на придуманную идею. только один id.',
+            input:JSON.stringify({invented:{title:pitch.data.title,description:pitch.data.description},candidates:fallbacks.map((x:any)=>({id:x.movie.id,title:x.movie.title,year:x.movie.year,genre:x.movie.genre}))}),
+            maxOutputTokens:180,reasoningEffort:'none'
           })
-          const found=candidates.find((x:any)=>String(x.movie.id)===String(match.movieId))
-          if(found)chosen=found
-          if(String(match.reason||'').trim())matchReason=String(match.reason).trim()
-        }catch(e:any){
-          console.error('prepared movie match fallback',String(e?.message||e||'unknown'))
-        }
-        const questions=await db.from('film_questions').select('id,position').eq('film_package_id',chosen.package.id).order('position')
-        if(questions.error)throw questions.error
-        const target=Math.max(1,Math.min(5,Number((questions.data||[]).length||5)))
+          chosen=fallbacks.find((x:any)=>String(x.movie.id)===String(match.movieId))||chosen
+        }catch{}
+        const existingQuestions=await db.from('film_questions').select('id,position').eq('film_package_id',chosen.package.id).order('position')
+        if(existingQuestions.error)throw existingQuestions.error
+        const target=Math.min(3,Math.max(1,(existingQuestions.data||[]).length))
         const now=new Date().toISOString()
-        const ru=await db.from('event_rounds').update({
-          movie_candidate_id:chosen.movie.id,flow_status:'movie_found',question_target:target,question_position:0,updated_at:now
-        }).eq('id',round.id).eq('event_id',event.id)
+        const ru=await db.from('event_rounds').update({movie_candidate_id:chosen.movie.id,flow_status:'movie_found',question_target:target,question_position:0,updated_at:now}).eq('id',round.id).eq('event_id',event.id)
         if(ru.error)throw ru.error
         const runtime=await db.from('event_runtime').select('revision').eq('event_id',event.id).maybeSingle()
         if(runtime.error)throw runtime.error
@@ -1884,11 +2086,9 @@ export async function handleApi(req:Request){
           if(up.error)throw up.error
         }
         const fragment=(Array.isArray(chosen.package.fragments)?chosen.package.fragments:[])[0]||null
-        const projector=await setProjectorState(db,event,'movie_found',round.id,chosen.package.id,{
-          found:true,filmTitle:chosen.movie.title,year:chosen.movie.year,reason:matchReason,fragment
-        })
-        return json({ok:true,found:true,movie:{id:chosen.movie.id,title:chosen.movie.title,year:chosen.movie.year,reason:matchReason},filmPackageId:chosen.package.id,projector})
-      },120)
+        const projector=await setProjectorState(db,event,'movie_found',round.id,chosen.package.id,{found:true,filmTitle:chosen.movie.title,year:chosen.movie.year,reason:'резервный проверенный киноблок',fragment,searchMode:'fallback_prepared'})
+        return json({ok:true,found:true,searchMode:'fallback_prepared',movie:{id:chosen.movie.id,title:chosen.movie.title,year:chosen.movie.year,reason:'резервный проверенный киноблок'},filmPackageId:chosen.package.id,projector,sourceTrace})
+      },240)
     }
 
     if(action==='admin-round-question-generate'){
@@ -2014,7 +2214,8 @@ export async function handleApi(req:Request){
         if(q.error)throw q.error
         if(!q.data)return err('вопрос не найден',404)
         if(op==='question_open'){
-          state='question_open';payload={filmTitle:pack.data.title_snapshot,questionId:q.data.id,position,totalQuestions:Number(round.data.question_target||3),prompt:q.data.prompt,options:q.data.options}
+          const options=stableThreeOptions(Array.isArray(q.data.options)?q.data.options:[],q.data.correct_answer,String(q.data.id))
+          state='question_open';payload={filmTitle:pack.data.title_snapshot,questionId:q.data.id,position,totalQuestions:Number(round.data.question_target||3),prompt:q.data.prompt,options}
         }else if(op==='question_results'){
           const answers=await db.from('film_predictions').select('answer').eq('event_id',event.id).eq('round_id',roundId).eq('film_package_id',packageId).eq('question_id',q.data.id)
           if(answers.error)throw answers.error
