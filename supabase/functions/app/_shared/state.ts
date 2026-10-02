@@ -6,8 +6,9 @@ export async function eventBySlug(db:any,slugOrId:string){
   const value=String(slugOrId||'').trim()
   const isUuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
   const query=db.from('events').select('*')
-  const r=await (isUuid?query.eq('id',value):query.eq('slug',value)).single()
+  const r=await (isUuid?query.eq('id',value):query.eq('slug',value)).maybeSingle()
   if(r.error)throw r.error
+  if(!r.data)throw new Error('EVENT_NOT_FOUND')
   return r.data
 }
 
