@@ -783,7 +783,9 @@ async function chatContext(db:any,event:any,user:any,profile:any){
     db.from('final_reviews').select('rating,final_sentence').eq('event_id',event.id).eq('user_id',user.id).maybeSingle()
   ])
   for(const r of [memories,clubMem,registration,movie,answers,reaction,review])if(r.error)throw r.error
-  const creature=await creatureState(db,user.id);return {profile,creature:{name:creature.name,stage:creature.stage,traits:creature.traits,storyCount:creature.storyCount,recentStories:creature.timeline.slice(0,8)},userMemory:memories.data||[],clubMemory:clubMem.data||[],event:{id:event.id,title:event.title,status:event.status,mechanicEnabled:nonexistentFilmEnabled(event),registration:effectiveRegistrationStatus(registration.data)},selectedMovie:(movie.data as any)?.movie_candidates||null,predictions:answers.data||[],reaction:reaction.data||null,finalReview:review.data||null}
+  const hotelKey=String(event.title||'').toLocaleLowerCase('ru-RU').includes('непокой')?await db.from('event_hotel_keys').select('room_number,observer_role,key_state').eq('event_id',event.id).eq('user_id',user.id).maybeSingle():{data:null,error:null} as any
+  if(hotelKey.error)throw hotelKey.error
+  const creature=await creatureState(db,user.id);return {profile,creature:{name:creature.name,stage:creature.stage,traits:creature.traits,storyCount:creature.storyCount,recentStories:creature.timeline.slice(0,8)},userMemory:memories.data||[],clubMemory:clubMem.data||[],event:{id:event.id,title:event.title,status:event.status,mechanicEnabled:nonexistentFilmEnabled(event),registration:effectiveRegistrationStatus(registration.data)},nepokoyHotelKey:hotelKey.data||null,selectedMovie:(movie.data as any)?.movie_candidates||null,predictions:answers.data||[],reaction:reaction.data||null,finalReview:review.data||null}
 }
 
 async function processChatAftermath(db:any,userId:string,message:string,reply:string,occurrenceKey:string,eventId?:string){
@@ -1116,14 +1118,13 @@ export async function handleApi(req:Request){
         show={...show,myVote:mine.data?.answer}
       }
       const [filmAssignments,filmLive]=await Promise.all([userFilmAssignments(db,user.id),filmLiveState(db,event,user.id)])
-      let nepokoyCardIndex: number|undefined
+      let nepokoyCardIndex: number|undefined,nepokoyHotelKey:any=undefined
       if(String(event.title||'').toLocaleLowerCase('ru-RU').includes('непокой')&&effectiveRegistrationStatus(reg.data)==='attended'){
-        const room=await db.from('registrations').select('user_id,created_at').eq('event_id',event.id).eq('status','attended').order('created_at').order('user_id')
-        if(room.error)throw room.error
-        const index=(room.data||[]).findIndex((x:any)=>String(x.user_id)===String(user.id))
-        if(index>=0)nepokoyCardIndex=index%5
+        const key=await db.from('event_hotel_keys').select('room_number,observer_role,key_state').eq('event_id',event.id).eq('user_id',user.id).maybeSingle()
+        if(key.error)throw key.error
+        if(key.data){nepokoyHotelKey=key.data;nepokoyCardIndex=Number(key.data.observer_role)}
       }
-      return json({...common,show,isAdmin,user,profile,filmAssignments,filmLive,nepokoyCardIndex,onboardingComplete:profile.completed,registration:effectiveRegistrationStatus(reg.data),queuePosition:effectiveRegistrationStatus(reg.data)==='waitlist'?Number(reg.data?.queue_position||0)||undefined:undefined,reservationExpiresAt:effectiveRegistrationStatus(reg.data)==='reserved'?reg.data?.reservation_expires_at||undefined:undefined,idea:idea.data||undefined,predictions:(common.predictions||[]).map((p:any)=>({...p,answer:answerMap.get(p.id)})),predictionSubmitted:(answers.data||[]).length>0,thought:thought.data?.text,reaction:reaction.data?{rating:reaction.data.rating,stateWord:reaction.data.state_word,thought:reaction.data.thought,recommendation:reaction.data.recommendation}:undefined,review:review.data?{rating:review.data.rating,sentence:review.data.final_sentence}:undefined,feedback:feedback.data?{returnIntent:feedback.data.return_intent,strongest:feedback.data.strongest_part||'',improve:feedback.data.improve_text||'',willingness:feedback.data.willingness_to_pay||0,durationFeel:feedback.data.duration_feel||'нормально',inviteFriend:feedback.data.invite_friend===null||feedback.data.invite_friend===undefined?8:Number(feedback.data.invite_friend)}:undefined,...extras,creature,...datingBundle,notificationPrefs:{writeAccess:!!notif.data?.write_access,events:notif.data?.events!==false,creature:notif.data?.creature!==false,stories:notif.data?.stories!==false,matches:notif.data?.matches!==false,tickets:notif.data?.tickets!==false,reminders:notif.data?.reminders!==false,quietHours:notif.data?.quiet_hours!==false}})
+      return json({...common,show,isAdmin,user,profile,filmAssignments,filmLive,nepokoyCardIndex,nepokoyHotelKey,onboardingComplete:profile.completed,registration:effectiveRegistrationStatus(reg.data),queuePosition:effectiveRegistrationStatus(reg.data)==='waitlist'?Number(reg.data?.queue_position||0)||undefined:undefined,reservationExpiresAt:effectiveRegistrationStatus(reg.data)==='reserved'?reg.data?.reservation_expires_at||undefined:undefined,idea:idea.data||undefined,predictions:(common.predictions||[]).map((p:any)=>({...p,answer:answerMap.get(p.id)})),predictionSubmitted:(answers.data||[]).length>0,thought:thought.data?.text,reaction:reaction.data?{rating:reaction.data.rating,stateWord:reaction.data.state_word,thought:reaction.data.thought,recommendation:reaction.data.recommendation}:undefined,review:review.data?{rating:review.data.rating,sentence:review.data.final_sentence}:undefined,feedback:feedback.data?{returnIntent:feedback.data.return_intent,strongest:feedback.data.strongest_part||'',improve:feedback.data.improve_text||'',willingness:feedback.data.willingness_to_pay||0,durationFeel:feedback.data.duration_feel||'нормально',inviteFriend:feedback.data.invite_friend===null||feedback.data.invite_friend===undefined?8:Number(feedback.data.invite_friend)}:undefined,...extras,creature,...datingBundle,notificationPrefs:{writeAccess:!!notif.data?.write_access,events:notif.data?.events!==false,creature:notif.data?.creature!==false,stories:notif.data?.stories!==false,matches:notif.data?.matches!==false,tickets:notif.data?.tickets!==false,reminders:notif.data?.reminders!==false,quietHours:notif.data?.quiet_hours!==false}})
     }
 
     if(action==='save-profile-progress'||action==='save-profile'){
@@ -2363,6 +2364,39 @@ export async function handleApi(req:Request){
       const b=await db.from('event_runtime').update({vote_state:voteState,results_visible:resultsVisible,revision:Number(rt.data.revision||0)+1,updated_at:now}).eq('event_id',event.id).eq('revision',rt.data.revision).select('event_id').maybeSingle();if(b.error)throw b.error
       if(!b.data)return err('пульт уже изменился в другой вкладке · обновите экран',409)
       return json({ok:true,show:await buildShowState(db,event)})
+    }
+
+    if(action==='admin-nepokoy-key-assign'){
+      const registrationId=String(body.registrationId||''),roomNumber=String(body.roomNumber||'').trim().slice(0,12)
+      if(!registrationId||!roomNumber)return err('нужны участник и номер ключа',422)
+      const reg=await db.from('registrations').select('user_id,status').eq('id',registrationId).eq('event_id',event.id).maybeSingle();if(reg.error)throw reg.error
+      if(!reg.data||reg.data.status!=='attended')return err('сначала отметьте участника пришедшим',409)
+      const existing=await db.from('event_hotel_keys').select('observer_role').eq('event_id',event.id).eq('user_id',reg.data.user_id).maybeSingle();if(existing.error)throw existing.error
+      let role=existing.data?.observer_role
+      if(role===undefined||role===null){
+        const used=await db.from('event_hotel_keys').select('observer_role').eq('event_id',event.id);if(used.error)throw used.error
+        const taken=new Set((used.data||[]).map((x:any)=>Number(x.observer_role)))
+        role=[0,1,2,3,4].find(x=>!taken.has(x))??((used.data||[]).length%5)
+      }
+      const saved=await db.from('event_hotel_keys').upsert({event_id:event.id,user_id:reg.data.user_id,room_number:roomNumber,observer_role:role,key_state:'checked_in',updated_at:new Date().toISOString()},{onConflict:'event_id,user_id'}).select('room_number,observer_role,key_state').single()
+      if(saved.error){if(String(saved.error.code)==='23505')return err('этот номер уже выдан другому гостю',409);throw saved.error}
+      return json({ok:true,key:saved.data})
+    }
+    if(action==='admin-nepokoy-key-state'){
+      const state=String(body.state||'')
+      if(!['checked_in','number_noticed','post_film'].includes(state))return err('неизвестное состояние ключей',422)
+      const x=await db.from('event_hotel_keys').update({key_state:state,updated_at:new Date().toISOString()}).eq('event_id',event.id).neq('key_state','selected');if(x.error)throw x.error
+      return json({ok:true,state})
+    }
+    if(action==='admin-nepokoy-key-draw'){
+      const keys=await db.from('event_hotel_keys').select('id,user_id,room_number').eq('event_id',event.id).order('room_number');if(keys.error)throw keys.error
+      if(!(keys.data||[]).length)return err('сначала раздайте ключи',409)
+      const bytes=new Uint32Array(1);crypto.getRandomValues(bytes);const winner=(keys.data||[])[bytes[0]%(keys.data||[]).length]
+      const reset=await db.from('event_hotel_keys').update({key_state:'post_film',updated_at:new Date().toISOString()}).eq('event_id',event.id);if(reset.error)throw reset.error
+      const win=await db.from('event_hotel_keys').update({key_state:'selected',updated_at:new Date().toISOString()}).eq('id',winner.id);if(win.error)throw win.error
+      const c=await db.from('creatures').select('name').eq('user_id',winner.user_id).maybeSingle();if(c.error)throw c.error
+      await setProjectorState(db,event,'assignment_winner',{animalName:c.data?.name||'животина',filmTitle:'ключ от «розы»',roomNumber:winner.room_number})
+      return json({ok:true,winner:{roomNumber:winner.room_number,animalName:c.data?.name||'животина'}})
     }
 
     if(action==='admin-external-film-control'){
