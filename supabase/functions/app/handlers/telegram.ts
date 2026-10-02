@@ -23,6 +23,60 @@ function parseTicketPayload(payload:unknown){
   return {eventId,userId}
 }
 
+function normalizeTelegramUsername(value:any){
+  return String(value||'').trim().replace(/^@+/,'').toLowerCase().replace(/[^a-z0-9_]/g,'').slice(0,64)
+}
+
+async function getOrCreateTelegramUser(db:any,from:any){
+  const telegramId=Number(from?.id||0)
+  if(!telegramId)throw new Error('telegram user id missing')
+  const existing=await db.from('users').select('*').eq('telegram_id',telegramId).maybeSingle()
+  if(existing.error)throw existing.error
+  const username=normalizeTelegramUsername(from?.username)||null
+  const displayName=[from?.first_name,from?.last_name].filter(Boolean).join(' ')||null
+  if(existing.data){
+    const patch:any={}
+    if((existing.data.telegram_username||null)!==username)patch.telegram_username=username
+    if(!existing.data.display_name&&displayName)patch.display_name=displayName
+    if(Object.keys(patch).length){
+      patch.updated_at=new Date().toISOString()
+      const updated=await db.from('users').update(patch).eq('id',existing.data.id).select('*').single()
+      if(updated.error)throw updated.error
+      return updated.data
+    }
+    return existing.data
+  }
+  const created=await db.from('users').insert({telegram_id:telegramId,telegram_username:username,display_name:displayName}).select('*').single()
+  if(created.error){
+    if(String(created.error.code||'')==='23505'){
+      const raced=await db.from('users').select('*').eq('telegram_id',telegramId).single()
+      if(raced.error)throw raced.error
+      return raced.data
+    }
+    throw created.error
+  }
+  return created.data
+}
+
+async function ensureInviteRegistration(db:any,event:any,userId:string){
+  const current=await db.from('registrations').select('id,status').eq('event_id',event.id).eq('user_id',userId).maybeSingle()
+  if(current.error)throw current.error
+  const now=new Date().toISOString()
+  if(current.data){
+    if(['paid','attended'].includes(String(current.data.status||'')))return String(current.data.status)
+    const updated=await db.from('registrations').update({
+      status:'paid',queue_position:null,payment_provider:'invite',amount_rub:0,paid_at:now,reservation_expires_at:null
+    }).eq('id',current.data.id).select('status').single()
+    if(updated.error)throw updated.error
+    return String(updated.data.status)
+  }
+  const inserted=await db.from('registrations').insert({
+    event_id:event.id,user_id:userId,status:'paid',payment_provider:'invite',amount_rub:0,paid_at:now,photo_video_consent:false
+  }).select('status').single()
+  if(inserted.error)throw inserted.error
+  return String(inserted.data.status)
+}
+
 export async function handleTelegram(req:Request){
   try{
     if(req.method!=='POST')return json({ok:false},405)
@@ -98,8 +152,43 @@ export async function handleTelegram(req:Request){
     }
 
     if(msg?.text?.startsWith('/start')){
-      const payload=String(msg.text||'').split(/\s+/)[1]||'';let launchUrl=webAppUrl;let buttonText='открыть клуб';let intro='это НАСЫПАТЕЛИ В КИНО. здесь билеты, животина, знакомства и механики вечера'
-      if(payload.startsWith('encounter_')&&webAppUrl){const token=payload.slice('encounter_'.length);const t=await db.from('encounter_tokens').select('kind').eq('token',token).maybeSingle();const u=new URL(webAppUrl);u.searchParams.set('encounter',token);launchUrl=u.toString();buttonText=t.data?.kind==='event_checkin'?'отметиться на событии':'встретить животину';intro=t.data?.kind==='event_checkin'?'откройте НАСЫПАТЕЛИ В КИНО, чтобы отметиться на событии':'кажется, ваши животины сейчас встретятся'}
+      const botUser=await getOrCreateTelegramUser(db,msg.from||{})
+      const payload=String(msg.text||'').split(/\s+/)[1]||'';let launchUrl=webAppUrl;let buttonText='открыть клуб';let intro='это насыпатели в кино. здесь билеты, животина, знакомства и механики вечера'
+      if(payload.startsWith('invite_')){
+        const token=payload.slice('invite_'.length)
+        const invite=await db.from('encounter_tokens').select('id,event_id,owner_user_id,expires_at,metadata').eq('token',token).eq('kind','event_invite').maybeSingle()
+        if(invite.error)throw invite.error
+        if(!invite.data||!invite.data.event_id||!invite.data.expires_at||new Date(invite.data.expires_at).getTime()<=Date.now()){
+          await tg('sendMessage',{chat_id:msg.chat.id,text:'это приглашение уже не действует. попроси организатора прислать новое'})
+          return json({ok:true})
+        }
+        const event=await db.from('events').select('id,slug,title,starts_at,status,settings').eq('id',invite.data.event_id).maybeSingle()
+        if(event.error)throw event.error
+        if(!event.data||event.data.status==='CLOSED'||event.data.settings?.modes?.nepokoy?.enabled!==true||event.data.settings?.access?.mode!=='invite_only'){
+          await tg('sendMessage',{chat_id:msg.chat.id,text:'закрытый просмотр по этой ссылке уже недоступен'})
+          return json({ok:true})
+        }
+        const intended=normalizeTelegramUsername(invite.data.metadata?.invited_username)
+        const actual=normalizeTelegramUsername(msg.from?.username)
+        if(invite.data.owner_user_id&&String(invite.data.owner_user_id)!==String(botUser.id)){
+          await tg('sendMessage',{chat_id:msg.chat.id,text:'это персональное приглашение для другого telegram-аккаунта'})
+          return json({ok:true})
+        }
+        if(!invite.data.owner_user_id&&intended&&actual!==intended){
+          await tg('sendMessage',{chat_id:msg.chat.id,text:`это приглашение привязано к @${intended}. открой его из нужного telegram-аккаунта`})
+          return json({ok:true})
+        }
+        await ensureInviteRegistration(db,event.data,String(botUser.id))
+        const metadata={...(invite.data.metadata||{}),invited_username:intended||actual,delivery:'redeemed',redeemed_at:new Date().toISOString()}
+        const saved=await db.from('encounter_tokens').update({owner_user_id:botUser.id,metadata}).eq('id',invite.data.id)
+        if(saved.error)throw saved.error
+        const date=new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Moscow'}).format(new Date(event.data.starts_at))
+        intro=`ты внутри закрытого камерного просмотра «непокой». место закреплено за тобой. ${date}. остальные детали появятся внутри приложения`
+        buttonText='открыть закрытый просмотр'
+        launchUrl=webAppUrl
+      }else if(payload.startsWith('encounter_')&&webAppUrl){
+        const token=payload.slice('encounter_'.length);const t=await db.from('encounter_tokens').select('kind').eq('token',token).maybeSingle();const u=new URL(webAppUrl);u.searchParams.set('encounter',token);launchUrl=u.toString();buttonText=t.data?.kind==='event_checkin'?'отметиться на событии':'встретить животину';intro=t.data?.kind==='event_checkin'?'откройте насыпатели в кино, чтобы отметиться на событии':'кажется, ваши животины сейчас встретятся'
+      }
       const reply_markup=launchUrl?{inline_keyboard:[[{text:buttonText,web_app:{url:launchUrl}}]]}:undefined
       await tg('sendMessage',{chat_id:msg.chat.id,text:intro,...(reply_markup?{reply_markup}:{})})
       return json({ok:true})

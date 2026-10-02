@@ -6,6 +6,10 @@ export function nepokoyEnabled(event:any){
   return event?.settings?.modes?.nepokoy?.enabled===true
 }
 
+export function inviteOnlyEvent(event:any){
+  return event?.settings?.access?.mode==='invite_only'
+}
+
 export async function eventBySlug(db:any,slugOrId:string){
   const value=String(slugOrId||'').trim()
   const isUuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
@@ -16,9 +20,9 @@ export async function eventBySlug(db:any,slugOrId:string){
 }
 
 export async function nextEvent(db:any){
-  const r=await db.from('events').select('*').order('starts_at',{ascending:true}).gte('starts_at',new Date(Date.now()-86400000).toISOString()).limit(1).maybeSingle()
+  const r=await db.from('events').select('*').order('starts_at',{ascending:true}).gte('starts_at',new Date(Date.now()-86400000).toISOString()).limit(20)
   if(r.error)throw r.error
-  return r.data||null
+  return (r.data||[]).find((event:any)=>!inviteOnlyEvent(event))||null
 }
 
 function normalizeProgram(config:any){
