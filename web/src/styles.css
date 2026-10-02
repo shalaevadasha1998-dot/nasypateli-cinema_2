@@ -3417,3 +3417,11 @@ html.chat-keyboard-open .chat-compose-inline{
 .nepokoy-pilot-admin details{margin-top:16px}
 .nepokoy-pilot-admin details p{font-size:13px;line-height:1.45}
 @media(max-width:620px){.nepokoy-pilot-buttons{grid-template-columns:1fr}.nepokoy-observer-card h2{font-size:27px}}
+
+
+/* v0.13.1 — director film controls */
+.nepokoy-director-player{display:grid;gap:12px;margin:14px 0 18px;padding:16px;border:1px solid rgba(238,233,223,.12);border-radius:18px;background:rgba(0,0,0,.18)}
+.nepokoy-director-player .field{margin:0}
+.nepokoy-player-controls{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.nepokoy-director-player a.button{display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
+@media(max-width:720px){.nepokoy-player-controls{grid-template-columns:1fr 1fr}}
