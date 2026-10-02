@@ -1,6 +1,6 @@
 export const cors={
   'access-control-allow-origin':'*',
-  'access-control-allow-headers':'content-type,x-telegram-init-data,x-demo-telegram-id,x-admin-token,x-screen-token,x-cron-token',
+  'access-control-allow-headers':'content-type,x-telegram-init-data,x-client-build,x-demo-telegram-id,x-admin-token,x-screen-token,x-cron-token',
   'access-control-allow-methods':'POST,OPTIONS'
 }
 
