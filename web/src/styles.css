@@ -3347,3 +3347,12 @@ html.chat-keyboard-open .chat-compose-inline{
   10%,27%{opacity:1;transform:none}
   31%,100%{opacity:0;transform:translateY(-7px)}
 }
+
+/* v0.13 — linear live round pitch wall */
+.screen-pitch-progress,.screen-pitch-locked{width:min(1280px,92vw)}
+.screen-pitch-progress h1,.screen-pitch-locked h1{margin:8px 0 18px}
+.screen-pitch-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;width:100%;max-height:58vh;overflow:hidden;margin-top:22px}
+.screen-pitch-cards article{display:grid;gap:9px;align-content:start;padding:18px 20px;border:1px solid rgba(234,229,220,.13);border-radius:18px;background:rgba(18,19,16,.82)}
+.screen-pitch-cards b{font-size:clamp(20px,2vw,34px);line-height:1.05}
+.screen-pitch-cards span{color:#92958b;font-size:clamp(14px,1.15vw,20px);line-height:1.35}
+@media(max-width:760px){.screen-pitch-cards{grid-template-columns:1fr 1fr}}
