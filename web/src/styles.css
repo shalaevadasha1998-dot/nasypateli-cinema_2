@@ -3425,3 +3425,11 @@ html.chat-keyboard-open .chat-compose-inline{
 .nepokoy-player-controls{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
 .nepokoy-director-player a.button{display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
 @media(max-width:720px){.nepokoy-player-controls{grid-template-columns:1fr 1fr}}
+
+
+/* v0.13.2 — physical keys to «роза» */
+.nepokoy-key-admin{display:inline-flex;align-items:center;gap:7px;flex-wrap:wrap}
+.nepokoy-key-admin input{width:88px;min-width:0}
+.nepokoy-key-admin small{color:var(--muted);font-size:11px}
+.nepokoy-key-state-controls{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:14px 0}
+@media(max-width:720px){.nepokoy-key-state-controls{grid-template-columns:1fr}}
