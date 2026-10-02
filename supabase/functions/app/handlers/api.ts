@@ -1012,12 +1012,20 @@ export async function handleApi(req:Request){
       try{
         const candidate=await eventBySlug(db,requestedSlug)
         if(await testRoomTokenMatches(candidate,testRoomHeader)){
-          const testUserId=String(candidate?.settings?.test_user_id||'')
-          if(!isUuid(testUserId))return err('Тестовая комната настроена некорректно',500)
-          const testUser=await db.from('users').select('*').eq('id',testUserId).maybeSingle()
-          if(testUser.error)throw testUser.error
-          if(!testUser.data)return err('Тестовый участник не найден',500)
-          testEvent=candidate;testParticipantAccess=true;user=testUser.data;tg={id:0,first_name:'тестовый участник'}
+          testEvent=candidate
+          testParticipantAccess=true
+          try{
+            tg=await telegramUserFromRequest(req)
+            user=await getOrCreateUser(db,tg)
+          }catch{
+            const testUserId=String(candidate?.settings?.test_user_id||'')
+            if(!isUuid(testUserId))return err('Тестовая комната настроена некорректно',500)
+            const testUser=await db.from('users').select('*').eq('id',testUserId).maybeSingle()
+            if(testUser.error)throw testUser.error
+            if(!testUser.data)return err('Тестовый участник не найден',500)
+            user=testUser.data
+            tg={id:0,first_name:'тестовый участник'}
+          }
         }
       }catch(e:any){if(e?.message!=='EVENT_NOT_FOUND')throw e}
     }
@@ -1130,6 +1138,14 @@ export async function handleApi(req:Request){
         if(profileRow.error)throw profileRow.error
         const profile=normalizeProfile(user,profileRow.data,null,tg)
         return json({user,profile,event:null,onboardingComplete:profile.completed,creature})
+      }
+      if(testParticipantAccess&&event?.settings?.test_room===true&&Number(tg?.id||0)>0){
+        const admitted=await db.from('registrations').upsert({
+          event_id:event.id,user_id:user.id,status:'attended',queue_position:null,payment_provider:'test_room',
+          provider_payment_id:null,telegram_payment_charge_id:null,amount_rub:0,photo_video_consent:false,
+          paid_at:new Date().toISOString(),reservation_expires_at:null
+        },{onConflict:'event_id,user_id'})
+        if(admitted.error)throw admitted.error
       }
       if(event.status==='SALES_OPEN'){const promoted=await db.rpc('promote_event_waitlist',{p_event_id:event.id});if(promoted.error)throw promoted.error}
       if(event.status!=='CLOSED'){

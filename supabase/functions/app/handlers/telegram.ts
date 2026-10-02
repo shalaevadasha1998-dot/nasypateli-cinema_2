@@ -22,6 +22,10 @@ function parseTicketPayload(payload:unknown){
   if(prefix!=='ticket'||!eventId||!userId)return null
   return {eventId,userId}
 }
+async function sha256Hex(value:string){
+  const digest=new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))
+  return [...digest].map(x=>x.toString(16).padStart(2,'0')).join('')
+}
 
 export async function handleTelegram(req:Request){
   try{
@@ -100,6 +104,23 @@ export async function handleTelegram(req:Request){
     if(msg?.text?.startsWith('/start')){
       const payload=String(msg.text||'').split(/\s+/)[1]||'';let launchUrl=webAppUrl;let buttonText='открыть клуб';let intro='это НАСЫПАТЕЛИ В КИНО. здесь билеты, животина, знакомства и механики вечера'
       if(payload.startsWith('encounter_')&&webAppUrl){const token=payload.slice('encounter_'.length);const t=await db.from('encounter_tokens').select('kind').eq('token',token).maybeSingle();const u=new URL(webAppUrl);u.searchParams.set('encounter',token);launchUrl=u.toString();buttonText=t.data?.kind==='event_checkin'?'отметиться на событии':'встретить животину';intro=t.data?.kind==='event_checkin'?'откройте НАСЫПАТЕЛИ В КИНО, чтобы отметиться на событии':'кажется, ваши животины сейчас встретятся'}
+      if(payload.startsWith('rehearsal_')&&webAppUrl){
+        const token=payload.slice('rehearsal_'.length)
+        const hash=await sha256Hex(token)
+        const rooms=await db.from('events').select('slug,title,settings').like('slug','test-%')
+        if(rooms.error)throw rooms.error
+        const room=(rooms.data||[]).find((x:any)=>x.settings?.test_room===true&&String(x.settings?.test_room_token_hash||'')===hash)
+        if(room){
+          const u=new URL(webAppUrl)
+          u.hash=`/rehearsal/${room.slug}?room=${encodeURIComponent(token)}`
+          launchUrl=u.toString()
+          buttonText='открыть тестовую комнату'
+          intro='репетиция завтрашнего вечера. откроется ваш настоящий профиль и животина, а ответы будут записываться только в тестовую комнату'
+        }else{
+          launchUrl=''
+          intro='эта тестовая ссылка больше не действует'
+        }
+      }
       const reply_markup=launchUrl?{inline_keyboard:[[{text:buttonText,web_app:{url:launchUrl}}]]}:undefined
       await tg('sendMessage',{chat_id:msg.chat.id,text:intro,...(reply_markup?{reply_markup}:{})})
       return json({ok:true})
