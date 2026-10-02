@@ -3433,3 +3433,19 @@ html.chat-keyboard-open .chat-compose-inline{
 .nepokoy-key-admin small{color:var(--muted);font-size:11px}
 .nepokoy-key-state-controls{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:14px 0}
 @media(max-width:720px){.nepokoy-key-state-controls{grid-template-columns:1fr}}
+
+
+/* v0.10.1 — telegram mobile shell + nepokoy admin hardening */
+.topbar{padding-left:max(18px,env(safe-area-inset-left));padding-right:max(18px,env(safe-area-inset-right));gap:12px}
+.topbar .brand{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1 1 auto}
+.topbar-actions{flex:0 0 auto;min-width:0;display:flex;align-items:center;gap:8px}
+.admin-page{padding-top:max(26px,calc(env(safe-area-inset-top) + 16px));padding-left:max(26px,env(safe-area-inset-left));padding-right:max(26px,env(safe-area-inset-right));padding-bottom:max(26px,env(safe-area-inset-bottom))}
+@media(max-width:760px){
+  .topbar{height:auto;min-height:64px;padding-top:max(10px,env(safe-area-inset-top));padding-bottom:10px}
+  .topbar .brand{font-size:clamp(13px,4.2vw,16px);letter-spacing:.035em}
+  .admin-page{padding-top:max(16px,calc(env(safe-area-inset-top) + 12px));padding-left:max(14px,env(safe-area-inset-left));padding-right:max(14px,env(safe-area-inset-right));padding-bottom:max(24px,env(safe-area-inset-bottom))}
+  .admin-title-row{gap:8px}
+  .admin-title-row>div{min-width:0}
+  .admin-title-row h2{overflow-wrap:anywhere}
+  .projector-access-card .inline,.event-preflight-card .inline{grid-template-columns:1fr}
+}
