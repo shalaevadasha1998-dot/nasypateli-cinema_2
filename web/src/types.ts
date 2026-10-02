@@ -55,6 +55,7 @@ export type EventInfo = {
   venueAddress?: string
   paymentsAvailable:boolean
   nonexistentFilmEnabled:boolean
+  nepokoyEnabled:boolean
   movieAvailabilityStatus?:'unchecked'|'confirmed'|'unavailable'
 }
 
