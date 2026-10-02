@@ -116,6 +116,26 @@ export type JipitinaMessage = { id:string; role:'user'|'assistant'; text:string;
 export type PostFilmReaction = {rating:number;stateWord:string;thought:string;recommendation:'yes'|'no'|'depends'|''}
 export type CollectiveReview = {intro?:string;caption?:string;averageRating?:number;sentences?:string[]}
 export type ClubEvent = {id:string;slug:string;title:string;startsAt:string;movie?:{title:string;year?:number};review?:CollectiveReview;prediction?:{correct:number;total:number;points:number;rank:number};myReview?:{rating:number;sentence:string}}
+export type SpecialEventPreview = {
+  id:string
+  slug:string
+  title:string
+  startsAt:string
+  status:EventStatus
+  subtitle:string
+  invited:boolean
+  registration:string
+  venueName?:string
+  venueAddress?:string
+}
+export type NepokoyInviteAdmin = {
+  username:string
+  delivery:string
+  registered:boolean
+  redeemedAt?:string
+  createdAt:string
+  expiresAt?:string
+}
 export type ProfileStats = {eventsAttended:number;predictionPoints:number;wins:number;ideasSubmitted:number}
 export type AdminParticipant = {
   registrationId:string
@@ -403,4 +423,6 @@ export type DemoState = {
   outputs?: Record<string, unknown>
   outputApprovals?: Record<string,boolean>
   adminParticipants?:AdminParticipant[]
+  specialEvents?:SpecialEventPreview[]
+  nepokoyInvites?:NepokoyInviteAdmin[]
 }
