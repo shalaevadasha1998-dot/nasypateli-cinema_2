@@ -45,12 +45,17 @@ async function liveRegisteredEvent(db:any,userId:string){
   if(events.error)throw events.error
   if(runtimes.error)throw runtimes.error
   const liveIds=new Set((runtimes.data||[]).filter((x:any)=>['running','paused'].includes(String(x.run_status))).map((x:any)=>String(x.event_id)))
-  if(!liveIds.size)return null
   const priority:Record<string,number>={attended:0,paid:1,reserved:2,waitlist:3}
   const liveRegs=(regs.data||[]).filter((x:any)=>liveIds.has(String(x.event_id))).sort((a:any,b:any)=>(priority[String(a.status)]??9)-(priority[String(b.status)]??9)||String(b.created_at||'').localeCompare(String(a.created_at||'')))
   const byId=new Map((events.data||[]).map((x:any)=>[String(x.id),x]))
   for(const reg of liveRegs){const event=byId.get(String(reg.event_id));if(event)return event}
-  return null
+  // An invited guest must be able to enter the closed event before the show starts.
+  const upcoming=(events.data||[]).filter((event:any)=>inviteOnlyEvent(event)&&
+    ['CHECKIN','SALES_OPEN'].includes(String(event.status))&&
+    new Date(event.starts_at).getTime()>=Date.now()-86400000&&
+    (regs.data||[]).some((reg:any)=>String(reg.event_id)===String(event.id)&&['paid','attended'].includes(String(reg.status))))
+    .sort((a:any,b:any)=>String(a.starts_at).localeCompare(String(b.starts_at)))
+  return upcoming[0]||null
 }
 
 async function resolvedMovieSource(db:any,movieId:string){

@@ -183,7 +183,7 @@ export async function handleTelegram(req:Request){
         const saved=await db.from('encounter_tokens').update({owner_user_id:botUser.id,metadata}).eq('id',invite.data.id)
         if(saved.error)throw saved.error
         const date=new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Moscow'}).format(new Date(event.data.starts_at))
-        intro=`ты внутри закрытого камерного просмотра «непокой». место закреплено за тобой. ${date}. остальные детали появятся внутри приложения`
+        intro=`ты внутри закрытого камерного просмотра «${String(event.data.title||'кино')}». место закреплено за тобой. ${date}. остальные детали появятся внутри приложения`
         buttonText='открыть закрытый просмотр'
         launchUrl=webAppUrl
       }else if(payload.startsWith('encounter_')&&webAppUrl){

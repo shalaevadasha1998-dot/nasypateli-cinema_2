@@ -223,6 +223,7 @@ function NepokoyObserverCard({data,onChat}:{data:DemoState;onChat:()=>void}){
 }
 
 function ClosedNepokoyCards({data}:{data:DemoState}){
+  const nav=useNavigate()
   const rows=(data.specialEvents||[]).filter(x=>x.id!==data.event.id && (x.slug.startsWith('mr-k-') || x.title.trim().toLocaleLowerCase('ru-RU')==='мистер к'))
   if(!rows.length)return null
   return <section className="stack">{rows.map(event=><Card className="nepokoy-observer-card" key={event.id}>
@@ -231,6 +232,7 @@ function ClosedNepokoyCards({data}:{data:DemoState}){
     <p className="muted">{event.invited?`место уже закреплено за тобой. в день показа приложение само переключится на сценарий «${event.title}».`:'это камерное мероприятие без публичной регистрации. попасть внутрь можно только по персональному приглашению.'}</p>
     {event.invited&&event.venueName&&<p>{event.venueName}{event.venueAddress?<><br/>{event.venueAddress}</>:null}</p>}
     {event.invited&&<div className="success">приглашение принято · закрытый просмотр добавлен в твои события</div>}
+    {data.isAdmin&&<Button onClick={()=>nav(`/admin/event/${event.slug}`)}>открыть пульт «{event.title}»</Button>}
   </Card>)}</section>
 }
 
