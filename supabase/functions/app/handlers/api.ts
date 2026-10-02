@@ -2284,13 +2284,14 @@ export async function handleApi(req:Request){
       add('telegram','telegram',telegram?'pass':'fail',telegram?'бот и связь с приложением работают':'бот или связь с приложением не прошли проверку')
 
       const blocks=Array.isArray(programR.data?.config?.blocks)?programR.data.config.blocks.filter((x:any)=>x?.enabled!==false):[]
-      const requiredTypes=['arrival','onboarding','warm_up','cinema_rounds','music_live','final_vote','finale']
+      const isNepokoy=nepokoyEnabled(event)
+      const requiredTypes=isNepokoy?['cinema_rounds']:['arrival','onboarding','warm_up','cinema_rounds','music_live','final_vote','finale']
       const missingTypes=requiredTypes.filter(type=>!blocks.some((x:any)=>String(x?.type)===type))
       const duration=blocks.reduce((sum:number,x:any)=>sum+Math.max(0,Number(x?.duration_min||0)),0)
       add('program','программа вечера',blocks.length&&missingTypes.length===0?'pass':'fail',
-        blocks.length?(`${blocks.length} блоков · ${duration} мин${missingTypes.length?' · нет: '+missingTypes.join(', '):''}`):'программа пустая')
+        blocks.length?(`${blocks.length} блоков · ${duration} мин${missingTypes.length?' · нет: '+missingTypes.join(', '):isNepokoy?' · сценарий «непокой»':''}`):'программа пустая')
       add('runtime','состояние мероприятия',runtimeR.data?'pass':'fail',runtimeR.data?`режим: ${runtimeR.data.run_status} · текущий блок: ${runtimeR.data.current_block_id}`:'состояние мероприятия не создано')
-      add('projector_state','что сейчас на экране',projectorR.data?'pass':'fail',projectorR.data?`режим экрана: ${projectorR.data.state}`:'состояние большого экрана не создано')
+      add('projector_state','что сейчас на экране',projectorR.data?'pass':isNepokoy?'warn':'fail',projectorR.data?`режим экрана: ${projectorR.data.state}`:isNepokoy?'экран будет инициализирован автоматически при запуске «непокоя»':'состояние большого экрана не создано')
 
       const packages=packagesR.data||[]
       const questions=questionsR.data||[]
@@ -2313,7 +2314,7 @@ export async function handleApi(req:Request){
 
       const venueName=String(event.venue_name||'').trim()
       const venueAddress=String(event.venue_address||'').trim()
-      add('venue','площадка',venueName&&venueAddress?'pass':'fail',venueName&&venueAddress?`${venueName} · ${venueAddress}`:'не заполнено название или адрес площадки')
+      add('venue','площадка',venueName&&venueAddress?'pass':isNepokoy?'warn':'fail',venueName&&venueAddress?`${venueName} · ${venueAddress}`:isNepokoy?'адрес не заполнен, но это не блокирует технический запуск «непокоя»':'не заполнено название или адрес площадки')
       add('room','внутренний зал','warn','система знает общий адрес, но конкретный зал/строение нужно подтвердить вручную на площадке')
 
       const regs=registrationsR.data||[]
