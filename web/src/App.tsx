@@ -848,7 +848,7 @@ function ReviewQueueAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(acti
 
 type HotelScenarioId='identity'|'mr_k'
 type HotelScenarioQuestion={key:string;label:string;prompt:string;options:readonly string[]}
-type HotelScenarioCue={id:string;label:string;trigger:string;director:string;action?:'playing'|'paused'|'finished';questionKey?:string;keyState?:'number_noticed'|'post_film';note?:string}
+type HotelScenarioCue={id:string;label:string;trigger:string;director:string;music?:string;sfx?:'1'|'2'|'3'|'4'|'5';action?:'playing'|'paused'|'finished';questionKey?:string;keyState?:'number_noticed'|'post_film';note?:string}
 type HotelScenario={id:HotelScenarioId;title:string;search:string;intro:string;questions:readonly HotelScenarioQuestion[];cues:readonly HotelScenarioCue[]}
 
 const hotelScenarios:Record<HotelScenarioId,HotelScenario>={
@@ -862,7 +862,7 @@ const hotelScenarios:Record<HotelScenarioId,HotelScenario>={
       {key:'identity_rating',label:'финал · состояние',prompt:'насколько фильм всё ещё сидит в голове?',options:['1–2','3–4','5–6','7–8','9–10']}
     ],
     cues:[
-      {id:'checkin',label:'00 · заселение',trigger:'все гости получили физические ключи и роли',director:'ничего не объясняй. приглуши свет. когда все сядут, переходи дальше.'},
+      {id:'checkin',label:'00 · заселение',trigger:'все гости получили физические ключи и роли',director:'ничего не объясняй. приглуши свет. когда все сядут, переходи дальше.',music:'call yourself 119 · тихо на заселении',sfx:'4'},
       {id:'start',label:'01 · включай фильм',trigger:'зал готов, телефоны убраны',director:'животина: «включай фильм». нажми play в кинопоиске и сразу подтверди здесь.',action:'playing'},
       {id:'keys',label:'02 · ключ замечен',trigger:'в фильме впервые становится важен номерной ключ',director:'фильм НЕ останавливай. попроси гостей посмотреть на свой ключ и никому его не показывать.',keyState:'number_noticed'},
       {id:'pause1',label:'03 · пауза сейчас',trigger:'становится ясно, что ключи/номера складываются в последовательность',director:'поставь фильм на паузу. открой вопрос 01 и дождись ответов.',action:'paused',questionKey:'identity_pause_1'},
@@ -870,9 +870,9 @@ const hotelScenarios:Record<HotelScenarioId,HotelScenario>={
       {id:'pause2',label:'05 · вторая пауза',trigger:'до полного объяснения центральной загадки, когда у зрителя уже достаточно улик',director:'пауза. открой вопрос 02. не комментируй версии гостей.',action:'paused',questionKey:'identity_pause_2'},
       {id:'resume2',label:'06 · молчим и смотрим',trigger:'версии собраны',director:'закрой ответ и продолжай. во время раскрытия ничего не отправляй.',action:'playing'},
       {id:'false_end',label:'07 · ложный финал',trigger:'кажется, что история уже закончилась',director:'ничего не объясняй. ключи остаются у гостей.'},
-      {id:'credits',label:'08 · титры',trigger:'пошли финальные титры после последнего поворота',director:'останови режим фильма. телефоны в руки. ключи положить номером вверх.',action:'finished',keyState:'post_film'},
+      {id:'credits',label:'08 · титры',trigger:'пошли финальные титры после последнего поворота',director:'останови режим фильма. телефоны в руки. ключи положить номером вверх.',music:'time out 133 · после титров, тихо',sfx:'5',action:'finished',keyState:'post_film'},
       {id:'after',label:'09 · после титров',trigger:'телефоны у гостей',director:'открой вопросы после титров по очереди.',questionKey:'identity_after'},
-      {id:'draw',label:'10 · финальный ключ',trigger:'вопросы закончены',director:'нажми «выбрать ключ финала». выбранный номер появится на проекторе.'}
+      {id:'draw',label:'10 · финальный ключ',trigger:'вопросы закончены',director:'нажми «выбрать ключ финала». выбранный номер появится на проекторе.',music:'dead trollz 161 · только после появления номера',sfx:'3'}
     ]
   },
   mr_k:{
@@ -885,7 +885,7 @@ const hotelScenarios:Record<HotelScenarioId,HotelScenario>={
       {key:'mrk_rating',label:'финал · состояние',prompt:'ты бы заселился сюда ещё раз?',options:['да','нет','только с чужим ключом','я вообще ещё не выехал']}
     ],
     cues:[
-      {id:'checkin',label:'00 · заселение',trigger:'все получили ключи',director:'сообщение вечера: «регистрация завершена. время выезда до 00:00». ничего больше не объясняй.'},
+      {id:'checkin',label:'00 · заселение',trigger:'все получили ключи',director:'сообщение вечера: «регистрация завершена. время выезда до 00:00». ничего больше не объясняй.',music:'business 135 · очень тихо на заселении',sfx:'4'},
       {id:'start',label:'01 · включай фильм',trigger:'зал готов',director:'животина: «включай фильм». нажми play и подтверди здесь.',action:'playing'},
       {id:'checkout',label:'02 · выезд отменён',trigger:'к. пытается уйти и обычный выход перестаёт работать',director:'фильм не останавливай. ключи в руки. смысл сообщения: «время выезда отменено».',keyState:'number_noticed'},
       {id:'pause1',label:'03 · первая пауза',trigger:'коридоры и правила здания уже явно ненормальны',director:'пауза. спроси гостей, что в отеле изменилось первым.',action:'paused',questionKey:'mrk_pause_1'},
@@ -895,9 +895,9 @@ const hotelScenarios:Record<HotelScenarioId,HotelScenario>={
       {id:'inside',label:'07 · внутри него',trigger:'фильм явно подводит к ощущению живого/органического здания',director:'не ставь паузу. дай мысли повиснуть: возможно, они находятся не в отеле, а внутри него.'},
       {id:'pause3',label:'08 · последняя пауза',trigger:'ближе к финалу, когда вопрос выхода уже стал выбором',director:'пауза. последний вопрос: вышел бы ты сейчас?',action:'paused',questionKey:'mrk_pause_3'},
       {id:'resume3',label:'09 · досматриваем',trigger:'ответы собраны',director:'закрой ответ. продолжай до титров.',action:'playing'},
-      {id:'credits',label:'10 · время выезда',trigger:'пошли титры',director:'фильм закончен. телефоны в руки. приготовьте ключи.',action:'finished',keyState:'post_film'},
+      {id:'credits',label:'10 · время выезда',trigger:'пошли титры',director:'фильм закончен. телефоны в руки. приготовьте ключи.',music:'ryu 137 · после титров',sfx:'5',action:'finished',keyState:'post_film'},
       {id:'after',label:'11 · после титров',trigger:'все вернулись в приложение',director:'открой вопрос после титров.',questionKey:'mrk_after'},
-      {id:'draw',label:'12 · последний действующий ключ',trigger:'обсуждение закончено',director:'выбери финальный ключ. его владелец забирает ключ и подарок.'}
+      {id:'draw',label:'12 · последний действующий ключ',trigger:'обсуждение закончено',director:'выбери финальный ключ. его владелец забирает ключ и подарок.',music:'dont trust me 94 · финальный выход',sfx:'3'}
     ]
   }
 }
@@ -954,9 +954,9 @@ function NepokoyPilotAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(act
     {invitePanel}
     <div className="nepokoy-director-player"><div className="section-title">01 · сценарий фильма</div>{lockedMrK?<div className="success"><b>мистер к</b> · выход есть, но ты уже внутри</div>:<div className="nepokoy-pilot-buttons"><Button kind={scenarioId==='identity'?'primary':'secondary'} disabled={busy} onClick={async()=>{setScenarioId('identity');await run('admin-external-film-control',{op:'ready',title:hotelScenarios.identity.title})}}>идентификация</Button><Button kind={scenarioId==='mr_k'?'primary':'secondary'} disabled={busy} onClick={async()=>{setScenarioId('mr_k');await run('admin-external-film-control',{op:'ready',title:hotelScenarios.mr_k.title})}}>мистер к</Button></div>}<p className="muted">{scenario.intro}</p></div>
     <div className="nepokoy-director-player"><div className="section-title">02 · источник</div><div className="inline"><Button kind="secondary" onClick={()=>window.open(searchUrl,'_blank','noopener,noreferrer')}>найти легальный просмотр ↗</Button></div><Field label="ссылка на просмотр"><input type="url" value={filmUrl} onChange={e=>setFilmUrl(e.target.value)} placeholder="https://…"/></Field><div className="nepokoy-player-controls"><Button disabled={busy||!filmUrl.trim()} onClick={openFilm}>открыть фильм ↗</Button><Button disabled={busy} onClick={()=>filmState('playing')}>▶ фильм идёт</Button><Button kind="secondary" disabled={busy} onClick={()=>filmState('paused')}>Ⅱ пауза</Button><Button kind="danger" disabled={busy} onClick={()=>filmState('finished')}>■ титры</Button></div></div>
-    <div className="nepokoy-director-player"><div className="section-title">животина говорит тебе сейчас</div><h2>{cue.label}</h2><p><b>ориентир в кадре:</b> {cue.trigger}</p><div className="success"><b>{cue.director}</b></div><div className="inline"><Button kind="secondary" disabled={busy||cueIndex===0} onClick={()=>setCueIndex(x=>Math.max(0,x-1))}>← назад</Button><Button disabled={busy} onClick={()=>void applyCue(Math.min(scenario.cues.length-1,cueIndex+1))}>{cueIndex>=scenario.cues.length-1?'это финал':'сцена наступила →'}</Button></div><small className="muted">шаг {cueIndex+1}/{scenario.cues.length}. переход подтверждаешь ты по событию в кадре, а не по таймкоду.</small></div>
+    <div className="nepokoy-director-player"><div className="section-title">животина говорит тебе сейчас</div><h2>{cue.label}</h2><p><b>ориентир в кадре:</b> {cue.trigger}</p><div className="success"><b>{cue.director}</b></div>{cue.music&&<div className="prediction"><small>музыка сейчас</small><br/><b>{cue.music}</b>{cue.sfx&&<><br/><span className="muted">звук животины: {cue.sfx}.wav</span></>}</div>}<div className="inline"><Button kind="secondary" disabled={busy||cueIndex===0} onClick={()=>setCueIndex(x=>Math.max(0,x-1))}>← назад</Button><Button disabled={busy} onClick={()=>void applyCue(Math.min(scenario.cues.length-1,cueIndex+1))}>{cueIndex>=scenario.cues.length-1?'это финал':'сцена наступила →'}</Button></div><small className="muted">шаг {cueIndex+1}/{scenario.cues.length}. переход подтверждаешь ты по событию в кадре, а не по таймкоду.</small></div>
     <div className="nepokoy-key-state-controls"><Button kind="secondary" disabled={busy} onClick={()=>run('admin-nepokoy-key-state',{state:'number_noticed'})}>ключи в руки</Button><Button kind="secondary" disabled={busy} onClick={()=>run('admin-nepokoy-key-state',{state:'post_film'})}>после титров</Button><Button disabled={busy} onClick={()=>run('admin-nepokoy-key-draw')}>выбрать ключ финала</Button></div>
-    <details><summary>вся программа «{scenario.title}»</summary><div className="stack">{scenario.cues.map((x,i)=><div className="nepokoy-pilot-cue" key={x.id}><b>{x.label}</b><span>{x.trigger}</span><small>{x.director}</small>{x.questionKey&&<Button kind="secondary" disabled={busy} onClick={()=>void launchQuestion(x.questionKey!)}>открыть этот вопрос</Button>}</div>)}</div></details>
+    <details><summary>вся программа «{scenario.title}»</summary><div className="stack">{scenario.cues.map((x,i)=><div className="nepokoy-pilot-cue" key={x.id}><b>{x.label}</b><span>{x.trigger}</span><small>{x.director}</small>{x.music&&<small>музыка: {x.music}{x.sfx?` · животина ${x.sfx}.wav`:''}</small>}{x.questionKey&&<Button kind="secondary" disabled={busy} onClick={()=>void launchQuestion(x.questionKey!)}>открыть этот вопрос</Button>}</div>)}</div></details>
     <details><summary>все вопросы сценария</summary><div className="nepokoy-pilot-buttons">{scenario.questions.map(q=><Button key={q.key} kind="secondary" disabled={busy} onClick={()=>void launchQuestion(q.key)}>{q.label}</Button>)}</div></details>
     <div className="inline"><Button disabled={busy} onClick={()=>run('admin-vote-control',{op:'close'})}>закрыть ответ</Button><Button kind="secondary" disabled={busy} onClick={()=>run('admin-vote-control',{op:'show'})}>показать результаты</Button></div>
     {show.runtime.runStatus!=='finished'&&<Button kind="danger" disabled={busy} onClick={()=>{if(window.confirm('закончить мероприятие?'))void run('admin-show-control',{op:'end_event'})}}>закончить мероприятие</Button>}
