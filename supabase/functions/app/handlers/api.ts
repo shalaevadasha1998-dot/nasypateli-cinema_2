@@ -7,7 +7,7 @@ import { creatureState, emitStoryTrigger, ensureCreature } from '../_shared/stor
 import { allowedGender, connectionKind, datingState, intentsCompatible } from '../_shared/dating.ts'
 import { JIPITINA, jipitinaInstructions } from '../_shared/jipitina.ts'
 import { discoverMovieSources, validateMovieTitle } from '../_shared/movies.ts'
-import { buildEventState, buildShowState, eventBySlug, nextEvent, nonexistentFilmEnabled, nepokoyEnabled } from '../_shared/state.ts'
+import { buildEventState, buildShowState, eventBySlug, nextEvent, nonexistentFilmEnabled, nepokoyEnabled, inviteOnlyEvent } from '../_shared/state.ts'
 
 const manualTransitions:Record<string,string>={
   DRAFT:'SALES_OPEN',SALES_OPEN:'CHECKIN',CHECKIN:'IDEAS_OPEN',IDEAS_OPEN:'IDEAS_LOCKED',
@@ -740,6 +740,66 @@ async function telegramStartLink(payload:string){
   try{const me=await telegramBot('getMe',{});const username=String(me?.username||'').replace(/^@/,'');return username?`https://t.me/${username}?start=${encodeURIComponent(payload)}`:null}catch(e){console.warn('telegram start link unavailable',e);return null}
 }
 
+function normalizeTelegramUsername(value:any){
+  return String(value||'').trim().replace(/^@+/,'').toLowerCase().replace(/[^a-z0-9_]/g,'').slice(0,64)
+}
+
+async function ensureInvitedRegistration(db:any,event:any,userId:string){
+  const current=await db.from('registrations').select('id,status').eq('event_id',event.id).eq('user_id',userId).maybeSingle()
+  if(current.error)throw current.error
+  const now=new Date().toISOString()
+  if(current.data){
+    if(['paid','attended'].includes(String(current.data.status||'')))return String(current.data.status)
+    const updated=await db.from('registrations').update({
+      status:'paid',queue_position:null,payment_provider:'invite',provider_payment_id:null,telegram_payment_charge_id:null,
+      amount_rub:0,paid_at:now,reservation_expires_at:null
+    }).eq('id',current.data.id).select('status').single()
+    if(updated.error)throw updated.error
+    return String(updated.data.status)
+  }
+  const inserted=await db.from('registrations').insert({
+    event_id:event.id,user_id:userId,status:'paid',payment_provider:'invite',amount_rub:0,paid_at:now,
+    reservation_expires_at:null,photo_video_consent:false
+  }).select('status').single()
+  if(inserted.error)throw inserted.error
+  return String(inserted.data.status)
+}
+
+async function nepokoySpecialEvents(db:any,userId:string){
+  const rows=await db.from('events').select('id,slug,title,starts_at,status,venue_name,venue_address,settings')
+    .neq('status','CLOSED').gte('starts_at',new Date(Date.now()-86400000).toISOString()).order('starts_at',{ascending:true}).limit(20)
+  if(rows.error)throw rows.error
+  const events=(rows.data||[]).filter((x:any)=>nepokoyEnabled(x)&&inviteOnlyEvent(x)&&x.settings?.homepage_visible!==false)
+  if(!events.length)return []
+  const regs=await db.from('registrations').select('event_id,status').eq('user_id',userId).in('event_id',events.map((x:any)=>x.id))
+  if(regs.error)throw regs.error
+  const byEvent=new Map((regs.data||[]).map((x:any)=>[String(x.event_id),String(x.status||'')]))
+  return events.map((x:any)=>{
+    const registration=byEvent.get(String(x.id))||'none'
+    const invited=['reserved','paid','attended'].includes(registration)
+    return {
+      id:String(x.id),slug:String(x.slug),title:String(x.title||'непокой'),startsAt:x.starts_at,status:String(x.status),
+      subtitle:String(x.settings?.format||'закрытый камерный просмотр'),invited,registration,
+      ...(invited&&x.venue_name?{venueName:String(x.venue_name)}:{}),
+      ...(invited&&x.venue_address?{venueAddress:String(x.venue_address)}:{})
+    }
+  })
+}
+
+async function adminNepokoyInvites(db:any,eventId:string){
+  const rows=await db.from('encounter_tokens').select('token,owner_user_id,expires_at,metadata,created_at')
+    .eq('event_id',eventId).eq('kind','event_invite').order('created_at',{ascending:false}).limit(100)
+  if(rows.error)throw rows.error
+  return (rows.data||[]).map((x:any)=>({
+    username:String(x.metadata?.invited_username||''),
+    delivery:String(x.metadata?.delivery||'link'),
+    registered:!!x.owner_user_id,
+    redeemedAt:x.metadata?.redeemed_at||undefined,
+    createdAt:x.created_at,
+    expiresAt:x.expires_at||undefined
+  })).filter((x:any)=>x.username)
+}
+
 async function refreshLeaderboard(db:any,userIds:string[]){
   for(const uid of [...new Set(userIds)]){
     const [scores,wins,attended]=await Promise.all([
@@ -883,12 +943,13 @@ export async function handleApi(req:Request){
         }catch{return err('Доступ к пульту запрещён',401)}
       }
       const event=await eventBySlug(db,String(body.slug||'2026-10-03'))
-      const [state,adminParticipants,movieCatalog,showLog,movieSources]=await Promise.all([
+      const [state,adminParticipants,movieCatalog,showLog,movieSources,nepokoyInvites]=await Promise.all([
         buildEventState(db,event,{includeActuals:true,includePrivateOutputs:true}),
         adminParticipantRows(db,event.id),
         db.from('movie_candidates').select('*').eq('event_id',event.id).order('title'),
         db.from('event_runtime_log').select('id,action,created_at').eq('event_id',event.id).order('created_at',{ascending:false}).limit(20),
-        db.from('movie_source_candidates').select('*').eq('event_id',event.id).order('discovered_at',{ascending:false})
+        db.from('movie_source_candidates').select('*').eq('event_id',event.id).order('discovered_at',{ascending:false}),
+        adminNepokoyInvites(db,event.id)
       ])
       if(movieCatalog.error)throw movieCatalog.error
       if(showLog.error)throw showLog.error
@@ -912,7 +973,7 @@ export async function handleApi(req:Request){
         id:String(x.id),userId:String(x.user_id),animalName:String(x.animal_name_snapshot),
         title:String(x.title),description:String(x.description),createdAt:x.created_at,updatedAt:x.updated_at
       }))
-      return json({...state,adminParticipants,filmPackages,reviewQueue,projector,inventedFilms,movieCatalog:(movieCatalog.data||[]).map((x:any)=>({
+      return json({...state,adminParticipants,filmPackages,reviewQueue,projector,inventedFilms,nepokoyInvites,movieCatalog:(movieCatalog.data||[]).map((x:any)=>({
         id:x.id,title:x.title,originalTitle:x.original_title||undefined,year:x.year||undefined,runtimeMin:x.runtime_min||undefined,
         genre:x.genre||undefined,country:x.country||undefined,reason:x.reason||undefined,enabledForEvent:x.enabled_for_event!==false,
         trailerStatus:x.trailer_status||'unchecked',clipStatus:x.clip_status||'unchecked',sourceType:x.source_type||undefined,
@@ -1114,7 +1175,8 @@ export async function handleApi(req:Request){
         if(activeMission.error)throw activeMission.error
         if(activeMission.data?.event_id)event=await eventBySlug(db,String(activeMission.data.event_id))
       }
-      if(!event)return json({user,profile:null,event:null,onboardingComplete:false})
+      if(!event){const specialEvents=await nepokoySpecialEvents(db,user.id);return json({user,profile:null,event:null,onboardingComplete:false,specialEvents})}
+      const specialEvents=await nepokoySpecialEvents(db,user.id)
       if(event.status==='SALES_OPEN'){const promoted=await db.rpc('promote_event_waitlist',{p_event_id:event.id});if(promoted.error)throw promoted.error}
       if(event.status!=='CLOSED'){
         const presence=await db.from('event_presence').upsert({event_id:event.id,user_id:user.id,last_seen_at:new Date().toISOString()},{onConflict:'event_id,user_id'})
@@ -1153,7 +1215,7 @@ export async function handleApi(req:Request){
         if(key.error)throw key.error
         if(key.data){nepokoyHotelKey={...key.data,key_mark:nepokoyKeyMark(key.data.observer_role)};nepokoyCardIndex=Number(key.data.observer_role)}
       }
-      return json({...common,show,isAdmin,user,profile,filmAssignments,filmLive,nepokoyCardIndex,nepokoyHotelKey,onboardingComplete:profile.completed,registration:effectiveRegistrationStatus(reg.data),queuePosition:effectiveRegistrationStatus(reg.data)==='waitlist'?Number(reg.data?.queue_position||0)||undefined:undefined,reservationExpiresAt:effectiveRegistrationStatus(reg.data)==='reserved'?reg.data?.reservation_expires_at||undefined:undefined,idea:idea.data||undefined,predictions:(common.predictions||[]).map((p:any)=>({...p,answer:answerMap.get(p.id)})),predictionSubmitted:(answers.data||[]).length>0,thought:thought.data?.text,reaction:reaction.data?{rating:reaction.data.rating,stateWord:reaction.data.state_word,thought:reaction.data.thought,recommendation:reaction.data.recommendation}:undefined,review:review.data?{rating:review.data.rating,sentence:review.data.final_sentence}:undefined,feedback:feedback.data?{returnIntent:feedback.data.return_intent,strongest:feedback.data.strongest_part||'',improve:feedback.data.improve_text||'',willingness:feedback.data.willingness_to_pay||0,durationFeel:feedback.data.duration_feel||'нормально',inviteFriend:feedback.data.invite_friend===null||feedback.data.invite_friend===undefined?8:Number(feedback.data.invite_friend)}:undefined,...extras,creature,...datingBundle,notificationPrefs:{writeAccess:!!notif.data?.write_access,events:notif.data?.events!==false,creature:notif.data?.creature!==false,stories:notif.data?.stories!==false,matches:notif.data?.matches!==false,tickets:notif.data?.tickets!==false,reminders:notif.data?.reminders!==false,quietHours:notif.data?.quiet_hours!==false}})
+      return json({...common,show,isAdmin,user,profile,filmAssignments,filmLive,nepokoyCardIndex,nepokoyHotelKey,specialEvents,onboardingComplete:profile.completed,registration:effectiveRegistrationStatus(reg.data),queuePosition:effectiveRegistrationStatus(reg.data)==='waitlist'?Number(reg.data?.queue_position||0)||undefined:undefined,reservationExpiresAt:effectiveRegistrationStatus(reg.data)==='reserved'?reg.data?.reservation_expires_at||undefined:undefined,idea:idea.data||undefined,predictions:(common.predictions||[]).map((p:any)=>({...p,answer:answerMap.get(p.id)})),predictionSubmitted:(answers.data||[]).length>0,thought:thought.data?.text,reaction:reaction.data?{rating:reaction.data.rating,stateWord:reaction.data.state_word,thought:reaction.data.thought,recommendation:reaction.data.recommendation}:undefined,review:review.data?{rating:review.data.rating,sentence:review.data.final_sentence}:undefined,feedback:feedback.data?{returnIntent:feedback.data.return_intent,strongest:feedback.data.strongest_part||'',improve:feedback.data.improve_text||'',willingness:feedback.data.willingness_to_pay||0,durationFeel:feedback.data.duration_feel||'нормально',inviteFriend:feedback.data.invite_friend===null||feedback.data.invite_friend===undefined?8:Number(feedback.data.invite_friend)}:undefined,...extras,creature,...datingBundle,notificationPrefs:{writeAccess:!!notif.data?.write_access,events:notif.data?.events!==false,creature:notif.data?.creature!==false,stories:notif.data?.stories!==false,matches:notif.data?.matches!==false,tickets:notif.data?.tickets!==false,reminders:notif.data?.reminders!==false,quietHours:notif.data?.quiet_hours!==false}})
     }
 
     if(action==='save-profile-progress'||action==='save-profile'){
@@ -1320,6 +1382,7 @@ export async function handleApi(req:Request){
     const slug=String(body.slug||'2026-10-03');const event=await eventBySlug(db,slug)
 
     if(action==='claim-event-ticket'){
+      if(inviteOnlyEvent(event))return err('это закрытый просмотр. вход только по персональному приглашению',403)
       if(Number(event.ticket_price_rub)!==0)return err('этот билет нельзя получить без оплаты',409)
       if(!['SALES_OPEN','CHECKIN'].includes(String(event.status||'')))return err('регистрация на этот вечер сейчас закрыта',409)
       const profileRow=await db.from('cinema_profiles').select('profile_json').eq('user_id',user.id).maybeSingle();if(profileRow.error)throw profileRow.error
@@ -1699,6 +1762,104 @@ export async function handleApi(req:Request){
     }
 
     if(!adminTokenOk)await mustAdmin(db,user,tg)
+
+    if(action==='admin-create-nepokoy-event'){
+      const rawStarts=String(body.startsAt||'').trim()
+      const startsMs=Date.parse(rawStarts)
+      if(!rawStarts||!Number.isFinite(startsMs))return err('укажите дату и время закрытого просмотра',422)
+      if(startsMs<Date.now()-60*60*1000)return err('дата закрытого просмотра уже прошла',422)
+      const capacity=Math.max(2,Math.min(30,Math.round(Number(body.capacity||10)||10)))
+      const now=new Date().toISOString()
+      const slug=`nepokoy-${new Date(startsMs).toISOString().slice(0,10)}-${crypto.randomUUID().replaceAll('-','').slice(0,6)}`
+      const settings={
+        city:'Москва',format:'закрытый камерный просмотр',homepage_visible:true,
+        access:{mode:'invite_only'},
+        modes:{nepokoy:{enabled:true,updated_at:now}}
+      }
+      let created:any=null
+      try{
+        const eventInsert=await db.from('events').insert({
+          slug,title:'непокой',starts_at:new Date(startsMs).toISOString(),capacity,ticket_price_rub:0,max_movie_runtime_min:180,
+          status:'CHECKIN',settings
+        }).select('*').single()
+        if(eventInsert.error)throw eventInsert.error
+        created=eventInsert.data
+        const program={version:1,rounds_target:1,rewards:{join:0,vote:0,round:0,finale:0},blocks:[
+          {id:'nepokoy_cinema',type:'cinema_rounds',title:'непокой',duration_min:150,rounds_target:1,enabled:true}
+        ]}
+        const [programInsert,runtimeInsert]=await Promise.all([
+          db.from('event_programs').insert({event_id:created.id,config:program}),
+          db.from('event_runtime').insert({event_id:created.id,current_block_id:'nepokoy_cinema',current_block_index:0,current_round:0})
+        ])
+        if(programInsert.error)throw programInsert.error
+        if(runtimeInsert.error)throw runtimeInsert.error
+        return json({ok:true,event:{id:created.id,slug:created.slug,title:created.title,startsAt:created.starts_at,capacity:created.capacity}})
+      }catch(e){
+        if(created?.id){const cleanup=await db.from('events').delete().eq('id',created.id);if(cleanup.error)console.error('nepokoy create cleanup failed',cleanup.error)}
+        throw e
+      }
+    }
+
+    if(action==='admin-nepokoy-invite'){
+      if(!nepokoyEnabled(event)||!inviteOnlyEvent(event))return err('приглашения доступны только у закрытого мероприятия «непокой»',409)
+      const raw=Array.isArray(body.usernames)?body.usernames:String(body.usernames||'').split(/[\s,;]+/)
+      const usernames=[...new Set(raw.map(normalizeTelegramUsername).filter(Boolean))].slice(0,50)
+      if(!usernames.length)return err('вставьте хотя бы один telegram username',422)
+      const now=new Date()
+      const existing=await db.from('encounter_tokens').select('id,token,owner_user_id,expires_at,metadata')
+        .eq('event_id',event.id).eq('kind','event_invite').gt('expires_at',now.toISOString())
+      if(existing.error)throw existing.error
+      const byUsername=new Map<string,any>()
+      for(const row of existing.data||[]){
+        const username=normalizeTelegramUsername(row.metadata?.invited_username)
+        if(username&&!byUsername.has(username))byUsername.set(username,row)
+      }
+      const newUsernames=usernames.filter(x=>!byUsername.has(x))
+      if(byUsername.size+newUsernames.length>Number(event.capacity||0))return err(`приглашений получится больше, чем мест: ${byUsername.size+newUsernames.length} из ${event.capacity}`,409)
+      let botUsername=''
+      try{const me=await telegramBot('getMe',{});botUsername=String(me?.username||'').replace(/^@/,'')}catch(e){console.warn('invite bot username unavailable',e)}
+      const webAppUrl=String(Deno.env.get('TELEGRAM_WEBAPP_URL')||'').trim()
+      const expiresAt=new Date(Math.max(new Date(event.starts_at).getTime()+12*60*60*1000,Date.now()+24*60*60*1000)).toISOString()
+      const results:any[]=[]
+      for(const username of usernames){
+        let tokenRow=byUsername.get(username)
+        if(!tokenRow){
+          const token=crypto.randomUUID().replaceAll('-','')
+          const inserted=await db.from('encounter_tokens').insert({
+            token,event_id:event.id,kind:'event_invite',expires_at:expiresAt,
+            metadata:{invited_username:username,delivery:'link'}
+          }).select('id,token,owner_user_id,expires_at,metadata').single()
+          if(inserted.error)throw inserted.error
+          tokenRow=inserted.data
+          byUsername.set(username,tokenRow)
+        }
+        const deepLink=botUsername?`https://t.me/${botUsername}?start=${encodeURIComponent('invite_'+tokenRow.token)}`:null
+        const found=await db.from('users').select('id,telegram_id,telegram_username').ilike('telegram_username',username).is('deleted_at',null).limit(1).maybeSingle()
+        if(found.error)throw found.error
+        let registered=false,delivery='link'
+        if(found.data?.id){
+          await ensureInvitedRegistration(db,event,String(found.data.id))
+          registered=true
+          let sent=false
+          if(found.data.telegram_id){
+            try{
+              await telegramBot('sendMessage',{
+                chat_id:Number(found.data.telegram_id),
+                text:`тебя добавили в закрытый камерный просмотр «непокой». место уже закреплено за тобой. подробности живут внутри приложения.`,
+                ...(webAppUrl?{reply_markup:{inline_keyboard:[[{text:'открыть закрытый просмотр',web_app:{url:webAppUrl}}]]}}:{})
+              })
+              sent=true
+            }catch(e){console.warn('direct nepokoy invite failed',username,e)}
+          }
+          delivery=sent?'sent':'link'
+          const metadata={...(tokenRow.metadata||{}),invited_username:username,delivery,registered_at:new Date().toISOString()}
+          const update=await db.from('encounter_tokens').update({owner_user_id:found.data.id,metadata}).eq('id',tokenRow.id)
+          if(update.error)throw update.error
+        }
+        results.push({username:'@'+username,registered,delivery,deepLink})
+      }
+      return json({ok:true,invites:results})
+    }
 
     if(action==='admin-round-pitches-open'){
       return await withEventOperation(db,event.id,'round-pitches-open',async()=>{
