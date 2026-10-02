@@ -518,14 +518,17 @@ async function adminParticipantRows(db:any,eventId:string){
   if(regs.error)throw regs.error
   const ids=(regs.data||[]).map((x:any)=>x.user_id)
   if(!ids.length)return []
-  const [users,profiles]=await Promise.all([
+  const [users,profiles,hotelKeys]=await Promise.all([
     db.from('users').select('id,display_name,telegram_username,deleted_at').in('id',ids),
-    db.from('cinema_profiles').select('user_id,profile_json').in('user_id',ids)
+    db.from('cinema_profiles').select('user_id,profile_json').in('user_id',ids),
+    db.from('event_hotel_keys').select('user_id,room_number,observer_role,key_state').eq('event_id',eventId)
   ])
   if(users.error)throw users.error
   if(profiles.error)throw profiles.error
+  if(hotelKeys.error)throw hotelKeys.error
   const userMap=new Map((users.data||[]).map((x:any)=>[x.id,x]))
   const profileMap=new Map((profiles.data||[]).map((x:any)=>[x.user_id,x.profile_json||{}]))
+  const hotelKeyMap=new Map((hotelKeys.data||[]).map((x:any)=>[x.user_id,x]))
   return (regs.data||[]).map((r:any)=>{
     const u:any=userMap.get(r.user_id)||{}
     const p:any=profileMap.get(r.user_id)||{}
@@ -542,7 +545,8 @@ async function adminParticipantRows(db:any,eventId:string){
       reservationExpiresAt:r.reservation_expires_at||undefined,
       photoVideoConsent:r.photo_video_consent===true,
       paidAt:r.paid_at||undefined,
-      registeredAt:r.created_at
+      registeredAt:r.created_at,
+      nepokoyHotelKey:hotelKeyMap.get(r.user_id)||undefined
     }
   })
 }
