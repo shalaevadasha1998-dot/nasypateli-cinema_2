@@ -1407,6 +1407,24 @@ export async function handleApi(req:Request){
       if(mode==='idea_coach'){mechanicsRequired(event);if(!await hasPaidAccess(db,event.id,user.id))return err('Нужен оплаченный билет',403);if(event.status!=='IDEAS_OPEN')return err('Идеи сейчас не принимаются',409)}
       if(mode==='post_film'){if(!await hasPaidAccess(db,event.id,user.id))return err('Нужен оплаченный билет',403);if(!['DISCUSSION','FINAL_REVIEW','FEEDBACK','CLOSED'].includes(event.status))return err('Разговор после фильма ещё не открыт',409)}
 
+      if(event?.settings?.test_room===true){
+        const context=await chatContext(db,event,user,profile)
+        const recentRows=await db.from('jipitina_messages').select('role,text,mode,request_id').eq('user_id',user.id).order('created_at',{ascending:false}).limit(12)
+        if(recentRows.error)throw recentRows.error
+        const recent=(recentRows.data||[]).slice(0,10).reverse().map((x:any)=>({role:x.role,text:x.text,mode:x.mode}))
+        const draft=mode==='idea_coach'?{title:String(body.draftTitle||''),plot:String(body.draftPlot||'')}:undefined
+        const input=`КОНТЕКСТ JSON:\n${JSON.stringify({...context,draft,recent,testRoom:true})}\n\nСООБЩЕНИЕ ПОЛЬЗОВАТЕЛЯ:\n${message}`
+        const chatSchema={type:'object',additionalProperties:false,properties:{reply:{type:'string',minLength:1,maxLength:2200}},required:['reply']}
+        try{
+          const chat=await structuredResponse<{reply:string}>({name:'zhivotina_chat_test',schema:chatSchema,instructions:jipitinaInstructions(mode),input,maxOutputTokens:620,reasoningEffort:'none'})
+          const reply=String(chat.reply||'').trim().toLocaleLowerCase('ru-RU').replaceAll('·','.').replace(/\.+$/,'')
+          return json({ok:true,reply,mode,requestId,testRoom:true})
+        }catch(e:any){
+          console.error('test-room jipitina model request failed',String(e?.message||e||'unknown'))
+          return err('чат временно недоступен. попробуйте ещё раз',503)
+        }
+      }
+
       const attemptId=crypto.randomUUID()
       const claimed=await db.rpc('claim_creature_chat',{p_user_id:user.id,p_event_id:event.id,p_request_id:requestId,p_mode:mode,p_text:message,p_attempt_id:attemptId})
       if(claimed.error){
@@ -1476,7 +1494,8 @@ export async function handleApi(req:Request){
       if(!Number.isInteger(rating)||rating<1||rating>10||!stateWord||!thought||!['yes','no','depends'].includes(recommendation))return err('Заполните всю реакцию',422)
       const r=await db.from('post_film_reactions').upsert({event_id:event.id,user_id:user.id,rating,state_word:stateWord.slice(0,80),thought:thought.slice(0,500),recommendation,updated_at:new Date().toISOString()},{onConflict:'event_id,user_id'});if(r.error)throw r.error
       await db.from('discussion_thoughts').upsert({event_id:event.id,user_id:user.id,text:thought.slice(0,240)},{onConflict:'event_id,user_id'})
-      const room=await db.from('post_film_reactions').select('rating').eq('event_id',event.id);const avg=(room.data||[]).length?(room.data||[]).reduce((a:number,v:any)=>a+Number(v.rating||0),0)/(room.data||[]).length:rating;await emitStoryTrigger(db,user.id,'reaction_saved',{rating,rating_gap:Math.abs(rating-avg),recommendation},event.id)
+      const room=await db.from('post_film_reactions').select('rating').eq('event_id',event.id);const avg=(room.data||[]).length?(room.data||[]).reduce((a:number,v:any)=>a+Number(v.rating||0),0)/(room.data||[]).length:rating
+      if(event?.settings?.test_room!==true)await emitStoryTrigger(db,user.id,'reaction_saved',{rating,rating_gap:Math.abs(rating-avg),recommendation},event.id)
       return json({ok:true})
     }
     if(action==='submit-thought'){
@@ -2562,6 +2581,7 @@ export async function handleApi(req:Request){
     }
 
     if(action==='admin-award-crumbs'){
+      if(event?.settings?.test_room===true)return json({ok:true,awarded:0,already:0,participants:0,amount:0,testRoom:true})
       const show=await buildShowState(db,event)
       const amount=Math.max(1,Math.min(100,Math.round(Number(body.amount)||show.program.rewards.round||1)))
       const scope=String(body.scope||'round_voters')
@@ -2630,7 +2650,7 @@ export async function handleApi(req:Request){
       const result=r.data?.[0]
       if(!result)return err('Не удалось изменить регистрацию',500)
       const targetUserId=String(result.user_id||'')
-      if(targetUserId&&['mark_attended','undo_attended'].includes(fix))await refreshLeaderboard(db,[targetUserId])
+      if(targetUserId&&['mark_attended','undo_attended'].includes(fix)&&event?.settings?.test_room!==true)await refreshLeaderboard(db,[targetUserId])
       return json({ok:true,registrationId:String(result.registration_id||registrationId),status:String(result.status||''),promoted:Number(result.promoted||0)})
     }
     if(action==='admin-create-checkin-token'){
@@ -2640,6 +2660,7 @@ export async function handleApi(req:Request){
       return json({ok:true,token,expiresAt,deepLink:await telegramStartLink(`encounter_${token}`)})
     }
     if(action==='admin-award-story'){
+      if(event?.settings?.test_room===true)return json({ok:true,result:{testRoom:true,awarded:false}})
       const target=String(body.userId||'');const code=String(body.storyCode||'');if(!target||!code)return err('userId и storyCode обязательны',422);const r=await db.rpc('award_story',{p_user_id:target,p_story_code:code,p_event_id:event.id,p_occurrence_key:'once',p_context:{source:'admin'}});if(r.error)throw r.error;return json({ok:true,result:r.data})
     }
     if(action==='admin-set-mechanic'){
@@ -2916,7 +2937,7 @@ export async function handleApi(req:Request){
       const sorted=[...scores.entries()].map(([uid,score])=>({event_id:event.id,user_id:uid,correct:score.correct,total:score.total,points:score.correct})).sort((a,b)=>b.correct-a.correct);let previousCorrect:number|undefined,previousRank=0;const rows=sorted.map((x,i)=>{if(previousCorrect===undefined||x.correct!==previousCorrect){previousCorrect=x.correct;previousRank=i+1}return {...x,rank:previousRank}});if(rows.length){const up=await db.from('event_scores').upsert(rows);if(up.error)throw up.error}
       const named=await db.from('event_scores').select('user_id,correct,total,points,rank,users(display_name,telegram_username)').eq('event_id',event.id).order('rank').order('correct',{ascending:false});if(named.error)throw named.error
       const publicScores=(named.data||[]).map((x:any)=>({userId:x.user_id,name:x.users?.display_name||x.users?.telegram_username||'участник',correct:x.correct,total:x.total,points:x.points,rank:x.rank}));const winners=publicScores.filter((x:any)=>x.rank===1);const soleWinner=winners.length===1?winners[0]:null
-      await db.from('events').update({status:'PREDICTIONS_SCORED',winner_user_id:soleWinner?.userId||null}).eq('id',event.id);await db.from('event_outputs').upsert({event_id:event.id,output_key:'score_summary',payload:{scores:publicScores,tie:winners.length>1,winners,winner:soleWinner},approved:true,updated_at:new Date().toISOString()});await refreshLeaderboard(db,rows.map(x=>x.user_id));for(const row of rows){await emitStoryTrigger(db,row.user_id,'prediction_scored',{correct:row.correct,total:row.total},event.id)}return json({ok:true,scores:publicScores,tie:winners.length>1,winners,winner:soleWinner})
+      await db.from('events').update({status:'PREDICTIONS_SCORED',winner_user_id:soleWinner?.userId||null}).eq('id',event.id);await db.from('event_outputs').upsert({event_id:event.id,output_key:'score_summary',payload:{scores:publicScores,tie:winners.length>1,winners,winner:soleWinner},approved:true,updated_at:new Date().toISOString()});if(event?.settings?.test_room!==true){await refreshLeaderboard(db,rows.map(x=>x.user_id));for(const row of rows){await emitStoryTrigger(db,row.user_id,'prediction_scored',{correct:row.correct,total:row.total},event.id)}}return json({ok:true,scores:publicScores,tie:winners.length>1,winners,winner:soleWinner})
 
       },180)
     }
