@@ -197,19 +197,20 @@ const nepokoyKeyMarks=['rosa','снова','out','тише','?'] as const
 function nepokoyKeyMark(role:number|undefined){const index=Math.abs(Math.trunc(Number(role)||0))%nepokoyKeyMarks.length;return nepokoyKeyMarks[index]}
 function nepokoyKeyLabel(key?:{room_number:string;observer_role:number;key_mark?:string}){if(!key?.room_number)return '';return `${key.room_number} / ${key.key_mark||nepokoyKeyMark(key.observer_role)}`}
 
-const nepokoyObserverCards=[
-  {code:'01',title:'следопыт выхода',task:'следи за каждой попыткой выбраться из «розы». запомни момент, когда ты впервые понял(а): проблема уже не в дороге.',after:'после титров скажи животине: в какой момент выход перестал быть просто выходом?'},
-  {code:'02',title:'архивариус кроликов',task:'следи за розовыми кроликами. не пытайся сразу их расшифровать. замечай, рядом с какими чувствами, людьми и событиями они появляются.',after:'после титров скажи животине: что лично для тебя принесли с собой кролики?'},
-  {code:'03',title:'букмекер шаров',task:'следи за бильярдными шарами и особенно за номерами. твоя задача — раньше остальных понять, существует ли у них правило.',after:'после титров скажи животине: когда ты понял(а), что числа могут быть не случайными?'},
-  {code:'04',title:'наблюдатель бегунов',task:'следи за бегунами. каждый раз решай про себя: это опасность снаружи, наказание, случайность или вообще что-то другое.',after:'после титров скажи животине: чего ты боялся(ась) сильнее — того, что снаружи, или того, что происходит внутри «розы»?'},
-  {code:'05',title:'адвокат мадам',task:'смотри на мадам так, будто тебе придётся её защищать. ищи моменты, где она не злодей, а человек, который удерживает свой мир от распада.',after:'после титров вынеси животине вердикт: мадам удерживает людей, спасает их или просто живёт по правилам этого места?'}
+const hotelObserverCards=[
+  {code:'01',title:'наблюдатель лиц',task:'следи за тем, кто меняется, врёт, притворяется или ведёт себя так, будто происходящее нормально.',after:'после титров скажи животине: кому ты доверял меньше всего и в какой момент это изменилось?'},
+  {code:'02',title:'наблюдатель пространства',task:'следи за дверями, номерами, комнатами, коридорами и тем, как фильм обращается с пространством.',after:'после титров скажи животине: какой момент впервые сделал само место подозрительным?'},
+  {code:'03',title:'наблюдатель слов',task:'лови повторяющиеся фразы, имена, даты и совпадения. не пытайся сразу объяснить их.',after:'после титров назови животине одну фразу или деталь, которая задним числом оказалась важнее всего.'},
+  {code:'04',title:'наблюдатель предметов',task:'следи за ключами, одеждой, вещами и предметами, которые появляются, исчезают или меняют смысл.',after:'после титров скажи животине: какой предмет оказался важнее, чем казался сначала?'},
+  {code:'05',title:'наблюдатель аномалий',task:'собирай всё, что нарушает обычную логику мира. твоя задача не объяснять, а замечать.',after:'после титров назови животине первую аномалию, после которой ты перестал верить очевидному объяснению.'}
 ] as const
 
 function NepokoyObserverCard({data,onChat}:{data:DemoState;onChat:()=>void}){
   if(data.nepokoyCardIndex===undefined||data.registration!=='attended')return null
-  const card=nepokoyObserverCards[Math.abs(Number(data.nepokoyCardIndex))%nepokoyObserverCards.length]
+  const card=hotelObserverCards[Math.abs(Number(data.nepokoyCardIndex))%hotelObserverCards.length]
   const keyLabel=nepokoyKeyLabel(data.nepokoyHotelKey)
-  return <section className="nepokoy-observer-card"><div className="nepokoy-card-no">{keyLabel?<>постоялец {keyLabel} · </>:null}карточка {card.code} · только тебе</div><div className="eyebrow">непокой × {data.creature.name||'животина'}</div><h2>{card.title}</h2><p>{card.task}</p>{keyLabel&&<div className="nepokoy-card-after"><small>твой физический ключ</small><b>{keyLabel}</b></div>}<div className="nepokoy-card-after"><small>после титров</small><b>{card.after}</b></div><Button kind="secondary" onClick={onChat}>открыть животину</Button></section>
+  const filmTitle=String((data.show?.runtime.videoState as any)?.title||'отель')
+  return <section className="nepokoy-observer-card"><div className="nepokoy-card-no">{keyLabel?<>постоялец {keyLabel} · </>:null}карточка {card.code} · только тебе</div><div className="eyebrow">{filmTitle} × {data.creature.name||'животина'}</div><h2>{card.title}</h2><p>{card.task}</p>{keyLabel&&<div className="nepokoy-card-after"><small>твой физический ключ</small><b>{keyLabel}</b></div>}<div className="nepokoy-card-after"><small>после титров</small><b>{card.after}</b></div><Button kind="secondary" onClick={onChat}>открыть животину</Button></section>
 }
 
 function ClosedNepokoyCards({data}:{data:DemoState}){
@@ -836,13 +837,61 @@ function ReviewQueueAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(acti
   </Card>
 }
 
-const nepokoyPilotQuestions=[
-  {key:'nepokoy_before',label:'01 · до фильма',prompt:'что здесь будет страшнее всего?',options:['не суметь уйти','остаться одному','перестать понимать, что реально','привыкнуть и больше не захотеть уходить']},
-  {key:'nepokoy_ball',label:'02 · стоп на шаре',prompt:'что, по-твоему, означает номер на бильярдном шаре?',options:['номер комнаты следующего исчезнувшего','сколько циклов осталось','комнату, где появится выход','ничего. это случайность']},
-  {key:'nepokoy_force',label:'03 · после титров',prompt:'что сильнее всего держит героев в «розе»?',options:['прошлое и вина','внешняя сила','привычка и принятие','у этого нет одного ответа']},
-  {key:'nepokoy_after',label:'04 · до / после',prompt:'после фильма что пугает тебя больше всего?',options:['не суметь уйти','остаться одному','перестать понимать, что реально','привыкнуть и больше не захотеть уходить']},
-  {key:'nepokoy_rating',label:'05 · оценка',prompt:'сколько «непокоя» осталось в тебе?',options:['1–2 / почти отпустило','3–4','5–6','7–8','9–10 / я всё ещё в «розе»']}
-] as const
+type HotelScenarioId='identity'|'mr_k'
+type HotelScenarioQuestion={key:string;label:string;prompt:string;options:readonly string[]}
+type HotelScenarioCue={id:string;label:string;trigger:string;director:string;action?:'playing'|'paused'|'finished';questionKey?:string;keyState?:'number_noticed'|'post_film';note?:string}
+type HotelScenario={id:HotelScenarioId;title:string;search:string;intro:string;questions:readonly HotelScenarioQuestion[];cues:readonly HotelScenarioCue[]}
+
+const hotelScenarios:Record<HotelScenarioId,HotelScenario>={
+  identity:{
+    id:'identity',title:'идентификация',search:'Идентификация 2003 смотреть легально',intro:'мотель · ключи · обратный отсчёт · кто здесь настоящий',
+    questions:[
+      {key:'identity_pause_1',label:'пауза 01 · ключи',prompt:'что сейчас кажется самым важным в мотеле?',options:['люди','номера комнат','ключи','то, что исчезает']},
+      {key:'identity_pause_2',label:'пауза 02 · версия',prompt:'что на самом деле происходит в этом мотеле?',options:['кто-то ведёт игру','место само опасно','герои связаны сильнее, чем кажется','очевидного объяснения уже недостаточно']},
+      {key:'identity_after',label:'после титров · улика',prompt:'какая деталь сильнее всего изменила смысл фильма задним числом?',options:['ключи и номера','имена и совпадения','поведение людей','последний поворот']},
+      {key:'identity_trust',label:'после титров · доверие',prompt:'в какой момент ты перестал доверять первой версии происходящего?',options:['почти сразу','когда появились ключи','когда исчезло очевидное объяснение','только в финале']},
+      {key:'identity_rating',label:'финал · состояние',prompt:'насколько фильм всё ещё сидит в голове?',options:['1–2','3–4','5–6','7–8','9–10']}
+    ],
+    cues:[
+      {id:'checkin',label:'00 · заселение',trigger:'все гости получили физические ключи и роли',director:'ничего не объясняй. приглуши свет. когда все сядут, переходи дальше.'},
+      {id:'start',label:'01 · включай фильм',trigger:'зал готов, телефоны убраны',director:'животина: «включай фильм». нажми play в кинопоиске и сразу подтверди здесь.',action:'playing'},
+      {id:'keys',label:'02 · ключ замечен',trigger:'в фильме впервые становится важен номерной ключ',director:'фильм НЕ останавливай. попроси гостей посмотреть на свой ключ и никому его не показывать.',keyState:'number_noticed'},
+      {id:'pause1',label:'03 · пауза сейчас',trigger:'становится ясно, что ключи/номера складываются в последовательность',director:'поставь фильм на паузу. открой вопрос 01 и дождись ответов.',action:'paused',questionKey:'identity_pause_1'},
+      {id:'resume1',label:'04 · продолжай фильм',trigger:'ответы на вопрос 01 собраны',director:'закрой ответ. продолжай фильм.',action:'playing'},
+      {id:'pause2',label:'05 · вторая пауза',trigger:'до полного объяснения центральной загадки, когда у зрителя уже достаточно улик',director:'пауза. открой вопрос 02. не комментируй версии гостей.',action:'paused',questionKey:'identity_pause_2'},
+      {id:'resume2',label:'06 · молчим и смотрим',trigger:'версии собраны',director:'закрой ответ и продолжай. во время раскрытия ничего не отправляй.',action:'playing'},
+      {id:'false_end',label:'07 · ложный финал',trigger:'кажется, что история уже закончилась',director:'ничего не объясняй. ключи остаются у гостей.'},
+      {id:'credits',label:'08 · титры',trigger:'пошли финальные титры после последнего поворота',director:'останови режим фильма. телефоны в руки. ключи положить номером вверх.',action:'finished',keyState:'post_film'},
+      {id:'after',label:'09 · после титров',trigger:'телефоны у гостей',director:'открой вопросы после титров по очереди.',questionKey:'identity_after'},
+      {id:'draw',label:'10 · финальный ключ',trigger:'вопросы закончены',director:'нажми «выбрать ключ финала». выбранный номер появится на проекторе.'}
+    ]
+  },
+  mr_k:{
+    id:'mr_k',title:'мистер к',search:'Мистер К 2024 смотреть легально',intro:'отель · невозможный выход · пространство как персонаж',
+    questions:[
+      {key:'mrk_pause_1',label:'пауза 01 · пространство',prompt:'что именно в отеле изменилось первым?',options:['маршрут к выходу','поведение жильцов','размеры и геометрия','правила места']},
+      {key:'mrk_pause_2',label:'пауза 02 · доверие',prompt:'кому ты сейчас веришь больше?',options:['к.','жильцам','самому отелю','никому']},
+      {key:'mrk_pause_3',label:'пауза 03 · выход',prompt:'если выход существует, ты бы сейчас вышел?',options:['да','нет']},
+      {key:'mrk_after',label:'после титров · отель',prompt:'чем для тебя в итоге оказался отель?',options:['ловушкой','убежищем','живым существом','состоянием человека','не хочу объяснять']},
+      {key:'mrk_rating',label:'финал · состояние',prompt:'ты бы заселился сюда ещё раз?',options:['да','нет','только с чужим ключом','я вообще ещё не выехал']}
+    ],
+    cues:[
+      {id:'checkin',label:'00 · заселение',trigger:'все получили ключи',director:'сообщение вечера: «регистрация завершена. время выезда до 00:00». ничего больше не объясняй.'},
+      {id:'start',label:'01 · включай фильм',trigger:'зал готов',director:'животина: «включай фильм». нажми play и подтверди здесь.',action:'playing'},
+      {id:'checkout',label:'02 · выезд отменён',trigger:'к. пытается уйти и обычный выход перестаёт работать',director:'фильм не останавливай. ключи в руки. смысл сообщения: «время выезда отменено».',keyState:'number_noticed'},
+      {id:'pause1',label:'03 · первая пауза',trigger:'коридоры и правила здания уже явно ненормальны',director:'пауза. спроси гостей, что в отеле изменилось первым.',action:'paused',questionKey:'mrk_pause_1'},
+      {id:'resume1',label:'04 · продолжай',trigger:'ответы собраны',director:'закрой ответ и продолжай фильм.',action:'playing'},
+      {id:'pause2',label:'05 · кому верить',trigger:'к. уже глубоко внутри системы жильцов и самого здания',director:'пауза. открой вопрос о доверии.',action:'paused',questionKey:'mrk_pause_2'},
+      {id:'resume2',label:'06 · отель отвечает',trigger:'ответы собраны',director:'продолжай. дальше приложение не должно объяснять происходящее.',action:'playing'},
+      {id:'inside',label:'07 · внутри него',trigger:'фильм явно подводит к ощущению живого/органического здания',director:'не ставь паузу. дай мысли повиснуть: возможно, они находятся не в отеле, а внутри него.'},
+      {id:'pause3',label:'08 · последняя пауза',trigger:'ближе к финалу, когда вопрос выхода уже стал выбором',director:'пауза. последний вопрос: вышел бы ты сейчас?',action:'paused',questionKey:'mrk_pause_3'},
+      {id:'resume3',label:'09 · досматриваем',trigger:'ответы собраны',director:'закрой ответ. продолжай до титров.',action:'playing'},
+      {id:'credits',label:'10 · время выезда',trigger:'пошли титры',director:'фильм закончен. телефоны в руки. приготовьте ключи.',action:'finished',keyState:'post_film'},
+      {id:'after',label:'11 · после титров',trigger:'все вернулись в приложение',director:'открой вопрос после титров.',questionKey:'mrk_after'},
+      {id:'draw',label:'12 · последний действующий ключ',trigger:'обсуждение закончено',director:'выбери финальный ключ. его владелец забирает ключ и подарок.'}
+    ]
+  }
+}
 
 function NepokoyEventCreator({busy,run}:{busy:boolean;run:(action:string,payload?:Record<string,unknown>)=>Promise<any>}){
   const [startsAt,setStartsAt]=useState('')
@@ -860,35 +909,50 @@ function NepokoyPilotAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(act
   const show=data.show
   const round=show?.currentRound
   const currentVideo:any=show?.runtime.videoState||{}
+  const inferredScenario:HotelScenarioId=String(currentVideo.title||'').toLowerCase().includes('мистер')?'mr_k':'identity'
+  const [scenarioId,setScenarioId]=useState<HotelScenarioId>(inferredScenario)
+  const scenario=hotelScenarios[scenarioId]
   const [filmUrl,setFilmUrl]=useState(()=>String(currentVideo.sourceUrl||''))
   const [inviteText,setInviteText]=useState('')
   const [inviteResult,setInviteResult]=useState<any[]>([])
+  const [cueIndex,setCueIndex]=useState(0)
   useEffect(()=>{if(currentVideo.sourceUrl)setFilmUrl(String(currentVideo.sourceUrl))},[currentVideo.sourceUrl])
-  const sendInvites=async()=>{
-    const result:any=await run('admin-nepokoy-invite',{usernames:inviteText})
-    if(result?.invites)setInviteResult(result.invites)
-  }
-  const invitePanel=<div className="nepokoy-director-player"><div className="section-title">закрытый список гостей</div><p className="muted">вставьте telegram username через пробел, запятую или с новой строки. если человек уже известен боту, его сразу добавит в мероприятие и бот сам пришлёт сообщение. если нет, появится персональная ссылка, которую надо переслать вручную.</p><textarea value={inviteText} onChange={e=>setInviteText(e.target.value)} placeholder={"@user_one\n@user_two\n@user_three"}/><Button disabled={busy||!inviteText.trim()} onClick={sendInvites}>{busy?'добавляем…':'добавить гостей и разослать'}</Button>{inviteResult.length>0&&<div className="stack">{inviteResult.map((row:any)=><div className="prediction" key={row.username}><div className="row spread"><b>{row.username}</b><Pill>{row.delivery==='sent'?'отправлено ботом':row.registered?'добавлен · нужна ссылка':'нужна ссылка'}</Pill></div>{row.deepLink&&row.delivery!=='sent'&&<div className="inline"><input className="share-link" readOnly value={row.deepLink}/><Button kind="secondary" onClick={async()=>{try{await navigator.clipboard.writeText(row.deepLink)}catch{window.prompt('скопируйте ссылку',row.deepLink)}}}>скопировать</Button></div>}</div>)}</div>}{(data.nepokoyInvites||[]).length>0&&<p className="muted">создано персональных приглашений: {data.nepokoyInvites?.length}. подтверждённых через telegram: {(data.nepokoyInvites||[]).filter(x=>x.registered).length}.</p>}</div>
+  useEffect(()=>{setCueIndex(0)},[scenarioId])
+  const sendInvites=async()=>{const result:any=await run('admin-nepokoy-invite',{usernames:inviteText});if(result?.invites)setInviteResult(result.invites)}
+  const invitePanel=<div className="nepokoy-director-player"><div className="section-title">закрытый список гостей</div><p className="muted">telegram username через пробел, запятую или с новой строки. известным боту гостям сообщение уйдёт автоматически, остальным появится персональная ссылка.</p><textarea value={inviteText} onChange={e=>setInviteText(e.target.value)} placeholder={"@user_one\n@user_two"}/><Button disabled={busy||!inviteText.trim()} onClick={sendInvites}>{busy?'добавляем…':'добавить гостей и разослать'}</Button>{inviteResult.length>0&&<div className="stack">{inviteResult.map((row:any)=><div className="prediction" key={row.username}><div className="row spread"><b>{row.username}</b><Pill>{row.delivery==='sent'?'отправлено ботом':row.registered?'добавлен · нужна ссылка':'нужна ссылка'}</Pill></div>{row.deepLink&&row.delivery!=='sent'&&<div className="inline"><input className="share-link" readOnly value={row.deepLink}/><Button kind="secondary" onClick={async()=>{try{await navigator.clipboard.writeText(row.deepLink)}catch{window.prompt('скопируйте ссылку',row.deepLink)}}}>скопировать</Button></div>}</div>)}</div>}</div>
   if(!data.event.nepokoyEnabled)return null
-  if(!show||show.runtime.runStatus==='idle'||!round?.id||round.status!=='active')return <Card className="nepokoy-pilot-admin"><div className="section-title">отдельное мероприятие</div><h2>непокой × животина</h2>{invitePanel}<p className="muted">обычный сценарий «насыпателей» здесь не запускается. одна кнопка создаст живой раунд «непокоя» и откроет режиссёрский пульт.</p><Button disabled={busy||data.event.status==='DRAFT'} onClick={()=>run('admin-nepokoy-launch')}>{busy?'запускаю…':'запустить непокой'}</Button>{data.event.status==='DRAFT'&&<p className="muted">сначала откройте регистрацию у этого отдельного события.</p>}</Card>
-  const launch=async(q:typeof nepokoyPilotQuestions[number])=>{
-    if(!round?.id||round.status!=='active')return
+  if(!show||show.runtime.runStatus==='idle'||!round?.id||round.status!=='active')return <Card className="nepokoy-pilot-admin"><div className="section-title">отель × животина</div><h2>два сценария вечера</h2>{invitePanel}<div className="nepokoy-pilot-buttons"><Button kind={scenarioId==='identity'?'primary':'secondary'} onClick={()=>setScenarioId('identity')}>идентификация</Button><Button kind={scenarioId==='mr_k'?'primary':'secondary'} onClick={()=>setScenarioId('mr_k')}>мистер к</Button></div><p className="muted">выбранный сценарий: {scenario.title}. после запуска режиссёрский пульт поведёт по сценам вручную, без хрупких таймкодов.</p><Button disabled={busy||data.event.status==='DRAFT'} onClick={async()=>{const x=await run('admin-nepokoy-launch');if(x)await run('admin-external-film-control',{op:'ready',title:scenario.title})}}>{busy?'запускаю…':`запустить сценарий «${scenario.title}»`}</Button>{data.event.status==='DRAFT'&&<p className="muted">сначала откройте регистрацию.</p>}</Card>
+
+  const launchQuestion=async(key:string)=>{
+    const q=scenario.questions.find(x=>x.key===key);if(!q||!round?.id)return
     await run('admin-round-question',{question:{key:q.key,prompt:q.prompt,options:[...q.options]}})
-    await run('admin-vote-control',{op:'hide'})
-    await run('admin-vote-control',{op:'open'})
+    await run('admin-vote-control',{op:'hide'});await run('admin-vote-control',{op:'open'})
   }
-  const filmState=async(op:'ready'|'playing'|'paused'|'finished')=>run('admin-external-film-control',{op,sourceUrl:filmUrl,title:'непокой'})
-  const openFilm=async()=>{
-    if(!filmUrl.trim())return
-    await filmState('ready')
-    window.open(filmUrl.trim(),'nepokoy-film','noopener,noreferrer')
+  const filmState=(op:'ready'|'playing'|'paused'|'finished')=>run('admin-external-film-control',{op,sourceUrl:filmUrl,title:scenario.title})
+  const applyCue=async(index:number)=>{
+    const cue=scenario.cues[index];if(!cue)return
+    if(cue.action)await filmState(cue.action)
+    if(cue.keyState)await run('admin-nepokoy-key-state',{state:cue.keyState})
+    if(cue.questionKey)await launchQuestion(cue.questionKey)
+    setCueIndex(index)
   }
-  const searchUrl='https://yandex.ru/search/?text='+encodeURIComponent('Непокой 2025 Леонид Шмельков смотреть легально')
-  return <Card className="nepokoy-pilot-admin"><div className="row spread"><div><div className="section-title">режиссёрский пульт</div><h2>непокой × животина</h2></div><Pill>{round?.status==='active'?'раунд готов':'нужен раунд'}</Pill></div>
+  const openFilm=async()=>{if(!filmUrl.trim())return;await filmState('ready');window.open(filmUrl.trim(),'hotel-film','noopener,noreferrer')}
+  const cue=scenario.cues[Math.min(cueIndex,scenario.cues.length-1)]
+  const searchUrl='https://yandex.ru/search/?text='+encodeURIComponent(scenario.search)
+  return <Card className="nepokoy-pilot-admin">
+    <div className="row spread"><div><div className="section-title">режиссёрский пульт · отель</div><h2>{scenario.title} × животина</h2></div><Pill>{currentVideo.status||'ready'}</Pill></div>
     {invitePanel}
-    <div className="nepokoy-director-player"><div className="section-title">фильм</div><p className="muted">режиссёр сама выбирает легальный источник. защищённые кинотеатральные сервисы нельзя надёжно ставить на паузу из mini app, поэтому фильм открывается отдельным окном, а этот пульт синхронизирует состояние шоу.</p><div className="inline"><Button kind="secondary" onClick={()=>window.open(searchUrl,'_blank','noopener,noreferrer')}>найти «непокой» ↗</Button><a className="button secondary" href="https://provzglyad.com/films/nepokoi/" target="_blank" rel="noreferrer">страница прокатчика ↗</a></div><Field label="ссылка на легальный просмотр / источник"><input type="url" value={filmUrl} onChange={e=>setFilmUrl(e.target.value)} placeholder="https://…"/></Field><div className="nepokoy-player-controls"><Button disabled={busy||!round?.id||!filmUrl.trim()} onClick={openFilm}>открыть фильм ↗</Button><Button disabled={busy||!round?.id} onClick={()=>filmState('playing')}>▶ фильм идёт</Button><Button kind="secondary" disabled={busy||!round?.id} onClick={()=>filmState('paused')}>Ⅱ пауза</Button><Button kind="danger" disabled={busy||!round?.id} onClick={()=>filmState('finished')}>■ титры / конец</Button></div><small className="muted">сейчас: {currentVideo.status||'не запущен'}{currentVideo.external?' · внешний источник':''}</small></div>
-    <p className="muted">одна остановка фильма. остальные механики идут до и после просмотра. кнопка вопроса сама подставляет текст, скрывает старые результаты и открывает голосование.</p><div className="nepokoy-pilot-cue"><b>единственный стоп фильма</b><span>режиссёр ставит фильм на паузу после появления бильярдного шара с номером → нажимает «Ⅱ пауза» → запускает вопрос 02 → показывает результаты → возвращается в окно фильма и продолжает.</span></div><div className="nepokoy-pilot-cue"><b>надписи на физических ключах</b><span>01 · rosa&nbsp;&nbsp; 02 · снова&nbsp;&nbsp; 03 · out&nbsp;&nbsp; 04 · тише&nbsp;&nbsp; 05 · ?</span></div><div className="nepokoy-key-state-controls"><Button kind="secondary" disabled={busy||!round?.id} onClick={()=>run('admin-nepokoy-key-state',{state:'number_noticed'})}>ключи в руки / номер замечен</Button><Button kind="secondary" disabled={busy||!round?.id} onClick={()=>run('admin-nepokoy-key-state',{state:'post_film'})}>после титров / открыть роли</Button><Button disabled={busy||!round?.id} onClick={()=>run('admin-nepokoy-key-draw')}>выбрать ключ финала</Button></div><div className="nepokoy-pilot-buttons">{nepokoyPilotQuestions.map(q=><Button key={q.key} kind="secondary" disabled={busy||!round?.id||round.status!=='active'} onClick={()=>void launch(q)}>{q.label}</Button>)}</div><div className="inline"><Button disabled={busy||!round?.id} onClick={()=>run('admin-vote-control',{op:'close'})}>закрыть ответ</Button><Button kind="secondary" disabled={busy||!round?.id} onClick={()=>run('admin-vote-control',{op:'show'})}>показать результаты</Button></div><details><summary>шпаргалка режиссёра</summary><p><b>подготовка:</b> найти легальный источник → вставить ссылку → «открыть фильм» → проверить звук и fullscreen.</p><p><b>до фильма:</b> вопрос 01 → показать результаты → «запомните свой ответ. животина вернётся к нему после титров».</p><p><b>старт:</b> запустить фильм в окне просмотра → вернуться в пульт → «▶ фильм идёт».</p><p><b>единственная пауза:</b> остановить фильм на шаре → «Ⅱ пауза» → вопрос 02 → результаты → продолжить фильм → «▶ фильм идёт».</p><p><b>после титров:</b> «■ титры / конец» → телефоны в руки → каждый отвечает своей карточке в чате → вопросы 03, 04, 05.</p><p><b>финал:</b> выбрать физический ключ → показать номер на проекторе → оставить карточку и ключ как послевкусие вечера.</p></details>{show.runtime.runStatus!=='finished'&&<Button kind="danger" disabled={busy} onClick={()=>{if(window.confirm('закончить «непокой»?'))void run('admin-show-control',{op:'end_event'})}}>закончить мероприятие</Button>}</Card>
+    <div className="nepokoy-director-player"><div className="section-title">01 · сценарий фильма</div><div className="nepokoy-pilot-buttons"><Button kind={scenarioId==='identity'?'primary':'secondary'} disabled={busy} onClick={async()=>{setScenarioId('identity');await run('admin-external-film-control',{op:'ready',title:hotelScenarios.identity.title})}}>идентификация</Button><Button kind={scenarioId==='mr_k'?'primary':'secondary'} disabled={busy} onClick={async()=>{setScenarioId('mr_k');await run('admin-external-film-control',{op:'ready',title:hotelScenarios.mr_k.title})}}>мистер к</Button></div><p className="muted">{scenario.intro}</p></div>
+    <div className="nepokoy-director-player"><div className="section-title">02 · источник</div><div className="inline"><Button kind="secondary" onClick={()=>window.open(searchUrl,'_blank','noopener,noreferrer')}>найти легальный просмотр ↗</Button></div><Field label="ссылка на просмотр"><input type="url" value={filmUrl} onChange={e=>setFilmUrl(e.target.value)} placeholder="https://…"/></Field><div className="nepokoy-player-controls"><Button disabled={busy||!filmUrl.trim()} onClick={openFilm}>открыть фильм ↗</Button><Button disabled={busy} onClick={()=>filmState('playing')}>▶ фильм идёт</Button><Button kind="secondary" disabled={busy} onClick={()=>filmState('paused')}>Ⅱ пауза</Button><Button kind="danger" disabled={busy} onClick={()=>filmState('finished')}>■ титры</Button></div></div>
+    <div className="nepokoy-director-player"><div className="section-title">животина говорит тебе сейчас</div><h2>{cue.label}</h2><p><b>ориентир в кадре:</b> {cue.trigger}</p><div className="success"><b>{cue.director}</b></div><div className="inline"><Button kind="secondary" disabled={busy||cueIndex===0} onClick={()=>setCueIndex(x=>Math.max(0,x-1))}>← назад</Button><Button disabled={busy} onClick={()=>void applyCue(Math.min(scenario.cues.length-1,cueIndex+1))}>{cueIndex>=scenario.cues.length-1?'это финал':'сцена наступила →'}</Button></div><small className="muted">шаг {cueIndex+1}/{scenario.cues.length}. переход подтверждаешь ты по событию в кадре, а не по таймкоду.</small></div>
+    <div className="nepokoy-key-state-controls"><Button kind="secondary" disabled={busy} onClick={()=>run('admin-nepokoy-key-state',{state:'number_noticed'})}>ключи в руки</Button><Button kind="secondary" disabled={busy} onClick={()=>run('admin-nepokoy-key-state',{state:'post_film'})}>после титров</Button><Button disabled={busy} onClick={()=>run('admin-nepokoy-key-draw')}>выбрать ключ финала</Button></div>
+    <details><summary>вся программа «{scenario.title}»</summary><div className="stack">{scenario.cues.map((x,i)=><div className="nepokoy-pilot-cue" key={x.id}><b>{x.label}</b><span>{x.trigger}</span><small>{x.director}</small>{x.questionKey&&<Button kind="secondary" disabled={busy} onClick={()=>void launchQuestion(x.questionKey!)}>открыть этот вопрос</Button>}</div>)}</div></details>
+    <details><summary>все вопросы сценария</summary><div className="nepokoy-pilot-buttons">{scenario.questions.map(q=><Button key={q.key} kind="secondary" disabled={busy} onClick={()=>void launchQuestion(q.key)}>{q.label}</Button>)}</div></details>
+    <div className="inline"><Button disabled={busy} onClick={()=>run('admin-vote-control',{op:'close'})}>закрыть ответ</Button><Button kind="secondary" disabled={busy} onClick={()=>run('admin-vote-control',{op:'show'})}>показать результаты</Button></div>
+    {show.runtime.runStatus!=='finished'&&<Button kind="danger" disabled={busy} onClick={()=>{if(window.confirm('закончить мероприятие?'))void run('admin-show-control',{op:'end_event'})}}>закончить мероприятие</Button>}
+  </Card>
 }
+
 
 function Admin(){
   const {slug}=useParams()
