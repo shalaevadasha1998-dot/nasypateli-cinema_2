@@ -217,6 +217,9 @@ export type ProgramBlock = {
   title:string
   durationMin:number
   roundsTarget:number
+  autoAdvance:boolean
+  audioPlaylist:string[]
+  audioVolume:number
   index:number
 }
 
@@ -266,6 +269,8 @@ export type EventRuntime = {
   updatedAt?:string
 }
 
+export type ShowAudioAsset={key:string;title:string;category:string;mimeType:string;durationSec:number;url:string}
+export type ShowAudioState={mode:'auto'|'manual';status:'playing'|'paused'|'stopped';track_key?:string|null;playlist_index?:number;volume?:number;updated_at?:string}
 export type ShowState = {
   program:EventProgram
   runtime:EventRuntime
@@ -273,6 +278,7 @@ export type ShowState = {
   voteResults:{answer:any;count:number}[]
   onlineCount:number
   myVote?:any
+  audio?:{state:ShowAudioState;assets:ShowAudioAsset[]}
 }
 
 export type ScreenCreature = {

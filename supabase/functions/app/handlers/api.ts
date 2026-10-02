@@ -309,11 +309,116 @@ function sanitizeProgramBlocks(input:any){
     const title=String(raw?.title||id).trim().slice(0,120)
     const duration=Math.max(0,Math.min(240,Math.round(Number(raw?.durationMin??raw?.duration_min??0)||0)))
     const rounds=Math.max(0,Math.min(20,Math.round(Number(raw?.roundsTarget??raw?.rounds_target??0)||0)))
-    out.push({id,type,title,duration_min:duration,rounds_target:rounds,enabled:raw?.enabled!==false})
+    const autoAdvance=raw?.autoAdvance===true||raw?.auto_advance===true
+    const audioPlaylist=(Array.isArray(raw?.audioPlaylist)?raw.audioPlaylist:Array.isArray(raw?.audio_playlist)?raw.audio_playlist:[]).map((x:any)=>String(x).trim()).filter(Boolean).slice(0,20)
+    const audioVolume=Math.max(0,Math.min(1,Number(raw?.audioVolume??raw?.audio_volume??0.28)||0.28))
+    out.push({id,type,title,duration_min:duration,rounds_target:rounds,auto_advance:autoAdvance,audio_playlist:audioPlaylist,audio_volume:audioVolume,enabled:raw?.enabled!==false})
   }
   return out.filter(x=>x.enabled)
 }
 
+function audioStateForBlock(block:any,now=new Date().toISOString()){
+  const playlist=(Array.isArray(block?.audio_playlist)?block.audio_playlist:Array.isArray(block?.audioPlaylist)?block.audioPlaylist:[]).map((x:any)=>String(x)).filter(Boolean)
+  return {
+    mode:'auto',
+    status:playlist.length?'playing':'stopped',
+    track_key:playlist[0]||null,
+    playlist_index:0,
+    volume:Math.max(0,Math.min(1,Number(block?.audio_volume??block?.audioVolume??.28)||.28)),
+    updated_at:now
+  }
+}
+
+async function maybeAutoAdvanceShow(db:any,event:any){
+  try{
+    const [programR,runtimeR]=await Promise.all([
+      db.from('event_programs').select('config').eq('event_id',event.id).maybeSingle(),
+      db.from('event_runtime').select('*').eq('event_id',event.id).maybeSingle()
+    ])
+    if(programR.error)throw programR.error
+    if(runtimeR.error)throw runtimeR.error
+    const from=runtimeR.data
+    if(!from||String(from.run_status)!=='running'||!from.block_started_at)return false
+    const blocks=sanitizeProgramBlocks(programR.data?.config?.blocks)||[]
+    const idx=Math.max(0,Math.min(blocks.length-1,Number(from.current_block_index||0)))
+    const block=blocks[idx]
+    if(!block||block.auto_advance!==true||Number(block.duration_min||0)<=0)return false
+    const dueAt=new Date(from.block_started_at).getTime()+Number(block.duration_min)*60_000
+    if(Date.now()<dueAt)return false
+    return await withEventOperation(db,event.id,'show-auto-advance',async()=>{
+      const fresh=await db.from('event_runtime').select('*').eq('event_id',event.id).single()
+      if(fresh.error)throw fresh.error
+      const cur=fresh.data
+      if(String(cur.run_status)!=='running'||!cur.block_started_at)return false
+      const curIdx=Math.max(0,Math.min(blocks.length-1,Number(cur.current_block_index||0)))
+      const curBlock=blocks[curIdx]
+      if(!curBlock||curBlock.auto_advance!==true||Date.now()<new Date(cur.block_started_at).getTime()+Number(curBlock.duration_min||0)*60_000)return false
+      const now=new Date().toISOString()
+      if(cur.current_round_id){
+        const close=await db.from('event_rounds').update({status:'closed',flow_status:'round_finished',closed_at:now,updated_at:now,vote_state:'closed'}).eq('id',cur.current_round_id).eq('event_id',event.id).eq('status','active')
+        if(close.error)throw close.error
+      }
+      const nextIdx=Math.min(blocks.length-1,curIdx+1)
+      const nextBlock=blocks[nextIdx]
+      const finishing=nextBlock?.type==='post_event'||nextIdx===curIdx
+      const patch:any={
+        run_status:finishing?'finished':'running',
+        current_block_id:nextBlock.id,current_block_index:nextIdx,block_started_at:now,paused_at:null,
+        current_round_id:null,current_movie_id:null,current_question:null,vote_state:'closed',results_visible:false,video_state:{status:'idle'},
+        audio_state:audioStateForBlock(nextBlock,now),
+        revision:Number(cur.revision||0)+1,updated_at:now
+      }
+      const u=await db.from('event_runtime').update(patch).eq('event_id',event.id).eq('revision',cur.revision).select('*').maybeSingle()
+      if(u.error)throw u.error
+      if(!u.data)return false
+      if(finishing&&event.status!=='CLOSED'){
+        const absent=await db.from('registrations').update({status:'no_show'}).eq('event_id',event.id).eq('status','paid').select('user_id')
+        if(absent.error)throw absent.error
+        const ev=await db.from('events').update({status:'CLOSED'}).eq('id',event.id).neq('status','CLOSED')
+        if(ev.error)throw ev.error
+        if((absent.data||[]).length)await refreshLeaderboard(db,(absent.data||[]).map((x:any)=>x.user_id))
+      }
+      const log=await db.from('event_runtime_log').insert({event_id:event.id,action:'auto_next',actor_user_id:null,from_state:cur,to_state:u.data})
+      if(log.error)console.error('auto advance log failed',log.error)
+      return true
+    })
+  }catch(e:any){
+    if(e?.message==='EVENT_OPERATION_BUSY')return false
+    console.error('auto advance failed',e)
+    return false
+  }
+}
+
+async function syncMediaAssets(db:any,limit=2){
+  const pending=await db.from('media_assets').select('*').in('status',['pending','error']).not('import_url','is',null).limit(Math.max(1,Math.min(3,limit)))
+  if(pending.error)throw pending.error
+  const results:any[]=[]
+  for(const row of pending.data||[]){
+    const key=String(row.asset_key)
+    try{
+      await db.from('media_assets').update({status:'syncing',last_error:null,updated_at:new Date().toISOString()}).eq('id',row.id)
+      const response=await fetch(String(row.import_url),{redirect:'follow',headers:{'user-agent':'Mozilla/5.0 (compatible; NasypateliCinema/1.0)'}})
+      if(!response.ok)throw new Error('source '+response.status)
+      const contentType=String(response.headers.get('content-type')||row.mime_type||'application/octet-stream')
+      if(contentType.includes('text/html'))throw new Error('source returned html instead of audio')
+      const bytes=new Uint8Array(await response.arrayBuffer())
+      if(bytes.byteLength<1024)throw new Error('audio file is empty')
+      const ext=String(row.mime_type).includes('mpeg')?'mp3':'wav'
+      const storagePath='audio/'+key+'.'+ext
+      const up=await db.storage.from('event-media').upload(storagePath,bytes,{contentType:String(row.mime_type),upsert:true,cacheControl:'31536000'})
+      if(up.error)throw up.error
+      const pub=db.storage.from('event-media').getPublicUrl(storagePath)
+      const publicUrl=String(pub.data?.publicUrl||'')
+      const saved=await db.from('media_assets').update({status:'ready',storage_path:storagePath,public_url:publicUrl,import_url:null,last_error:null,updated_at:new Date().toISOString()}).eq('id',row.id)
+      if(saved.error)throw saved.error
+      results.push({key,ok:true,size:bytes.byteLength,url:publicUrl})
+    }catch(e:any){
+      await db.from('media_assets').update({status:'error',last_error:String(e?.message||e).slice(0,500),updated_at:new Date().toISOString()}).eq('id',row.id)
+      results.push({key,ok:false,error:String(e?.message||e)})
+    }
+  }
+  return results
+}
 async function writeRuntime(db:any,event:any,actorUserId:string|null,action:string,patch:any){
   return await withEventOperation(db,event.id,'show-runtime',async()=>{
     const current=await db.from('event_runtime').select('*').eq('event_id',event.id).single()
@@ -966,6 +1071,7 @@ export async function handleApi(req:Request){
       const event=await eventBySlug(db,String(body.slug||'2026-10-03'))
       const testScreenOk=await testRoomTokenMatches(event,req.headers.get('x-screen-token')||'')
       if(!screenTokenOk&&!testScreenOk)return err('Доступ к экрану запрещён',401)
+      await maybeAutoAdvanceShow(db,event)
       const [state,attended]=await Promise.all([
         buildEventState(db,event,{includeActuals:false}),
         db.from('registrations').select('user_id,created_at').eq('event_id',event.id).eq('status','attended').order('created_at')
@@ -995,6 +1101,28 @@ export async function handleApi(req:Request){
         selectedIdea:state.selectedIdea
       })
     }
+    if(action==='screen-audio-ended'){
+      const event=await eventBySlug(db,String(body.slug||'2026-10-03'))
+      const testScreenOk=await testRoomTokenMatches(event,req.headers.get('x-screen-token')||'')
+      if(!screenTokenOk&&!testScreenOk)return err('Доступ к экрану запрещён',401)
+      const current=await db.from('event_runtime').select('*').eq('event_id',event.id).single()
+      if(current.error)throw current.error
+      const program=await db.from('event_programs').select('config').eq('event_id',event.id).single()
+      if(program.error)throw program.error
+      const blocks=sanitizeProgramBlocks(program.data?.config?.blocks)||[]
+      const block=blocks[Math.max(0,Math.min(blocks.length-1,Number(current.data.current_block_index||0)))]
+      const playlist=(block?.audio_playlist||[]).map((x:any)=>String(x)).filter(Boolean)
+      const state=current.data.audio_state||{}
+      if(state.status!=='playing'||String(state.track_key||'')!==String(body.trackKey||''))return json({ok:true,ignored:true})
+      if(!playlist.length)return json({ok:true,ignored:true})
+      const nextIndex=(Math.max(0,Number(state.playlist_index||0))+1)%playlist.length
+      const next={...state,mode:'auto',status:'playing',track_key:playlist[nextIndex],playlist_index:nextIndex,volume:Number(block.audio_volume||.28),updated_at:new Date().toISOString()}
+      const u=await db.from('event_runtime').update({audio_state:next,revision:Number(current.data.revision||0)+1,updated_at:new Date().toISOString()}).eq('event_id',event.id).eq('revision',current.data.revision)
+      if(u.error)throw u.error
+      return json({ok:true,audioState:next})
+    }
+
+
     if(action==='admin-bootstrap'){
       const event=await eventBySlug(db,String(body.slug||'2026-10-03'))
       const testAdminOk=await testRoomTokenMatches(event,req.headers.get('x-admin-token')||'')
@@ -1005,6 +1133,7 @@ export async function handleApi(req:Request){
           await mustAdmin(db,adminUser,adminTg)
         }catch{return err('Доступ к пульту запрещён',401)}
       }
+      await maybeAutoAdvanceShow(db,event)
       const [state,adminParticipants,movieCatalog,showLog,movieSources]=await Promise.all([
         buildEventState(db,event,{includeActuals:true,includePrivateOutputs:true}),
         adminParticipantRows(db,event.id),
@@ -1275,6 +1404,7 @@ export async function handleApi(req:Request){
         const profile=normalizeProfile(user,profileRow.data,null,tg)
         return json({user,profile,event:null,onboardingComplete:profile.completed,creature})
       }
+      await maybeAutoAdvanceShow(db,event)
       if(testParticipantAccess&&event?.settings?.test_room===true&&Number(tg?.id||0)>0){
         const admitted=await db.from('registrations').upsert({
           event_id:event.id,user_id:user.id,status:'attended',queue_position:null,payment_provider:'test_room',
@@ -1886,6 +2016,54 @@ export async function handleApi(req:Request){
       await mustAdmin(db,user,tg)
     }
 
+    if(action==='admin-media-sync'){
+      const results=await syncMediaAssets(db,Number(body.limit||2))
+      const status=await db.from('media_assets').select('asset_key,status,public_url,last_error').order('asset_key')
+      if(status.error)throw status.error
+      return json({ok:true,results,assets:status.data||[]})
+    }
+
+    if(action==='admin-audio-control'){
+      const op=String(body.op||'')
+      if(!['play','pause','stop','next','prev','auto','track'].includes(op))return err('неизвестная команда музыки',422)
+      return await withEventOperation(db,event.id,'show-audio',async()=>{
+        const [runtimeR,programR,assetR]=await Promise.all([
+          db.from('event_runtime').select('*').eq('event_id',event.id).single(),
+          db.from('event_programs').select('config').eq('event_id',event.id).single(),
+          db.from('media_assets').select('asset_key').eq('status','ready')
+        ])
+        if(runtimeR.error)throw runtimeR.error;if(programR.error)throw programR.error;if(assetR.error)throw assetR.error
+        const blocks=sanitizeProgramBlocks(programR.data?.config?.blocks)||[]
+        const block=blocks[Math.max(0,Math.min(blocks.length-1,Number(runtimeR.data.current_block_index||0)))]
+        const ready=new Set((assetR.data||[]).map((x:any)=>String(x.asset_key)))
+        const playlist=(block?.audio_playlist||[]).map((x:any)=>String(x)).filter((x:string)=>ready.has(x))
+        const prev=runtimeR.data.audio_state||audioStateForBlock(block)
+        let next:any={...prev,updated_at:new Date().toISOString()}
+        if(op==='stop')next={...next,mode:'manual',status:'stopped',track_key:null}
+        else if(op==='pause')next={...next,mode:'manual',status:'paused'}
+        else if(op==='play'){
+          const key=String(prev.track_key||playlist[0]||'')
+          if(!key)return err('в этом блоке нет готовой музыки',409)
+          next={...next,mode:'manual',status:'playing',track_key:key}
+        }else if(op==='auto')next=audioStateForBlock(block)
+        else if(op==='track'){
+          const key=String(body.trackKey||'')
+          if(!ready.has(key))return err('этот трек ещё не готов',409)
+          next={...next,mode:'manual',status:'playing',track_key:key,playlist_index:Math.max(0,playlist.indexOf(key))}
+        }else{
+          if(!playlist.length)return err('в этом блоке нет плейлиста',409)
+          const cur=Math.max(0,playlist.indexOf(String(prev.track_key||'')))
+          const delta=op==='next'?1:-1
+          const index=(cur+delta+playlist.length)%playlist.length
+          next={...next,mode:'manual',status:'playing',track_key:playlist[index],playlist_index:index,volume:Number(block?.audio_volume||.28)}
+        }
+        const u=await db.from('event_runtime').update({audio_state:next,revision:Number(runtimeR.data.revision||0)+1,updated_at:new Date().toISOString()}).eq('event_id',event.id).eq('revision',runtimeR.data.revision)
+        if(u.error)throw u.error
+        return json({ok:true,audioState:next})
+      })
+    }
+
+
     if(action==='admin-round-pitches-open'){
       return await withEventOperation(db,event.id,'round-pitches-open',async()=>{
         const show=await buildShowState(db,event)
@@ -2341,7 +2519,7 @@ export async function handleApi(req:Request){
     }
 
     if(action==='admin-event-preflight'){
-      const [programR,runtimeR,projectorR,packagesR,questionsR,moviesR,sourcesR,registrationsR,telegram] = await Promise.all([
+      const [programR,runtimeR,projectorR,packagesR,questionsR,moviesR,sourcesR,registrationsR,mediaR,telegram] = await Promise.all([
         db.from('event_programs').select('config').eq('event_id',event.id).maybeSingle(),
         db.from('event_runtime').select('run_status,current_block_id,current_block_index,revision').eq('event_id',event.id).maybeSingle(),
         db.from('event_projector_state').select('state,revision,updated_at').eq('event_id',event.id).maybeSingle(),
@@ -2350,9 +2528,10 @@ export async function handleApi(req:Request){
         db.from('movie_candidates').select('id,title,enabled_for_event,source_url').eq('event_id',event.id),
         db.from('movie_source_candidates').select('movie_candidate_id,availability_status,verified,embeddable,rights_status,metadata').eq('event_id',event.id),
         db.from('registrations').select('status').eq('event_id',event.id),
+        db.from('media_assets').select('asset_key,status,public_url,last_error'),
         telegramRuntimeReady()
       ])
-      for(const r of [programR,runtimeR,projectorR,packagesR,questionsR,moviesR,sourcesR,registrationsR])if((r as any).error)throw (r as any).error
+      for(const r of [programR,runtimeR,projectorR,packagesR,questionsR,moviesR,sourcesR,registrationsR,mediaR])if((r as any).error)throw (r as any).error
 
       const checks:any[]=[]
       const add=(key:string,label:string,status:'pass'|'warn'|'fail'|'info',detail:string)=>checks.push({key,label,status,detail})
@@ -2366,6 +2545,11 @@ export async function handleApi(req:Request){
       const duration=blocks.reduce((sum:number,x:any)=>sum+Math.max(0,Number(x?.duration_min||0)),0)
       add('program','программа вечера',blocks.length&&missingTypes.length===0?'pass':'fail',
         blocks.length?(`${blocks.length} блоков · ${duration} мин${missingTypes.length?' · нет: '+missingTypes.join(', '):''}`):'программа пустая')
+      const mediaRows=mediaR.data||[]
+      const mediaReady=mediaRows.filter((x:any)=>x.status==='ready'&&String(x.public_url||'')).length
+      const mediaErrors=mediaRows.filter((x:any)=>x.status==='error')
+      add('audio','музыка и звуки',mediaReady>=11?'pass':mediaErrors.length?'fail':'warn',
+        `готово: ${mediaReady}/${mediaRows.length}${mediaErrors.length?' · ошибок: '+mediaErrors.length:''}`)
       add('runtime','состояние мероприятия',runtimeR.data?'pass':'fail',runtimeR.data?`режим: ${runtimeR.data.run_status} · текущий блок: ${runtimeR.data.current_block_id}`:'состояние мероприятия не создано')
       add('projector_state','что сейчас на экране',projectorR.data?'pass':'fail',projectorR.data?`режим экрана: ${projectorR.data.state}`:'состояние большого экрана не создано')
 
@@ -2488,6 +2672,10 @@ export async function handleApi(req:Request){
           runStatus='paused';pausedAt=now
         }else if(op==='resume'){
           if(runStatus!=='paused')return err('шоу не стоит на паузе',409)
+          if(pausedAt&&blockStartedAt){
+            const shift=Math.max(0,new Date(now).getTime()-new Date(pausedAt).getTime())
+            blockStartedAt=new Date(new Date(blockStartedAt).getTime()+shift).toISOString()
+          }
           runStatus='running';pausedAt=null
         }else if(op==='restart'){
           blockStartedAt=now;runStatus='running';pausedAt=null;resetRound=true
@@ -2506,7 +2694,9 @@ export async function handleApi(req:Request){
           block_started_at:blockStartedAt,started_at:startedAt,paused_at:pausedAt,
           revision:Number(from.revision||0)+1,updated_at:now
         }
-        if(resetRound)Object.assign(patch,{current_round_id:null,current_movie_id:null,current_question:null,vote_state:'closed',results_visible:false,video_state:{status:'idle'}})
+        if(resetRound)Object.assign(patch,{current_round_id:null,current_movie_id:null,current_question:null,vote_state:'closed',results_visible:false,video_state:{status:'idle'},audio_state:audioStateForBlock(blocks[idx],now)})
+        if(op==='pause')patch.audio_state={...(from.audio_state||audioStateForBlock(blocks[idx],now)),status:'paused',updated_at:now}
+        if(op==='resume')patch.audio_state={...(from.audio_state||audioStateForBlock(blocks[idx],now)),status:(from.audio_state?.track_key?'playing':'stopped'),updated_at:now}
         const updated=await db.from('event_runtime').update(patch).eq('event_id',event.id).eq('revision',from.revision).select('*').maybeSingle()
         if(updated.error)throw updated.error
         if(!updated.data)return err('пульт уже изменился в другой вкладке · обновите экран',409)

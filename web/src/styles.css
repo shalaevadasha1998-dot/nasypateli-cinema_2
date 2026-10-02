@@ -3356,3 +3356,11 @@ html.chat-keyboard-open .chat-compose-inline{
 .screen-pitch-cards b{font-size:clamp(20px,2vw,34px);line-height:1.05}
 .screen-pitch-cards span{color:#92958b;font-size:clamp(14px,1.15vw,20px);line-height:1.35}
 @media(max-width:760px){.screen-pitch-cards{grid-template-columns:1fr 1fr}}
+
+/* v0.14 live show audio */
+.show-audio-console{display:grid;gap:10px;margin:12px 0;padding:14px;border:1px solid rgba(234,229,220,.12);border-radius:16px;background:rgba(18,19,16,.5)}
+.show-audio-console>div:first-child{display:grid;gap:2px}
+.show-audio-console small,.show-audio-console span,.media-ready-line{color:#92958b}
+.program-auto{display:flex!important;align-items:center;gap:6px}
+.program-auto input{width:auto!important}
+.screen-audio-unlock{position:fixed;z-index:9999;left:50%;bottom:32px;transform:translateX(-50%);border:1px solid rgba(255,255,255,.25);border-radius:999px;padding:16px 26px;background:#f3eee3;color:#10110f;font:700 18px/1 inherit;box-shadow:0 12px 44px rgba(0,0,0,.5)}

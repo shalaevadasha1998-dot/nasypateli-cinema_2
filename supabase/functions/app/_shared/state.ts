@@ -28,6 +28,9 @@ function normalizeProgram(config:any){
       title:String(x.title||x.id),
       durationMin:Math.max(0,Math.min(240,Number(x.duration_min??x.durationMin??0)||0)),
       roundsTarget:Math.max(0,Math.min(20,Number(x.rounds_target??x.roundsTarget??0)||0)),
+      autoAdvance:x.auto_advance===true||x.autoAdvance===true,
+      audioPlaylist:(Array.isArray(x.audio_playlist)?x.audio_playlist:Array.isArray(x.audioPlaylist)?x.audioPlaylist:[]).map((v:any)=>String(v)).filter(Boolean).slice(0,20),
+      audioVolume:Math.max(0,Math.min(1,Number(x.audio_volume??x.audioVolume??0.28)||0.28)),
       index
     }))
   const rewards=config?.rewards||{}
@@ -89,12 +92,13 @@ function voteSummary(rows:any[]){
 }
 
 export async function buildShowState(db:any,event:any){
-  const [programR,runtimeR,presenceR]=await Promise.all([
+  const [programR,runtimeR,presenceR,mediaR]=await Promise.all([
     db.from('event_programs').select('config,updated_at').eq('event_id',event.id).maybeSingle(),
     db.from('event_runtime').select('*').eq('event_id',event.id).maybeSingle(),
-    db.from('event_presence').select('*',{count:'exact',head:true}).eq('event_id',event.id).gte('last_seen_at',new Date(Date.now()-45000).toISOString())
+    db.from('event_presence').select('*',{count:'exact',head:true}).eq('event_id',event.id).gte('last_seen_at',new Date(Date.now()-45000).toISOString()),
+    db.from('media_assets').select('asset_key,title,category,mime_type,duration_sec,public_url').eq('status','ready').order('asset_key')
   ])
-  for(const r of [programR,runtimeR,presenceR])if(r.error)throw r.error
+  for(const r of [programR,runtimeR,presenceR,mediaR])if(r.error)throw r.error
   const program=normalizeProgram(programR.data?.config||{})
   const raw=runtimeR.data||{}
   const blockIndex=Math.max(0,Math.min(Math.max(0,program.blocks.length-1),Number(raw.current_block_index||0)))
@@ -169,7 +173,11 @@ export async function buildShowState(db:any,event:any){
     },
     currentRound:round,
     voteResults:results,
-    onlineCount:Number(presenceR.count||0)
+    onlineCount:Number(presenceR.count||0),
+    audio:{
+      state:raw.audio_state||{mode:'auto',status:'stopped',track_key:null,playlist_index:0,volume:.28},
+      assets:(mediaR.data||[]).map((x:any)=>({key:String(x.asset_key),title:String(x.title),category:String(x.category),mimeType:String(x.mime_type),durationSec:Number(x.duration_sec||0),url:String(x.public_url||'')}))
+    }
   }
 }
 

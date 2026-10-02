@@ -502,13 +502,26 @@ function ShowControl({data,busy,run}:{data:DemoState;busy:boolean;run:(action:st
   const music=block?.type==='music_live'
   const finished=runtime.runStatus==='finished'
   const command=(op:string,extra:Record<string,unknown>={})=>run('admin-show-control',{op,...extra})
+  const audio=data.show?.audio
+  const audioState=audio?.state
+  const currentTrack=audio?.assets.find(x=>x.key===audioState?.track_key)
   return <section className={runtime.runStatus==='running'?'show-console live':'show-console'}>
     <div className="show-console-head">
       <div><div className="eyebrow">{finished?'вечер закончен':runtime.runStatus==='idle'?'готово к запуску':runtime.runStatus==='paused'?'шоу на паузе':'шоу идёт'}</div><h1>{block?.title||'программа вечера'}</h1></div>
       <span className={runtime.runStatus==='running'?'show-live-dot on':'show-live-dot'}>{showRunStatusLabel(runtime.runStatus)}</span>
     </div>
     <div className="show-console-stats"><span><b>{confirmed}</b>в списке</span><span><b>{attended}</b>пришли</span><span><b>{show.onlineCount}</b>online</span><span><b>{waiting}</b>ожидание</span></div>
-    <div className="show-timeline">{show.program.blocks.map(b=><button type="button" disabled={busy} onClick={()=>command('jump',{blockId:b.id})} className={b.id===runtime.currentBlockId?'current':''} key={b.id}><span>{b.index+1}</span><b>{b.title}</b><small>{b.durationMin?b.durationMin+' мин':'без таймера'}</small></button>)}</div>
+    <div className="show-timeline">{show.program.blocks.map(b=><button type="button" disabled={busy} onClick={()=>command('jump',{blockId:b.id})} className={b.id===runtime.currentBlockId?'current':''} key={b.id}><span>{b.index+1}</span><b>{b.title}</b><small>{b.durationMin?b.durationMin+' мин'+(b.autoAdvance?' · авто':''):'без таймера'}</small></button>)}</div>
+    <div className="show-audio-console">
+      <div><small>звук на проекторе</small><b>{currentTrack?.title||'тишина'}</b><span>{audioState?.status==='playing'?'играет':audioState?.status==='paused'?'пауза':'остановлено'} · {audioState?.mode==='auto'?'авто':'ручной'}</span></div>
+      <div className="inline">
+        <Button kind="secondary" disabled={busy} onClick={()=>run('admin-audio-control',{op:'prev'})}>← трек</Button>
+        {audioState?.status==='playing'?<Button kind="secondary" disabled={busy} onClick={()=>run('admin-audio-control',{op:'pause'})}>пауза</Button>:<Button kind="secondary" disabled={busy} onClick={()=>run('admin-audio-control',{op:'play'})}>▶ музыка</Button>}
+        <Button kind="secondary" disabled={busy} onClick={()=>run('admin-audio-control',{op:'next'})}>трек →</Button>
+        <Button kind="secondary" disabled={busy} onClick={()=>run('admin-audio-control',{op:'stop'})}>стоп</Button>
+        <Button kind="secondary" disabled={busy} onClick={()=>run('admin-audio-control',{op:'auto'})}>авто</Button>
+      </div>
+    </div>
     {runtime.runStatus==='idle'&&<Button disabled={busy} onClick={()=>command('start')}>начать мероприятие</Button>}
     {runtime.runStatus==='paused'&&<Button disabled={busy} onClick={()=>command('resume')}>продолжить шоу</Button>}
     {runtime.runStatus==='running'&&!music&&<div className="show-primary-controls"><Button kind="secondary" disabled={busy||runtime.currentBlockIndex===0} onClick={()=>command('back')}>← назад</Button><Button disabled={busy} onClick={()=>command('next')}>следующий блок →</Button></div>}
@@ -547,8 +560,8 @@ function ProgramEditor({data,busy,run}:{data:DemoState;busy:boolean;run:(action:
   const move=(index:number,delta:number)=>setBlocks(prev=>{const to=index+delta;if(to<0||to>=prev.length)return prev;const next=[...prev];const item=next.splice(index,1)[0];next.splice(to,0,item);return next.map((x,i)=>({...x,index:i}))})
   const patch=(index:number,p:any)=>setBlocks(prev=>prev.map((x,i)=>i===index?{...x,...p}:x))
   const remove=(index:number)=>setBlocks(prev=>prev.filter((_,i)=>i!==index).map((x,i)=>({...x,index:i})))
-  const add=()=>setBlocks(prev=>[...prev,{id:'block_'+Date.now(),type:'cinema_rounds',title:'новый блок',durationMin:10,roundsTarget:1,index:prev.length}])
-  return <Card className="program-editor"><div className="section-title">программа вечера</div><p className="muted">порядок и тайминги можно менять без переписывания приложения</p><div className="program-blocks">{blocks.map((b,i)=><div className="program-block" key={b.id}><div className="program-block-order"><button type="button" disabled={i===0} onClick={()=>move(i,-1)}>↑</button><button type="button" disabled={i===blocks.length-1} onClick={()=>move(i,1)}>↓</button></div><input value={b.title} onChange={e=>patch(i,{title:e.target.value})}/><select value={b.type} onChange={e=>patch(i,{type:e.target.value})}><option value="arrival">сбор гостей</option><option value="onboarding">знакомство с животиной</option><option value="warm_up">разогрев</option><option value="cinema_rounds">кинораунды</option><option value="music_live">живое выступление</option><option value="final_vote">финальный выбор</option><option value="finale">финал</option><option value="post_event">после мероприятия</option></select><label>мин<input type="number" min="0" max="240" value={b.durationMin} onChange={e=>patch(i,{durationMin:Number(e.target.value)})}/></label>{b.type==='cinema_rounds'&&<label>раундов<input type="number" min="0" max="20" value={b.roundsTarget} onChange={e=>patch(i,{roundsTarget:Number(e.target.value)})}/></label>}<button type="button" className="text-link" onClick={()=>remove(i)}>удалить</button></div>)}</div><Button kind="secondary" onClick={add}>добавить блок</Button><div className="program-config-grid"><Field label="ориентир фильмов за вечер"><input type="number" min="1" max="20" value={roundsTarget} onChange={e=>setRoundsTarget(Number(e.target.value))}/></Field><Field label="крошки за вход"><input type="number" min="0" max="100" value={rewards.join} onChange={e=>setRewards(v=>({...v,join:Number(e.target.value)}))}/></Field><Field label="крошки за голос"><input type="number" min="0" max="100" value={rewards.vote} onChange={e=>setRewards(v=>({...v,vote:Number(e.target.value)}))}/></Field><Field label="крошки за раунд"><input type="number" min="0" max="100" value={rewards.round} onChange={e=>setRewards(v=>({...v,round:Number(e.target.value)}))}/></Field></div><Button disabled={busy||!blocks.length} onClick={()=>run('admin-program-save',{blocks,roundsTarget,rewards})}>сохранить программу</Button></Card>
+  const add=()=>setBlocks(prev=>[...prev,{id:'block_'+Date.now(),type:'cinema_rounds',title:'новый блок',durationMin:10,roundsTarget:1,autoAdvance:false,audioPlaylist:[],audioVolume:.25,index:prev.length}])
+  return <Card className="program-editor"><div className="section-title">программа вечера</div><p className="muted">порядок и тайминги можно менять без переписывания приложения</p><div className="program-blocks">{blocks.map((b,i)=><div className="program-block" key={b.id}><div className="program-block-order"><button type="button" disabled={i===0} onClick={()=>move(i,-1)}>↑</button><button type="button" disabled={i===blocks.length-1} onClick={()=>move(i,1)}>↓</button></div><input value={b.title} onChange={e=>patch(i,{title:e.target.value})}/><select value={b.type} onChange={e=>patch(i,{type:e.target.value})}><option value="arrival">сбор гостей</option><option value="onboarding">знакомство с животиной</option><option value="warm_up">разогрев</option><option value="cinema_rounds">кинораунды</option><option value="music_live">живое выступление</option><option value="final_vote">финальный выбор</option><option value="finale">финал</option><option value="post_event">после мероприятия</option></select><label>мин<input type="number" min="0" max="240" value={b.durationMin} onChange={e=>patch(i,{durationMin:Number(e.target.value)})}/></label><label className="program-auto"><input type="checkbox" checked={b.autoAdvance===true} onChange={e=>patch(i,{autoAdvance:e.target.checked})}/> авто</label>{b.type==='cinema_rounds'&&<label>раундов<input type="number" min="0" max="20" value={b.roundsTarget} onChange={e=>patch(i,{roundsTarget:Number(e.target.value)})}/></label>}<button type="button" className="text-link" onClick={()=>remove(i)}>удалить</button></div>)}</div><Button kind="secondary" onClick={add}>добавить блок</Button><div className="program-config-grid"><Field label="ориентир фильмов за вечер"><input type="number" min="1" max="20" value={roundsTarget} onChange={e=>setRoundsTarget(Number(e.target.value))}/></Field><Field label="крошки за вход"><input type="number" min="0" max="100" value={rewards.join} onChange={e=>setRewards(v=>({...v,join:Number(e.target.value)}))}/></Field><Field label="крошки за голос"><input type="number" min="0" max="100" value={rewards.vote} onChange={e=>setRewards(v=>({...v,vote:Number(e.target.value)}))}/></Field><Field label="крошки за раунд"><input type="number" min="0" max="100" value={rewards.round} onChange={e=>setRewards(v=>({...v,round:Number(e.target.value)}))}/></Field></div><Button disabled={busy||!blocks.length} onClick={()=>run('admin-program-save',{blocks,roundsTarget,rewards})}>сохранить программу</Button></Card>
 }
 
 function MovieCatalogAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(action:string,payload?:Record<string,unknown>)=>Promise<any>}){
@@ -684,6 +697,8 @@ function RoundFilmFlowAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(ac
   const position=Math.max(0,Number(round.questionPosition||0))
   const currentQuestion=questions.find(q=>q.position===position)
   const project=(op:string,extra:Record<string,unknown>={})=>pack&&run('admin-film-projector',{filmPackageId:pack.id,roundId:round.id,op,...extra})
+  const firstFragment:any=pack?.fragments?.[0]
+  const sourceHref=firstFragment?.videoId?`https://www.youtube.com/watch?v=${encodeURIComponent(String(firstFragment.videoId))}&t=${Math.max(0,Number(firstFragment.startSec||0))}s`:String(firstFragment?.sourceUrl||'')
   const chooseAndSearch=async()=>{
     const selected=await run('admin-round-pitch-draw')
     if(!selected)return
@@ -698,7 +713,7 @@ function RoundFilmFlowAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(ac
     {flow==='randomizing_submission'&&<p>животина крутит рандом. смотрим на большой экран…</p>}
     {flow==='submission_selected'&&<><div className="selected-pitch-admin"><div className="eyebrow">{round.selectedPitch?.animalName||'животина'} придумала фильм</div><h3>{round.selectedPitch?.title}</h3><p>{round.selectedPitch?.description}</p></div><p className="muted">нейронка ищет максимально похожее реальное кино по всему миру и проверяет, есть ли воспроизводимый фрагмент.</p></>}
     {flow==='searching_movie'&&<p>животина роется в мировом кино: сверяет реальные фильмы, источники, субтитры и продолжение фрагмента…</p>}
-    {flow==='movie_found'&&<>{round.movie&&pack?<><div className="selected-pitch-admin"><div className="eyebrow">максимально близко</div><h3>{round.movie.title}{round.movie.year?' · '+round.movie.year:''}</h3><p>{Math.min(3,questions.length)} вопроса · по 3 варианта · правильное продолжение привязано к реальным таймкодам</p></div><Button disabled={busy} onClick={()=>project('film_intro')}>запустить фрагмент</Button></>:<p className="form-error">не нашли проверяемый фрагмент. выберите другую идею.</p>}</>}
+    {flow==='movie_found'&&<>{round.movie&&pack?<><div className="selected-pitch-admin"><div className="eyebrow">максимально близко</div><h3>{round.movie.title}{round.movie.year?' · '+round.movie.year:''}</h3><p>{Math.min(3,questions.length)} вопроса · по 3 варианта · правильное продолжение привязано к реальным таймкодам</p></div><div className="inline"><Button disabled={busy} onClick={()=>project('film_intro')}>запустить фрагмент</Button>{sourceHref&&<Button kind="secondary" onClick={()=>window.open(sourceHref,'_blank','noopener,noreferrer')}>открыть источник ↗</Button>}</div>{sourceHref&&<small className="media-ready-line">готово · источник проверен · если embed не играет, открывайте ссылку</small>}</>:<p className="form-error">не нашли проверяемый фрагмент. выберите другую идею.</p>}</>}
     {flow==='playing_clip'&&<div className="film-live-step"><b>фрагмент идёт на экране</b><p className="muted">после остановки открываем первый готовый вопрос.</p><Button disabled={busy||!questions.length} onClick={()=>project('question_open',{position:1})}>открыть вопрос 1/{target}</Button></div>}
     {flow==='question_open'&&currentQuestion&&<div className="film-live-step"><b>{position}/{target}. голосование открыто</b><p>{currentQuestion.prompt}</p><Button disabled={busy} onClick={()=>project('question_results',{position})}>закрыть ответы и показать результат</Button></div>}
     {flow==='question_results'&&currentQuestion&&<div className="film-live-step"><b>{position}/{target}. результаты на экране</b><Button disabled={busy} onClick={()=>project('question_reveal',{position})}>показать правильный ответ + продолжение</Button></div>}
@@ -1096,7 +1111,53 @@ function ScreenCreatureDemo({data}:{data:DemoState}){
   useEffect(()=>{setCount(0);const t=window.setInterval(()=>setCount(x=>x>=projectorDemoCreatures.length?x:x+1),650);return()=>window.clearInterval(t)},[])
   return <ScreenCreatureWall data={{...data,screenCreatures:projectorDemoCreatures.slice(0,count)}}/>
 }
-function Screen(){const {slug}=useParams();const [search]=useSearchParams();const {data,error}=usePrivilegedState('screen',slug);const [now,setNow]=useState(()=>Date.now());useEffect(()=>{const t=window.setInterval(()=>setNow(Date.now()),1000);return()=>window.clearInterval(t)},[]);if(!data)return <Loading error={error}/>;const animalDemo=search.get('demo')==='animals';const content=animalDemo?<ScreenCreatureDemo data={data}/>:screenContent(data);const timer=animalDemo?'':showTimerText(data,now);const status=animalDemo?'репетиция животин':data.projector&&!['idle','arrival'].includes(data.projector.state)?projectorStateLabel(data.projector.state):data.show?.runtime.currentBlock?.type==='arrival'?'сбор гостей':data.show?.runtime.runStatus!=='idle'?data.show?.runtime.currentBlock?.title:statusLabel(data.event.status);return <div className="screen-page"><div className="screen-brand">НАСЫПАТЕЛИ В КИНО</div><div className="screen-status">{status}{timer&&<b>{timer}</b>}</div>{!animalDemo&&data.screenMessage&&<div className="screen-message">{data.screenMessage}</div>}<div className="screen-content">{content}</div><div className="screen-footer">{animalDemo?'demo · база не меняется':eventDate(data.event.startsAt)+'. НАСЫПАТЕЛИ В КИНО'}</div></div>}
+function ProjectorAudio({data,screenToken}:{data:DemoState;screenToken:string}){
+  const background=useRef<HTMLAudioElement|null>(null)
+  const cue=useRef<HTMLAudioElement|null>(null)
+  const [needsUnlock,setNeedsUnlock]=useState(false)
+  const lastCue=useRef('')
+  const audio=data.show?.audio
+  const state=audio?.state
+  const asset=audio?.assets.find(x=>x.key===state?.track_key)
+  const projectorState=String(data.projector?.state||'')
+  const filmActive=['film_intro','playing_clip','question_open','question_results','question_reveal'].includes(projectorState)
+  const tryPlay=async(el:HTMLAudioElement|null)=>{
+    if(!el)return
+    try{await el.play();setNeedsUnlock(false)}catch{setNeedsUnlock(true)}
+  }
+  useEffect(()=>{
+    const el=background.current
+    if(!el)return
+    const wanted=asset?.url||''
+    if(el.src!==wanted){el.pause();el.src=wanted;el.load()}
+    el.volume=Math.max(0,Math.min(1,Number(state?.volume??.28)))
+    if(!wanted||state?.status!=='playing'||filmActive){el.pause();return}
+    void tryPlay(el)
+  },[asset?.url,state?.status,state?.volume,filmActive,state?.updated_at])
+  useEffect(()=>{
+    const block=String(data.show?.runtime.currentBlockId||'')
+    const key=projectorState==='pitch_randomizing'?'creature-3':projectorState==='pitch_selected'?'creature-4':projectorState==='movie_found'?'creature-5':block==='onboarding'?'creature-1':block==='warm_up'?'creature-2':''
+    const signature=block+'|'+projectorState+'|'+key
+    if(!key||lastCue.current===signature)return
+    lastCue.current=signature
+    const found=audio?.assets.find(x=>x.key===key)
+    const el=cue.current
+    if(!found?.url||!el)return
+    el.pause();el.src=found.url;el.currentTime=0;el.volume=.72;void tryPlay(el)
+  },[data.show?.runtime.currentBlockId,projectorState,audio?.assets])
+  const unlock=async()=>{
+    if(cue.current){cue.current.muted=true;await cue.current.play().catch(()=>{});cue.current.pause();cue.current.muted=false}
+    await tryPlay(background.current)
+  }
+  return <>
+    <audio ref={background} onEnded={()=>{if(asset?.key)void callScreenApi('screen-audio-ended',{slug:data.event.slug,trackKey:asset.key},screenToken)}}/>
+    <audio ref={cue}/>
+    {needsUnlock&&<button className="screen-audio-unlock" onClick={()=>void unlock()}>включить звук</button>}
+  </>
+}
+
+
+function Screen(){const {slug}=useParams();const [search]=useSearchParams();const privileged=usePrivilegedState('screen',slug);const {data,error}=privileged;const [now,setNow]=useState(()=>Date.now());useEffect(()=>{const t=window.setInterval(()=>setNow(Date.now()),1000);return()=>window.clearInterval(t)},[]);if(!data)return <Loading error={error}/>;const animalDemo=search.get('demo')==='animals';const content=animalDemo?<ScreenCreatureDemo data={data}/>:screenContent(data);const timer=animalDemo?'':showTimerText(data,now);const status=animalDemo?'репетиция животин':data.projector&&!['idle','arrival'].includes(data.projector.state)?projectorStateLabel(data.projector.state):data.show?.runtime.currentBlock?.type==='arrival'?'сбор гостей':data.show?.runtime.runStatus!=='idle'?data.show?.runtime.currentBlock?.title:statusLabel(data.event.status);return <div className="screen-page"><ProjectorAudio data={data} screenToken={privileged.token}/><div className="screen-brand">НАСЫПАТЕЛИ В КИНО</div><div className="screen-status">{status}{timer&&<b>{timer}</b>}</div>{!animalDemo&&data.screenMessage&&<div className="screen-message">{data.screenMessage}</div>}<div className="screen-content">{content}</div><div className="screen-footer">{animalDemo?'demo · база не меняется':eventDate(data.event.startsAt)+'. НАСЫПАТЕЛИ В КИНО'}</div></div>}
 
 function statusLabel(s:EventStatus){const m:Record<EventStatus,string>={DRAFT:'черновик',SALES_OPEN:'регистрация открыта',CHECKIN:'сбор гостей',IDEAS_OPEN:'идеи открыты',IDEAS_LOCKED:'идеи закрыты',TOP3_READY:'три идеи',IDEA_RANDOMIZED:'идея выбрана',MOVIE_SEARCH:'поиск фильма',MOVIE_FINALISTS:'три фильма',MOVIE_SELECTED:'фильм выбран',PREDICTIONS_OPEN:'прогнозы',PREDICTIONS_LOCKED:'прогнозы закрыты',WATCHING:'просмотр',PREDICTIONS_SCORED:'результаты',DISCUSSION:'реакции',FINAL_REVIEW:'финальная фраза',FEEDBACK:'исследование',CLOSED:'закрыто'};return m[s]}
 
