@@ -23,6 +23,8 @@ function normalizeCreatureStage(stage:unknown):DemoState['creature']['stage']{
 function notifyDemo(){ window.dispatchEvent(new CustomEvent('nasypateli-demo-change')) }
 
 function requestTimeoutMs(action:string){
+  if(action==='admin-round-find-movie')return 240000
+  if(action==='admin-round-question-generate')return 90000
   if(action==='audio-transcribe')return 30000
   if(action==='jipitina-chat')return 25000
   if(action.startsWith('ai-')||action==='admin-research-summary')return 60000

@@ -1116,15 +1116,23 @@ export async function handleApi(req:Request){
       const testScreenOk=await testRoomTokenMatches(event,req.headers.get('x-screen-token')||'')
       const openTestScreen=event?.settings?.test_room===true
       if(!screenTokenOk&&!testScreenOk&&!openTestScreen)return err('Доступ к экрану запрещён',401)
-      const now=new Date().toISOString()
-      const saved=await db.from('event_screen_status').upsert({
-        event_id:event.id,
-        audio_unlocked:body.audioUnlocked===true,
-        last_seen_at:now,
-        updated_at:now
-      },{onConflict:'event_id'})
-      if(saved.error)throw saved.error
-      return json({ok:true,at:now})
+      return await withEventOperation(db,event.id,'screen-audio-lease',async()=>{
+        const now=new Date().toISOString()
+        const session=String(body.sessionId||'').slice(0,100)
+        const prior=await db.from('event_screen_status').select('*').eq('event_id',event.id).maybeSingle()
+        if(prior.error)throw prior.error
+        const active=prior.data?.audio_unlocked===true&&Date.now()-new Date(prior.data.last_seen_at||0).getTime()<20000
+        const other=active&&prior.data?.session_id&&prior.data.session_id!==session
+        if(other)return json({ok:true,owner:false,at:now})
+        // An unarmed viewer must never replace the live audio laptop's heartbeat.
+        if(active&&!body.audioUnlocked&&prior.data?.session_id!==session)return json({ok:true,owner:false,at:now})
+        const saved=await db.from('event_screen_status').upsert({
+          event_id:event.id,audio_unlocked:body.audioUnlocked===true,last_seen_at:now,
+          session_id:session||null,updated_at:now
+        },{onConflict:'event_id'})
+        if(saved.error)throw saved.error
+        return json({ok:true,owner:true,at:now})
+      })
     }
 
     if(action==='screen-audio-ended'){
@@ -1132,6 +1140,9 @@ export async function handleApi(req:Request){
       const testScreenOk=await testRoomTokenMatches(event,req.headers.get('x-screen-token')||'')
       const openTestScreen=event?.settings?.test_room===true
       if(!screenTokenOk&&!testScreenOk&&!openTestScreen)return err('Доступ к экрану запрещён',401)
+      const owner=await db.from('event_screen_status').select('session_id').eq('event_id',event.id).maybeSingle()
+      if(owner.error)throw owner.error
+      if(owner.data?.session_id&&owner.data.session_id!==String(body.sessionId||''))return json({ok:true,ignored:true})
       const current=await db.from('event_runtime').select('*').eq('event_id',event.id).single()
       if(current.error)throw current.error
       const program=await db.from('event_programs').select('config').eq('event_id',event.id).single()
@@ -1333,7 +1344,13 @@ export async function handleApi(req:Request){
       }catch(e:any){if(e?.message!=='EVENT_NOT_FOUND')throw e}
     }
     const suppliedAdminToken=req.headers.get('x-admin-token')||''
-    if(!user&&(!isAdminAction||(!adminTokenOk&&!suppliedAdminToken))){tg=await telegramUserFromRequest(req);user=await getOrCreateUser(db,tg)}
+    // Resolve the trusted event flag BEFORE Telegram authentication for test controls.
+    const adminTarget=isAdminAction?await eventBySlug(db,requestedSlug||'2026-10-03'):null
+    const anonymousTestAdmin=isAdminAction&&adminTarget?.settings?.test_room===true
+    if(!user&&(!isAdminAction||(!adminTokenOk&&!suppliedAdminToken&&!anonymousTestAdmin))){
+      try{tg=await telegramUserFromRequest(req);user=await getOrCreateUser(db,tg)}
+      catch(e){if(isAdminAction)return err('Доступ к пульту запрещён: откройте его через Telegram или закрытую ссылку',401);throw e}
+    }
 
     if(action==='creature-tasks'){
       const creature=await ensureCreature(db,user.id)
@@ -2232,6 +2249,7 @@ export async function handleApi(req:Request){
         },required:['candidates']}
         let ai:any={candidates:[]}
         try{
+          if(body.preparedOnly===true)throw new Error('PREPARED_ONLY')
           ai=await Promise.race<any>([
             structuredResponse<any>({
               name:'worldwide_movie_match',
@@ -2244,7 +2262,7 @@ export async function handleApi(req:Request){
           ])
         }catch(e:any){
           if(String(e?.message||e)==='LIVE_MOVIE_SEARCH_TIMEOUT')sourceTrace.push({stage:'candidate_match',error:'timeout'})
-          else throw e
+          else sourceTrace.push({stage:'candidate_match',error:String(e?.message||e).slice(0,200)})
         }
 
         const validated:any[]=[]
@@ -2335,6 +2353,7 @@ export async function handleApi(req:Request){
         const fallbacks=rows.map((p:any)=>({package:p,movie:movieMap.get(String(p.movie_candidate_id))})).filter((x:any)=>x.movie)
         let chosen:any=fallbacks[0]
         try{
+          if(body.preparedOnly===true)throw new Error('PREPARED_ONLY')
           const match=await structuredResponse<any>({
             name:'prepared_fallback_match',
             schema:{type:'object',additionalProperties:false,properties:{movieId:{type:'string',enum:fallbacks.map((x:any)=>String(x.movie.id))}},required:['movieId']},
@@ -2802,6 +2821,9 @@ export async function handleApi(req:Request){
         const now=new Date().toISOString()
 
         if(op==='start'){
+          const screen=await db.from('event_screen_status').select('audio_unlocked,last_seen_at').eq('event_id',event.id).maybeSingle()
+          if(screen.error)throw screen.error
+          if(!screen.data?.audio_unlocked||Date.now()-new Date(screen.data.last_seen_at||0).getTime()>20000)return err('сначала включите звук на экране ноутбука',409)
           if(event.status==='DRAFT')return err('сначала откройте регистрацию',409)
           idx=0;runStatus='running';startedAt=startedAt||now;blockStartedAt=now;pausedAt=null;resetRound=true
         }else if(op==='next'||op==='skip'){

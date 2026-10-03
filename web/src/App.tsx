@@ -745,20 +745,21 @@ function RoundFilmFlowAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(ac
   const firstFragment:any=pack?.fragments?.[0]
   const fragmentHref=(fragment:any)=>fragment?.videoId?`https://www.youtube.com/watch?v=${encodeURIComponent(String(fragment.videoId))}&t=${Math.max(0,Number(fragment.startSec||0))}s`:String(fragment?.sourceUrl||'')
   const sourceHref=fragmentHref(firstFragment)
-  const chooseAndSearch=async()=>{
+  const chooseAndSearch=async(preparedOnly=false)=>{
     const selected=await run('admin-round-pitch-draw')
     if(!selected)return
     await new Promise(resolve=>window.setTimeout(resolve,2400))
-    await run('admin-round-find-movie')
+    await run('admin-round-find-movie',{preparedOnly})
   }
   return <Card className="round-film-flow-admin">
     <div className="row spread"><div><div className="section-title">кинораунд · текущий шаг</div><h2>раунд {round.roundNo}</h2></div><Pill>{round.pitchCount||0} идей</Pill></div>
     {flow==='draft'&&<><p>сбор должен открыться автоматически. нажмите восстановить, если пульт был открыт до обновления.</p><Button disabled={busy} onClick={()=>run('admin-round-pitches-open')}>восстановить сбор</Button></>}
     {flow==='collecting_films'&&<><p className="muted">форма уже открыта на телефонах. гости могут менять идею до закрытия сбора.</p><div className="round-pitch-list">{pitches.map(x=><div key={x.id}><b>{x.animalName} · {x.title}</b><span>{x.description}</span></div>)}</div>{pitches.length?<Button disabled={busy} onClick={()=>run('admin-round-pitches-close')}>закрыть сбор · {pitches.length}</Button>:<Button kind="secondary" disabled={busy} onClick={()=>run('admin-round-close')}>пропустить пустой раунд</Button>}</>}
-    {flow==='films_locked'&&<><p>сбор закрыт. на большом экране уже лежат все идеи анонимно.</p><Button disabled={busy||!pitches.length} onClick={chooseAndSearch}>выбрать идею</Button></>}
+    {flow==='films_locked'&&<><p>сбор закрыт. на большом экране уже лежат все идеи анонимно.</p><Button disabled={busy||!pitches.length} onClick={()=>chooseAndSearch()}>выбрать идею</Button><Button kind="secondary" disabled={busy||!pitches.length} onClick={()=>chooseAndSearch(true)}>рандом + резервный фильм</Button></>}
     {flow==='randomizing_submission'&&<p>животина крутит рандом. смотрим на большой экран…</p>}
     {flow==='submission_selected'&&<><div className="selected-pitch-admin"><div className="eyebrow">{round.selectedPitch?.animalName||'животина'} придумала фильм</div><h3>{round.selectedPitch?.title}</h3><p>{round.selectedPitch?.description}</p></div><p className="muted">нейронка ищет максимально похожее реальное кино по всему миру и проверяет, есть ли воспроизводимый фрагмент.</p></>}
     {flow==='searching_movie'&&<p>животина роется в мировом кино. даём живому поиску до минуты; если проверяемый фрагмент не собирается, автоматически берём резервный киноблок.</p>}
+    {['submission_selected','searching_movie','movie_found'].includes(flow)&&<Button kind="secondary" disabled={busy} onClick={()=>run('admin-round-find-movie',{preparedOnly:true})}>использовать резервный фильм</Button>}
     {flow==='movie_found'&&<>{round.movie&&pack?<><div className="selected-pitch-admin"><div className="eyebrow">максимально близко</div><h3>{round.movie.title}{round.movie.year?' · '+round.movie.year:''}</h3><p>{Math.min(3,questions.length)} вопроса · по 3 варианта · правильное продолжение привязано к реальным таймкодам</p></div><div className="inline"><Button disabled={busy} onClick={()=>project('film_intro')}>запустить фрагмент</Button>{sourceHref&&<Button kind="secondary" onClick={()=>window.open(sourceHref,'_blank','noopener,noreferrer')}>открыть источник ↗</Button>}</div>{sourceHref&&<small className="media-ready-line">готово · источник проверен · если embed не играет, открывайте ссылку</small>}</>:<p className="form-error">не нашли проверяемый фрагмент. выберите другую идею.</p>}</>}
     {flow==='playing_clip'&&<div className="film-live-step"><b>фрагмент идёт на экране</b><p className="muted">после остановки открываем первый готовый вопрос. если youtube не стартовал автоматически, на projector доступны обычные controls, а источник можно открыть вручную.</p><div className="inline"><Button disabled={busy||!questions.length} onClick={()=>project('question_open',{position:1})}>открыть вопрос 1/{target}</Button>{sourceHref&&<Button kind="secondary" onClick={()=>window.open(sourceHref,'_blank','noopener,noreferrer')}>открыть источник ↗</Button>}</div></div>}
     {flow==='question_open'&&currentQuestion&&<div className="film-live-step"><b>{position}/{target}. голосование открыто</b><p>{currentQuestion.prompt}</p><Button disabled={busy} onClick={()=>project('question_results',{position})}>закрыть ответы и показать результат</Button></div>}
@@ -966,7 +967,7 @@ function DirectVideoPlayer({src,title,startSec=0,endSec}:{src:string;title:strin
   const start=Math.max(0,Number(startSec||0))
   const end=endSec&&Number(endSec)>start?Number(endSec):undefined
   useEffect(()=>{initialized.current=false},[src,start])
-  const seekAndPlay=()=>{const el=ref.current;if(!el)return;if(!initialized.current){try{el.currentTime=start}catch{}initialized.current=true}void el.play().catch(()=>{})}
+  const seekAndPlay=()=>{const el=ref.current;if(!el||initialized.current)return;try{el.currentTime=start}catch{}initialized.current=true;void el.play().catch(()=>{})}
   const stopAtEnd=()=>{const el=ref.current;if(!el||!end)return;if(el.currentTime>=end){el.pause();try{el.currentTime=end}catch{}}}
   return <div className="screen-video-wrap"><video ref={ref} title={title} src={src} autoPlay playsInline controls preload="auto" onLoadedMetadata={seekAndPlay} onCanPlay={seekAndPlay} onTimeUpdate={stopAtEnd}/></div>
 }
@@ -1170,6 +1171,11 @@ function ProjectorAudio({data,screenToken}:{data:DemoState;screenToken:string}){
   const lastCue=useRef('')
   const lastTest=useRef('')
   const lastSync=useRef('')
+  const sessionId=useRef(crypto.randomUUID())
+  const unlocking=useRef(false)
+  const [audioError,setAudioError]=useState('')
+  const [unlockBusy,setUnlockBusy]=useState(false)
+  const pingAudio=(unlocked:boolean)=>callScreenApi<{owner:boolean}>('screen-audio-heartbeat',{slug:data.event.slug,audioUnlocked:unlocked,sessionId:sessionId.current},screenToken)
   const [armed,setArmed]=useState(false)
   const [needsUnlock,setNeedsUnlock]=useState(false)
   const [audioTick,setAudioTick]=useState(0)
@@ -1205,19 +1211,21 @@ function ProjectorAudio({data,screenToken}:{data:DemoState;screenToken:string}){
   const tryPlay=async(el:HTMLAudioElement|null)=>{
     if(!el)return
     try{await el.play();setNeedsUnlock(false)}
-    catch{setNeedsUnlock(true);setArmed(false)}
+    catch(e:any){if(e?.name==='AbortError')return;setAudioError('звук заблокирован браузером — нажми кнопку ниже');setNeedsUnlock(true);setArmed(false)}
   }
   useEffect(()=>{
-    const ping=()=>void callScreenApi('screen-audio-heartbeat',{slug:data.event.slug,audioUnlocked:armed},screenToken).catch(()=>{})
+    const ping=()=>void pingAudio(armed).then(r=>{
+      if(armed&&!r.owner){background.current?.pause();cue.current?.pause();setArmed(false);setAudioError('звук уже включён на другом экране. закрой его и повтори через 20 секунд')}
+    }).catch(()=>{})
     ping()
     const timer=window.setInterval(ping,5000)
     return()=>window.clearInterval(timer)
   },[screenToken,data.event.slug,armed])
   useEffect(()=>{
     const el=background.current
-    if(!el)return
+    if(!el||unlocking.current)return
     const wanted=asset?.url||''
-    const suppress=!wanted||state?.status!=='playing'||filmActive||livePerformance||(blockCutoffAt>0&&Date.now()>=blockCutoffAt)
+    const suppress=!armed||!wanted||runtime?.runStatus!=='running'||state?.status!=='playing'||filmActive||livePerformance||(blockCutoffAt>0&&Date.now()>=blockCutoffAt)
     if(suppress){
       el.pause()
       if(filmActive||livePerformance)lastSync.current=''
@@ -1258,47 +1266,53 @@ function ProjectorAudio({data,screenToken}:{data:DemoState;screenToken:string}){
     const blockId=String(runtime?.currentBlockId||'')
     const key=projectorState==='pitch_randomizing'?'creature-3':projectorState==='pitch_selected'?'creature-4':projectorState==='movie_found'?'creature-5':blockId==='onboarding'?'creature-1':blockId==='warm_up'?'creature-2':''
     const signature=blockId+'|'+projectorState+'|'+key
-    if(!key||lastCue.current===signature)return
+    if(!armed||unlocking.current||!key||lastCue.current===signature)return
     lastCue.current=signature
     const found=audio?.assets.find(x=>x.key===key)
     const el=cue.current
     if(!found?.url||!el)return
     el.pause();el.src=found.url;el.currentTime=0;el.volume=.72;void tryPlay(el)
-  },[runtime?.currentBlockId,projectorState,audio?.assets])
+  },[runtime?.currentBlockId,projectorState,audio?.assets,armed])
   useEffect(()=>{
     const nonce=String(audio?.screen?.testNonce||'')
-    if(!nonce||lastTest.current===nonce)return
+    if(!armed||unlocking.current||!nonce||lastTest.current===nonce)return
     lastTest.current=nonce
     const found=audio?.assets.find(x=>x.key===String(audio?.screen?.testAssetKey||'creature-3'))
     const el=cue.current
     if(!found?.url||!el)return
     el.pause();el.src=found.url;el.currentTime=0;el.volume=.72;void tryPlay(el)
-  },[audio?.screen?.testNonce,audio?.screen?.testAssetKey,audio?.assets])
+  },[audio?.screen?.testNonce,audio?.screen?.testAssetKey,audio?.assets,armed])
   const unlock=async()=>{
-    const bg=background.current
-    const fx=cue.current
-    const cueAsset=audio?.assets.find(x=>x.key==='creature-3')||audio?.assets.find(x=>x.category==='calm')||audio?.assets[0]
-    if(!bg||!cueAsset?.url){setArmed(false);setNeedsUnlock(true);return}
+    if(unlocking.current)return
+    unlocking.current=true;setUnlockBusy(true);setAudioError('')
+    const bg=background.current,fx=cue.current
+    const cueAsset=audio?.assets.find(x=>x.key==='creature-3')||audio?.assets[0]
+    let timeout:number|undefined
     try{
-      bg.pause();bg.src=cueAsset.url;bg.load();bg.muted=false;bg.volume=.55
-      if(fx){fx.pause();fx.src=cueAsset.url;fx.load();fx.muted=false;fx.volume=.001;void fx.play().catch(()=>{})}
-      await bg.play()
+      if(!bg||!fx||!cueAsset?.url)throw new Error('проверочный звук ещё не загрузился. повтори через несколько секунд')
+      // Both play calls must occur synchronously inside the click gesture.
+      bg.pause();bg.src=cueAsset.url;bg.muted=false;bg.volume=.001;bg.load()
+      fx.pause();fx.src=cueAsset.url;fx.muted=false;fx.volume=.65;fx.load()
+      const plays=Promise.all([bg.play(),fx.play()])
+      await Promise.race([plays,new Promise((_,reject)=>{timeout=window.setTimeout(()=>reject(new Error('звук не загрузился за 8 секунд. проверь соединение и повтори')),8000)})])
+      const lease=await pingAudio(true)
+      if(!lease.owner)throw new Error('звук уже включён на другом экране. закрой его и повтори через 20 секунд')
+      // Preserve the audible cue while bootstraps continue polling.
+      await new Promise(resolve=>window.setTimeout(resolve,1200))
+      fx.pause();bg.pause();bg.volume=Math.max(0,Math.min(1,Number(state?.volume??.28)));lastSync.current=''
       setArmed(true);setNeedsUnlock(false)
-      await callScreenApi('screen-audio-heartbeat',{slug:data.event.slug,audioUnlocked:true},screenToken).catch(()=>{})
-      window.setTimeout(()=>{
-        bg.pause();try{bg.currentTime=0}catch{}
-        lastSync.current=''
-        setAudioTick(x=>x+1)
-      },650)
-    }catch{
-      setArmed(false);setNeedsUnlock(true)
-      await callScreenApi('screen-audio-heartbeat',{slug:data.event.slug,audioUnlocked:false},screenToken).catch(()=>{})
+    }catch(e:any){
+      bg?.pause();fx?.pause();if(bg)bg.muted=false
+      setArmed(false);setNeedsUnlock(true);setAudioError(e?.message||'не удалось включить звук. нажми ещё раз')
+    }finally{
+      if(timeout)window.clearTimeout(timeout)
+      unlocking.current=false;setUnlockBusy(false);setAudioTick(x=>x+1)
     }
   }
   return <>
-    <audio ref={background} onEnded={()=>{setAudioTick(x=>x+1);if(asset?.key)void callScreenApi('screen-audio-ended',{slug:data.event.slug,trackKey:asset.key},screenToken)}}/>
+    <audio ref={background} onEnded={()=>{setAudioTick(x=>x+1);if(asset?.key)void callScreenApi('screen-audio-ended',{slug:data.event.slug,trackKey:asset.key,sessionId:sessionId.current},screenToken).catch(()=>{})}}/>
     <audio ref={cue}/>
-    {(!armed||needsUnlock)&&<button className="screen-audio-unlock" onClick={()=>void unlock()}>включить звук и проверить</button>}
+    {(!armed||needsUnlock)&&<div className="screen-audio-unlock"><button disabled={unlockBusy} onClick={()=>void unlock()}>{unlockBusy?'проверяем звук…':'включить звук и проверить'}</button>{audioError&&<p role="alert">{audioError}</p>}</div>}
   </>
 }
 

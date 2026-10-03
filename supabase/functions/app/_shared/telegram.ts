@@ -3,7 +3,7 @@ export type TelegramUser={id:number;first_name?:string;last_name?:string;usernam
 function hex(bytes:ArrayBuffer){return [...new Uint8Array(bytes)].map(x=>x.toString(16).padStart(2,'0')).join('')}
 
 async function hmac(key:CryptoKey,data:string){return crypto.subtle.sign('HMAC',key,new TextEncoder().encode(data))}
-async function importHmac(raw:Uint8Array){return crypto.subtle.importKey('raw',raw,{name:'HMAC',hash:'SHA-256'},false,['sign'])}
+async function importHmac(raw:Uint8Array){return crypto.subtle.importKey('raw',new Uint8Array(raw),{name:'HMAC',hash:'SHA-256'},false,['sign'])}
 
 export async function validateTelegramInitData(initData:string,maxAgeSeconds=86400):Promise<TelegramUser>{
   const botToken=Deno.env.get('TELEGRAM_BOT_TOKEN')

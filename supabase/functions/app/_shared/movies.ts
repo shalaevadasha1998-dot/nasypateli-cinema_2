@@ -70,7 +70,7 @@ export async function validateMovieTitle(title:string,expectedYear?:number):Prom
       }
       if(titleScore<25)continue
       const yearScore=expectedYear&&year?Math.max(0,30-Math.abs(expectedYear-year)*8):10
-      const preferredLabel=entity.labels?.en?.value||entity.labels?.ru?.value||Object.values(entity.labels||{}).find((x:any)=>x?.value)?.value||hit.label||raw
+      const preferredLabel=entity.labels?.en?.value||entity.labels?.ru?.value||(Object.values(entity.labels||{}) as any[]).find((x:any)=>x?.value)?.value||hit.label||raw
       const originalLabel=entity.labels?.mul?.value||entity.labels?.en?.value||preferredLabel
       candidates.push({
         score:titleScore+yearScore,title:String(preferredLabel),wikidataId:hit.id,description,runtimeMin:runtime,year,

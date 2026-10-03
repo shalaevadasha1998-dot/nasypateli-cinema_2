@@ -24,6 +24,6 @@ export async function textResponse(args:BaseArgs):Promise<string>{
 
 export async function transcribeAudio(bytes:Uint8Array,mimeType='audio/webm'){
   const form=new FormData();const ext=mimeType.includes('mp4')?'m4a':mimeType.includes('ogg')?'ogg':mimeType.includes('wav')?'wav':'webm'
-  form.append('file',new Blob([bytes],{type:mimeType}),`voice.${ext}`);form.append('model',Deno.env.get('OPENAI_TRANSCRIBE_MODEL')||'gpt-4o-mini-transcribe');form.append('language','ru')
+  form.append('file',new Blob([new Uint8Array(bytes)],{type:mimeType}),`voice.${ext}`);form.append('model',Deno.env.get('OPENAI_TRANSCRIBE_MODEL')||'gpt-4o-mini-transcribe');form.append('language','ru')
   const r=await fetch('https://api.openai.com/v1/audio/transcriptions',{method:'POST',headers:{authorization:`Bearer ${apiKey()}`},body:form});const j=await r.json();if(!r.ok)throw new Error(j?.error?.message||`OpenAI transcription ${r.status}`);return String(j.text||'').trim()
 }
