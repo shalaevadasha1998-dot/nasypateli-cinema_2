@@ -93,9 +93,22 @@ function usePrivilegedState(kind:'admin'|'screen',slug:string|undefined){
       .finally(()=>{inFlight.current=false})
   }
   useEffect(()=>{
-    void reload()
-    const timer=window.setInterval(()=>{void reload(true)},kind==='screen'?1800:5000)
-    return()=>window.clearInterval(timer)
+    let dead=false
+    let timer:number|undefined
+    const baseDelay=kind==='screen'?5000:8000
+    const tick=async()=>{
+      if(dead)return
+      await reload(true)
+      if(dead)return
+      const wait=Math.max(baseDelay,retryAt.current>Date.now()?retryAt.current-Date.now():0)
+      timer=window.setTimeout(()=>{void tick()},wait)
+    }
+    void reload().finally(()=>{
+      if(dead)return
+      const wait=Math.max(baseDelay,retryAt.current>Date.now()?retryAt.current-Date.now():0)
+      timer=window.setTimeout(()=>{void tick()},wait)
+    })
+    return()=>{dead=true;if(timer!==undefined)window.clearTimeout(timer)}
   },[kind,slug,token])
   return {data,error,reload,token}
 }
