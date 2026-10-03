@@ -1075,7 +1075,8 @@ export async function handleApi(req:Request){
     if(action==='screen-bootstrap'){
       const event=await eventBySlug(db,String(body.slug||'2026-10-03'))
       const testScreenOk=await testRoomTokenMatches(event,req.headers.get('x-screen-token')||'')
-      if(!screenTokenOk&&!testScreenOk)return err('Доступ к экрану запрещён',401)
+      const openTestScreen=event?.settings?.test_room===true
+      if(!screenTokenOk&&!testScreenOk&&!openTestScreen)return err('Доступ к экрану запрещён',401)
       await maybeAutoAdvanceShow(db,event)
       const [state,attended]=await Promise.all([
         buildEventState(db,event,{includeActuals:false}),
@@ -1109,7 +1110,8 @@ export async function handleApi(req:Request){
     if(action==='screen-audio-heartbeat'){
       const event=await eventBySlug(db,String(body.slug||'2026-10-03'))
       const testScreenOk=await testRoomTokenMatches(event,req.headers.get('x-screen-token')||'')
-      if(!screenTokenOk&&!testScreenOk)return err('Доступ к экрану запрещён',401)
+      const openTestScreen=event?.settings?.test_room===true
+      if(!screenTokenOk&&!testScreenOk&&!openTestScreen)return err('Доступ к экрану запрещён',401)
       const now=new Date().toISOString()
       const saved=await db.from('event_screen_status').upsert({
         event_id:event.id,
@@ -1124,7 +1126,8 @@ export async function handleApi(req:Request){
     if(action==='screen-audio-ended'){
       const event=await eventBySlug(db,String(body.slug||'2026-10-03'))
       const testScreenOk=await testRoomTokenMatches(event,req.headers.get('x-screen-token')||'')
-      if(!screenTokenOk&&!testScreenOk)return err('Доступ к экрану запрещён',401)
+      const openTestScreen=event?.settings?.test_room===true
+      if(!screenTokenOk&&!testScreenOk&&!openTestScreen)return err('Доступ к экрану запрещён',401)
       const current=await db.from('event_runtime').select('*').eq('event_id',event.id).single()
       if(current.error)throw current.error
       const program=await db.from('event_programs').select('config').eq('event_id',event.id).single()
