@@ -376,8 +376,50 @@ function audioStateForBlock(block:any,now=new Date().toISOString()){
   }
 }
 
+const ROUND_MECHANIC_MS=5*60_000
+
+async function maybeAutoOpenRoundPitches(db:any,event:any){
+  try{
+    const runtime=await db.from('event_runtime').select('run_status,current_round_id').eq('event_id',event.id).maybeSingle()
+    if(runtime.error)throw runtime.error
+    const roundId=String(runtime.data?.current_round_id||'')
+    if(String(runtime.data?.run_status)!=='running'||!isUuid(roundId))return false
+    const round=await db.from('event_rounds').select('id,round_no,status,flow_status,started_at').eq('id',roundId).eq('event_id',event.id).maybeSingle()
+    if(round.error)throw round.error
+    const row:any=round.data
+    if(!row||row.status!=='active'||String(row.flow_status)!=='round_intro'||!row.started_at)return false
+    const opensAt=new Date(row.started_at).getTime()+ROUND_MECHANIC_MS
+    if(Date.now()<opensAt)return false
+    return await withEventOperation(db,event.id,'round-intro-auto-open',async()=>{
+      const fresh=await db.from('event_rounds').select('id,round_no,status,flow_status,started_at').eq('id',roundId).eq('event_id',event.id).maybeSingle()
+      if(fresh.error)throw fresh.error
+      const cur:any=fresh.data
+      if(!cur||cur.status!=='active'||String(cur.flow_status)!=='round_intro'||!cur.started_at)return false
+      if(Date.now()<new Date(cur.started_at).getTime()+ROUND_MECHANIC_MS)return false
+      const now=new Date().toISOString()
+      const updated=await db.from('event_rounds').update({
+        flow_status:'collecting_films',selected_submission_id:null,movie_candidate_id:null,
+        question_position:0,question_target:Number(cur.round_no||0)%2===0?3:0,updated_at:now
+      }).eq('id',roundId).eq('event_id',event.id).eq('flow_status','round_intro').select('id').maybeSingle()
+      if(updated.error)throw updated.error
+      if(!updated.data)return false
+      const cleared=await db.from('invented_films').delete().eq('round_id',roundId).eq('event_id',event.id)
+      if(cleared.error)throw cleared.error
+      await setProjectorState(db,event,'pitch_collecting',roundId,null,{prompt:'придумайте фильм, которого не существует'})
+      const log=await db.from('event_runtime_log').insert({event_id:event.id,action:'round_intro_auto_open',actor_user_id:null,from_state:{round_id:roundId,flow_status:'round_intro'},to_state:{round_id:roundId,flow_status:'collecting_films'}})
+      if(log.error)console.error('round intro auto-open log failed',log.error)
+      return true
+    })
+  }catch(e:any){
+    if(e?.message==='EVENT_OPERATION_BUSY')return false
+    console.error('round intro auto-open failed',e)
+    return false
+  }
+}
+
 async function maybeAutoAdvanceShow(db:any,event:any){
   try{
+    await maybeAutoOpenRoundPitches(db,event)
     const [programR,runtimeR]=await Promise.all([
       db.from('event_programs').select('config').eq('event_id',event.id).maybeSingle(),
       db.from('event_runtime').select('*').eq('event_id',event.id).maybeSingle()
@@ -1107,6 +1149,7 @@ export async function handleApi(req:Request){
       const testScreenOk=await testRoomTokenMatches(event,req.headers.get('x-screen-token')||'')
       const openTestScreen=event?.settings?.test_room===true
       if(!screenTokenOk&&!testScreenOk&&!openTestScreen)return err('Доступ к экрану запрещён',401)
+      await maybeAutoOpenRoundPitches(db,event)
 
       const config:any=x.program_config||{}
       const rawBlocks=Array.isArray(config.blocks)?config.blocks:[]
@@ -3254,7 +3297,7 @@ export async function handleApi(req:Request){
         if(lastRound.error)throw lastRound.error
         const roundNo=Number(lastRound.data?.round_no||0)+1
         const ins=await db.from('event_rounds').insert({
-          event_id:event.id,round_no:roundNo,block_id:block.id,status:'active',flow_status:'collecting_films',
+          event_id:event.id,round_no:roundNo,block_id:block.id,status:'active',flow_status:'round_intro',
           question_position:0,question_target:roundNo%2===0?3:0,vote_state:'closed',results_visible:false,video_state:{status:'idle'},started_at:now
         }).select('id').single()
         if(ins.error)throw ins.error
@@ -3262,7 +3305,11 @@ export async function handleApi(req:Request){
         const u=await db.from('event_runtime').update({current_round:roundNo,current_round_id:ins.data.id,current_movie_id:null,current_question:null,vote_state:'closed',results_visible:false,video_state:{status:'idle'},revision:Number(rt.data.revision||0)+1,updated_at:now}).eq('event_id',event.id).eq('revision',rt.data.revision).select('event_id').maybeSingle()
         if(u.error)throw u.error
         if(!u.data)return err('пульт уже изменился в другой вкладке · обновите экран',409)
-        const projector=await setProjectorState(db,event,'pitch_collecting',ins.data.id,null,{prompt:'придумайте фильм, которого не существует'})
+        const projector=await setProjectorState(db,event,'round_intro',ins.data.id,null,{
+          roundNo,durationSec:ROUND_MECHANIC_MS/1000,
+          opensAt:new Date(new Date(now).getTime()+ROUND_MECHANIC_MS).toISOString(),
+          prompt:'объясняем механику раунда'
+        })
         return json({ok:true,projector,show:await buildShowState(db,event)})
       })
     }
