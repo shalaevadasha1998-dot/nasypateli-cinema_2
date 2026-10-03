@@ -143,73 +143,86 @@ function sourceQuery(movie:any,mode:'fragment'|'trailer'){
 async function searchYoutubePublic(movie:any,mode:'fragment'|'trailer'):Promise<MovieSourceCandidate[]>{
   const base=String(movie?.original_title||movie?.originalTitle||movie?.title||'').trim()
   const year=movie?.year?String(movie.year):''
-  const altTitles=Array.isArray(movie?.metadata?.search_titles)?movie.metadata.search_titles.map((x:any)=>String(x).trim()).filter(Boolean).slice(0,3):[]
+  const altTitles=Array.isArray(movie?.metadata?.search_titles)?movie.metadata.search_titles.map((x:any)=>String(x).trim()).filter(Boolean).slice(0,2):[]
   const names=[base,...altTitles].filter(Boolean)
   const querySet=new Set<string>()
   for(const name of names){
     if(mode==='fragment'){
+      querySet.add(`${name} ${year} official clip`.trim())
       querySet.add(`${name} ${year} scene`.trim())
-      querySet.add(`${name} ${year} clip`.trim())
-      querySet.add(`${name} ${year} excerpt`.trim())
     }else{
       querySet.add(`${name} ${year} official trailer`.trim())
       querySet.add(`${name} ${year} trailer`.trim())
     }
   }
-  const rows:MovieSourceCandidate[]=[]
-  for(const query of [...querySet].slice(0,7)){
+  const queries=[...querySet].slice(0,4)
+  const searchPages=await Promise.allSettled(queries.map(async query=>{
+    const controller=new AbortController()
+    const timeout=setTimeout(()=>controller.abort(),3500)
     try{
       const r=await fetch('https://www.youtube.com/results?search_query='+encodeURIComponent(query),{
-        headers:{'user-agent':'Mozilla/5.0 (compatible; NasypateliCinema/1.0)'}
+        headers:{'user-agent':'Mozilla/5.0 (compatible; NasypateliCinema/1.0)'},
+        signal:controller.signal
       })
-      if(!r.ok)continue
+      if(!r.ok)return {query,ids:[] as string[]}
       const html=await r.text()
       const ids:string[]=[]
       for(const m of html.matchAll(/"videoId":"([A-Za-z0-9_-]{11})"/g)){
         if(!ids.includes(m[1]))ids.push(m[1])
-        if(ids.length>=8)break
+        if(ids.length>=5)break
       }
-      for(const id of ids){
-        if(rows.some(x=>x.videoId===id))continue
-        try{
-          const o=await fetch('https://www.youtube.com/oembed?url='+encodeURIComponent('https://www.youtube.com/watch?v='+id)+'&format=json')
-          if(!o.ok)continue
-          const meta=await o.json()
-          const title=String(meta?.title||'')
-          const match=sourceTitleMatch(title,movie)
-          if(match<.42)continue
-          if(mode==='fragment'&&/(trailer|teaser|трейлер|тизер)/i.test(title))continue
-          const looksClip=/(official\s+clip|movie\s+clip|film\s+clip|scene|excerpt|fragment|фрагмент|сцена|extrait|escena|szene|scena)/i.test(title)
-          const looksTeaser=/(teaser|тизер)/i.test(title)
-          const looksTrailer=/(trailer|трейлер|bande-annonce|tráiler)/i.test(title)
-          if(mode==='trailer'&&!looksTrailer&&!looksTeaser)continue
-          const official=/\bofficial\b|официальн|officiel|oficial/i.test(title)
-          const confidence=clamp01(.43+match*.36+(official?0.12:0)+((looksClip||looksTrailer||looksTeaser)?0.09:0))
-          rows.push({
-            useMode:mode,
-            sourceType:mode==='fragment'?'clip':looksTeaser?'teaser':'trailer',
-            sourcePlatform:'youtube',
-            sourceUrl:'https://www.youtube.com/watch?v='+id,
-            videoId:id,
-            title,
-            sourceChannel:String(meta?.author_name||'')||undefined,
-            startSec:0,
-            endSec:mode==='fragment'?60:75,
-            verified:true,
-            embeddable:true,
-            official,
-            rightsStatus:'unknown',
-            confidence,
-            metadata:{discoveredBy:'youtube_public_search',query}
-          })
-        }catch{}
-      }
-    }catch{}
-    if(rows.filter(x=>x.confidence>=.7).length>=4)break
+      return {query,ids}
+    }catch{return {query,ids:[] as string[]}}
+    finally{clearTimeout(timeout)}
+  }))
+  const idQuery=new Map<string,string>()
+  for(const page of searchPages){
+    if(page.status!=='fulfilled')continue
+    for(const id of page.value.ids)if(!idQuery.has(id))idQuery.set(id,page.value.query)
   }
-  return rows.sort((a,b)=>b.confidence-a.confidence).slice(0,10)
+  const ids=[...idQuery.keys()].slice(0,12)
+  const metaRows=await Promise.allSettled(ids.map(async id=>{
+    const controller=new AbortController()
+    const timeout=setTimeout(()=>controller.abort(),2500)
+    try{
+      const o=await fetch('https://www.youtube.com/oembed?url='+encodeURIComponent('https://www.youtube.com/watch?v='+id)+'&format=json',{signal:controller.signal})
+      if(!o.ok)return null
+      const meta=await o.json()
+      const title=String(meta?.title||'')
+      const match=sourceTitleMatch(title,movie)
+      if(match<.42)return null
+      if(mode==='fragment'&&/(trailer|teaser|трейлер|тизер)/i.test(title))return null
+      const looksClip=/(official\s+clip|movie\s+clip|film\s+clip|scene|excerpt|fragment|фрагмент|сцена|extrait|escena|szene|scena)/i.test(title)
+      const looksTeaser=/(teaser|тизер)/i.test(title)
+      const looksTrailer=/(trailer|трейлер|bande-annonce|tráiler)/i.test(title)
+      if(mode==='trailer'&&!looksTrailer&&!looksTeaser)return null
+      const official=/\bofficial\b|официальн|officiel|oficial/i.test(title)
+      const confidence=clamp01(.43+match*.36+(official?0.12:0)+((looksClip||looksTrailer||looksTeaser)?0.09:0))
+      return {
+        useMode:mode,
+        sourceType:mode==='fragment'?'clip':looksTeaser?'teaser':'trailer',
+        sourcePlatform:'youtube',
+        sourceUrl:'https://www.youtube.com/watch?v='+id,
+        videoId:id,
+        title,
+        sourceChannel:String(meta?.author_name||'')||undefined,
+        startSec:0,
+        endSec:mode==='fragment'?60:75,
+        verified:true,
+        embeddable:true,
+        official,
+        rightsStatus:'unknown',
+        confidence,
+        metadata:{discoveredBy:'youtube_public_search',query:idQuery.get(id)||''}
+      } as MovieSourceCandidate
+    }catch{return null}
+    finally{clearTimeout(timeout)}
+  }))
+  return metaRows
+    .flatMap(x=>x.status==='fulfilled'&&x.value?[x.value]:[])
+    .sort((a,b)=>b.confidence-a.confidence)
+    .slice(0,8)
 }
-
 async function searchInternetArchive(movie:any,mode:'fragment'|'trailer'):Promise<MovieSourceCandidate[]>{
   const base=String(movie?.original_title||movie?.originalTitle||movie?.title||'').trim()
   const wanted=mode==='fragment'?base:`${base} trailer`
