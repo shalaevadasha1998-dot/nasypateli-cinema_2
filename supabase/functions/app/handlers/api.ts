@@ -529,10 +529,13 @@ async function userFilmAssignments(db:any,userId:string){
   })
 }
 
-async function filmLiveState(db:any,event:any,userId?:string){
-  const projector=await db.from('event_projector_state').select('*').eq('event_id',event.id).maybeSingle()
-  if(projector.error)throw projector.error
-  const p:any=projector.data
+async function filmLiveState(db:any,event:any,userId?:string,projectorData?:any){
+  let p:any=projectorData
+  if(p===undefined){
+    const projector=await db.from('event_projector_state').select('*').eq('event_id',event.id).maybeSingle()
+    if(projector.error)throw projector.error
+    p=projector.data
+  }
   if(!p||['idle','arrival'].includes(String(p.state||'')))return undefined
   let packageRow:any=null
   if(p.film_package_id){
@@ -1065,10 +1068,10 @@ export async function handleApi(req:Request){
       const testScreenOk=await testRoomTokenMatches(event,req.headers.get('x-screen-token')||'')
       const openTestScreen=event?.settings?.test_room===true
       if(!screenTokenOk&&!testScreenOk&&!openTestScreen)return err('Доступ к экрану запрещён',401)
-      await maybeAutoAdvanceShow(db,event)
-      const [state,attended]=await Promise.all([
-        buildEventState(db,event,{includeActuals:false}),
-        db.from('registrations').select('user_id,created_at').eq('event_id',event.id).eq('status','attended').order('created_at')
+      const [show,attended,projector]=await Promise.all([
+        buildShowState(db,event),
+        db.from('registrations').select('user_id,created_at').eq('event_id',event.id).eq('status','attended').order('created_at'),
+        projectorPublicState(db,event)
       ])
       if(attended.error)throw attended.error
       const ids=(attended.data||[]).map((x:any)=>String(x.user_id))
@@ -1084,17 +1087,20 @@ export async function handleApi(req:Request){
           crumbs:Number(x.crumbs||0),growthProgress:Number(x.growth_progress||0)
         }
       }))).filter(Boolean)
-      const projector=await projectorPublicState(db,event)
       return json({
-        event:state.event,
-        show:state.show,
-        screenMessage:state.screenMessage||'',
+        event:{
+          id:event.id,slug:event.slug,title:event.title,startsAt:event.starts_at,capacity:event.capacity,
+          sold:ids.length,held:0,ticketPriceRub:event.ticket_price_rub,maxMovieRuntimeMin:event.max_movie_runtime_min,
+          status:event.status,venueName:event.venue_name,venueAddress:event.venue_address,paymentsAvailable:false,
+          nonexistentFilmEnabled:nonexistentFilmEnabled(event),movieAvailabilityStatus:'unchecked'
+        },
+        show,
+        screenMessage:event.settings?.screen_message||'',
         screenCreatures,
-        projector,
-        ideaProgress:state.ideaProgress,
-        selectedIdea:state.selectedIdea
+        projector
       })
     }
+
     if(action==='screen-audio-heartbeat'){
       const event=await eventBySlug(db,String(body.slug||'2026-10-03'))
       const testScreenOk=await testRoomTokenMatches(event,req.headers.get('x-screen-token')||'')
@@ -1425,6 +1431,33 @@ export async function handleApi(req:Request){
       if(updated.error)throw updated.error
       if(!updated.data)return err('животина не найдена',404)
       return json({ok:true,creature:await creatureState(db,user.id)})
+    }
+
+    if(action==='live-refresh'){
+      const event=testParticipantAccess&&testEvent?testEvent:await eventBySlug(db,requestedSlug||'2026-10-03')
+      if(event?.settings?.test_room===true&&!testParticipantAccess)return err('Тестовая комната закрыта',403)
+      const [runtimeR,projectorR]=await Promise.all([
+        db.from('event_runtime').select('run_status,current_block_id,current_block_index,current_round,current_round_id,current_movie_id,current_question,vote_state,results_visible,video_state,revision,started_at,block_started_at,paused_at,updated_at').eq('event_id',event.id).maybeSingle(),
+        db.from('event_projector_state').select('*').eq('event_id',event.id).maybeSingle()
+      ])
+      if(runtimeR.error)throw runtimeR.error
+      if(projectorR.error)throw projectorR.error
+      const raw:any=runtimeR.data||{}
+      const filmLive=await filmLiveState(db,event,user.id,projectorR.data)
+      return json({
+        eventStatus:event.status,
+        runtime:{
+          runStatus:String(raw.run_status||'idle'),currentBlockId:String(raw.current_block_id||''),
+          currentBlockIndex:Number(raw.current_block_index||0),currentRound:Number(raw.current_round||0),
+          currentRoundId:raw.current_round_id||undefined,currentMovieId:raw.current_movie_id||undefined,
+          currentQuestion:raw.current_question||undefined,voteState:raw.vote_state||'closed',
+          resultsVisible:raw.results_visible===true,videoState:raw.video_state||{status:'idle'},
+          revision:Number(raw.revision||0),startedAt:raw.started_at||undefined,
+          blockStartedAt:raw.block_started_at||undefined,pausedAt:raw.paused_at||undefined,updatedAt:raw.updated_at||undefined
+        },
+        filmLive,
+        screenMessage:event.settings?.screen_message||''
+      })
     }
 
     if(action==='bootstrap'){
