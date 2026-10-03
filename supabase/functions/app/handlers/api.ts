@@ -1161,7 +1161,7 @@ export async function handleApi(req:Request){
       const testScreenOk=await testRoomTokenMatches(event,req.headers.get('x-screen-token')||'')
       const openTestScreen=event?.settings?.test_room===true
       if(!screenTokenOk&&!testScreenOk&&!openTestScreen)return err('Доступ к экрану запрещён',401)
-      await maybeAutoOpenRoundPitches(db,event)
+      await maybeAutoAdvanceShow(db,event)
 
       const config:any=x.program_config||{}
       const rawBlocks=Array.isArray(config.blocks)?config.blocks:[]
@@ -2086,6 +2086,9 @@ export async function handleApi(req:Request){
         user_id:user.id,animal_name_snapshot:creature.data.name,word,normalized_word:normalized,updated_at:new Date().toISOString()
       },{onConflict:'round_id,user_id'}).select('word').single()
       if(saved.error)throw saved.error
+      const assignmentWord=await db.from('film_assignments').update({before_word:word,updated_at:new Date().toISOString()})
+        .eq('event_id',event.id).eq('round_id',projector.data.round_id).eq('user_id',user.id)
+      if(assignmentWord.error)console.error('assignment before-word backfill failed',assignmentWord.error)
       return json({ok:true,word:saved.data.word})
     }
 
@@ -2931,6 +2934,8 @@ export async function handleApi(req:Request){
       }
       const winner=assignment.data?.[0]
       if(!winner)return err('не удалось выбрать животинку',500)
+      const winnerCreature=await db.from('creatures').select('stage,settings').eq('user_id',winner.user_id).maybeSingle()
+      if(winnerCreature.error)throw winnerCreature.error
       const current=await db.from('event_projector_state').select('revision').eq('event_id',event.id).maybeSingle()
       if(current.error)throw current.error
       const projector=await db.from('event_projector_state').upsert({
@@ -2938,7 +2943,9 @@ export async function handleApi(req:Request){
         payload:{
           animalName:winner.animal_name,filmTitle:pack.data.title_snapshot,dueAt:winner.due_at,
           assignmentKind:Number(roundInfo.data.question_target||0)>0?'seer':'viewer',
-          correctCount:Number(winner.correct_count||0),totalQuestions:Number(winner.total_questions||0)
+          correctCount:Number(winner.correct_count||0),totalQuestions:Number(winner.total_questions||0),
+          animalStage:String(winnerCreature.data?.stage||'stage_0'),
+          visualVariant:Math.max(1,Math.min(50,Math.round(Number(winnerCreature.data?.settings?.visual_variant||1))))
         },
         revision:Number(current.data?.revision||0)+1,updated_at:new Date().toISOString()
       },{onConflict:'event_id'})
