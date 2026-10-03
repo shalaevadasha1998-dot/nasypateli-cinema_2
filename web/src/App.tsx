@@ -276,8 +276,9 @@ function Home(){
         {buyNotice&&<div className="success">{buyNotice}</div>}{buyError&&<div className="form-error">{buyError}</div>}{claimError&&<div className="form-error">{claimError}</div>}{cancelError&&<div className="form-error">{cancelError}</div>}
       </div>
     </section>
-    <FilmLiveParticipant data={data} reload={reload}/>
-    <ParticipantShow data={data} reload={reload}/>
+    {data.show?.runtime.currentBlock?.type==='cinema_rounds'
+      ?<FilmLiveParticipant data={data} reload={reload}/>
+      :<ParticipantShow data={data} reload={reload}/>} 
     {!['DRAFT','SALES_OPEN','CHECKIN'].includes(e.status)&&<NextAction data={data} onOpen={()=>nav(`/event/${e.slug}`)} onBuy={buy} onClaim={claimTicket} buyBusy={buyBusy} claimBusy={claimBusy} reserveCountdown={reserveCountdown}/>} 
     <section className="zhivotina-portal">
       <div className="zhivotina-portrait" aria-hidden><img src={`${import.meta.env.BASE_URL}assets/rabbit-avatar.webp`} alt="" draggable={false}/></div>
@@ -356,8 +357,9 @@ function RehearsalPage(){
       <h2>{data.show?.runtime.currentBlock?.title||'мероприятие'}</h2>
       <p className="muted">ты вошла своим настоящим telegram-аккаунтом. здесь отображается ровно то, что участник увидит во время живого раунда.</p>
     </section>
-    <FilmLiveParticipant data={data} reload={reload}/>
-    <ParticipantShow data={data} reload={reload}/>
+    {data.show?.runtime.currentBlock?.type==='cinema_rounds'
+      ?<FilmLiveParticipant data={data} reload={reload}/>
+      :<ParticipantShow data={data} reload={reload}/>} 
     {!data.filmLive&&<Card><div className="section-title">сейчас на телефоне нет задания</div><p className="muted">когда ведущий запустит кинораунд, форма названия и описания появится здесь автоматически.</p></Card>}
   </div>
 }
@@ -771,6 +773,7 @@ function FilmPackagePrepAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(
 function RoundFilmFlowAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(action:string,payload?:Record<string,unknown>)=>Promise<any>}){
   const round=data.show?.currentRound
   const pitches=data.inventedFilms||[]
+  const [stepping,setStepping]=useState(false)
   if(!round||round.status!=='active')return null
   const flow=round.flowStatus||'collecting_films'
   const mode=round.roundNo%2===1?'review':'questions'
@@ -779,45 +782,76 @@ function RoundFilmFlowAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(ac
   const target=Math.min(3,Math.max(1,Number(round.questionTarget||3),questions.length?1:0))
   const position=Math.max(0,Number(round.questionPosition||0))
   const currentQuestion=questions.find(q=>q.position===position)
-  const project=(op:string,extra:Record<string,unknown>={})=>pack&&run('admin-film-projector',{filmPackageId:pack.id,roundId:round.id,op,...extra})
   const projector:any=data.projector
   const previewIndex=Math.max(0,Number(projector?.payload?.index||0))
   const previewTotal=Math.max(0,Number(projector?.payload?.total||pitches.length))
-  const firstFragment:any=pack?.fragments?.[0]
-  const fragmentHref=(fragment:any)=>fragment?.videoId?`https://www.youtube.com/watch?v=${encodeURIComponent(String(fragment.videoId))}&t=${Math.max(0,Number(fragment.startSec||0))}s`:String(fragment?.sourceUrl||'')
-  const sourceHref=fragmentHref(firstFragment)
+  const blocked=busy||stepping
+  const project=(op:string,extra:Record<string,unknown>={})=>pack&&run('admin-film-projector',{filmPackageId:pack.id,roundId:round.id,op,...extra})
+
   const chooseAndSearch=async()=>{
-    const selected=await run('admin-round-pitch-draw')
-    if(!selected)return
-    await new Promise(resolve=>window.setTimeout(resolve,1200))
-    await run('admin-round-find-movie',{preparedOnly:true})
+    setStepping(true)
+    try{
+      const selected=await run('admin-round-pitch-draw')
+      if(!selected)return
+      await run('admin-round-find-movie',{preparedOnly:true})
+    }finally{setStepping(false)}
   }
   const assign=async()=>{
     if(!pack)return
-    await project('assignment_randomizing')
-    await new Promise(resolve=>window.setTimeout(resolve,900))
-    await run('admin-film-assign',{filmPackageId:pack.id,roundId:round.id})
+    setStepping(true)
+    try{
+      await project('assignment_randomizing')
+      await new Promise(resolve=>window.setTimeout(resolve,900))
+      await run('admin-film-assign',{filmPackageId:pack.id,roundId:round.id})
+    }finally{setStepping(false)}
   }
+  const next=async()=>{
+    if(blocked)return
+    if(flow==='collecting_films'){await run('admin-round-pitches-close');return}
+    if(flow==='films_locked'){
+      if(previewIndex<previewTotal-1){await run('admin-round-pitch-preview',{index:previewIndex+1});return}
+      await chooseAndSearch();return
+    }
+    if(flow==='submission_selected'||flow==='searching_movie'){await run('admin-round-find-movie',{preparedOnly:true});return}
+    if(flow==='movie_found'){if(pack)await project('film_intro');return}
+    if(flow==='playing_clip'){if(pack)await project(mode==='review'?'one_word_open':'question_open',mode==='review'?{}:{position:1});return}
+    if(flow==='one_word_collecting'){if(pack)await project('one_word_results');return}
+    if(flow==='one_word_results'){await assign();return}
+    if(flow==='question_open'){if(pack)await project('question_results',{position});return}
+    if(flow==='question_results'){if(pack)await project('question_reveal',{position});return}
+    if(flow==='question_reveal'){
+      if(position<target){if(pack)await project('question_open',{position:position+1})}
+      else await assign()
+      return
+    }
+    if(flow==='assignment_selected'){await run('admin-round-close');return}
+  }
+
+  let title='готовим раунд'
+  let detail=''
+  let nextLabel='дальше'
+  let canNext=true
+  if(flow==='collecting_films'){title='гости придумывают фильмы';detail=`${round.pitchCount||0} идей уже отправлено`;canNext=pitches.length>0}
+  else if(flow==='films_locked'){title=`идея ${Math.min(previewIndex+1,Math.max(previewTotal,1))}/${Math.max(previewTotal,1)}`;detail='карточка сейчас на большом экране';nextLabel=previewIndex<previewTotal-1?'дальше':'дальше → рандом'}
+  else if(flow==='randomizing_submission'){title='рандом выбирает идею';detail='смотри на большой экран';canNext=false;nextLabel='выбираем…'}
+  else if(flow==='submission_selected'||flow==='searching_movie'){title='ищем реальный фильм';detail='берём проверенный воспроизводимый фрагмент';nextLabel='дальше → найти фильм'}
+  else if(flow==='movie_found'){title=round.movie?.title||'фильм найден';detail=pack?'фрагмент готов':'для фильма нет готового фрагмента';nextLabel='дальше → фрагмент';canNext=!!pack}
+  else if(flow==='playing_clip'){title='фрагмент идёт';detail=mode==='review'?'после него все пишут одно слово':'после него все отвечают своими словами';nextLabel=mode==='review'?'дальше → одно слово':'дальше → вопрос 1/3';canNext=!!pack}
+  else if(flow==='one_word_collecting'){title='одно слово';detail='слова появляются на большом экране вживую';nextLabel='дальше → зафиксировать';canNext=!!pack}
+  else if(flow==='one_word_results'){title='рецензия зала готова';detail='теперь выбираем, кто досмотрит фильм';nextLabel='дальше → рандом';canNext=!!pack}
+  else if(flow==='question_open'){title=`вопрос ${position}/${target}`;detail=currentQuestion?.prompt||'гости отвечают своими словами';nextLabel='дальше → самый близкий ответ';canNext=!!pack}
+  else if(flow==='question_results'){title='ближайший ответ выбран';detail='животина сравнила открытые ответы с реальным продолжением';nextLabel='дальше → что было на самом деле';canNext=!!pack}
+  else if(flow==='question_reveal'){title='показано продолжение';detail=position<target?`следующий вопрос ${position+1}/${target}`:'теперь выбираем, кто досмотрит фильм';nextLabel=position<target?`дальше → вопрос ${position+1}/${target}`:'дальше → рандом';canNext=!!pack}
+  else if(flow==='assignment_randomizing'){title='рандом выбирает животину';detail='выбор фиксируется на сервере один раз';canNext=false;nextLabel='выбираем…'}
+  else if(flow==='assignment_selected'){title='фильм назначен';detail='раунд можно закрывать';nextLabel='дальше → закончить раунд'}
+  else {title='раунд идёт';detail='следующий шаг появится автоматически';canNext=false}
+
   return <Card className="round-film-flow-admin">
-    <div className="row spread"><div><div className="section-title">раунд {round.roundNo} · {mode==='review'?'одно слово':'открытые вопросы'}</div><h2>{mode==='review'?'рецензия после фрагмента':'угадываем, что дальше'}</h2></div><Pill>{round.pitchCount||0} идей</Pill></div>
-    {flow==='collecting_films'&&<><p className="muted">гости пишут название и описание. кто не успел до кнопки «дальше», тот пропустил.</p><Button disabled={busy||!pitches.length} onClick={()=>run('admin-round-pitches-close')}>дальше → смотреть идеи</Button></>}
-    {flow==='films_locked'&&<div className="film-live-step"><b>идея {Math.min(previewIndex+1,previewTotal)}/{previewTotal}</b><p className="muted">зачитайте карточку с большого экрана.</p><div className="inline">{previewIndex>0&&<Button kind="secondary" disabled={busy} onClick={()=>run('admin-round-pitch-preview',{index:previewIndex-1})}>← назад</Button>}{previewIndex<previewTotal-1?<Button disabled={busy} onClick={()=>run('admin-round-pitch-preview',{index:previewIndex+1})}>дальше →</Button>:<Button disabled={busy} onClick={chooseAndSearch}>дальше → рандом</Button>}</div></div>}
-    {flow==='randomizing_submission'&&<p>рандом выбирает идею на большом экране.</p>}
-    {flow==='submission_selected'&&<p>идея выбрана. ищем проверенный реальный фильм.</p>}
-    {flow==='searching_movie'&&<p>ищем фильм. если живой поиск тормозит, берём проверенный резерв.</p>}
-    {['submission_selected','searching_movie'].includes(flow)&&<Button kind="secondary" disabled={busy} onClick={()=>run('admin-round-find-movie',{preparedOnly:true})}>взять резерв сразу</Button>}
-    {flow==='movie_found'&&<>{round.movie&&pack?<><div className="selected-pitch-admin"><div className="eyebrow">реальный фильм</div><h3>{round.movie.title}{round.movie.year?' · '+round.movie.year:''}</h3></div><div className="inline"><Button disabled={busy} onClick={()=>project('film_intro')}>дальше → показать фрагмент</Button>{sourceHref&&<Button kind="secondary" onClick={()=>window.open(sourceHref,'_blank','noopener,noreferrer')}>источник ↗</Button>}</div></>:<p className="form-error">нет готового фрагмента.</p>}</>}
-    {flow==='playing_clip'&&<div className="film-live-step"><b>фрагмент идёт</b><Button disabled={busy||!pack} onClick={()=>mode==='review'?project('one_word_open'):project('question_open',{position:1})}>{mode==='review'?'дальше → одно слово':'дальше → вопрос 1/3'}</Button></div>}
-    {flow==='one_word_collecting'&&<div className="film-live-step"><b>гости пишут по одному слову</b><p className="muted">слова появляются на экране сразу.</p><Button disabled={busy} onClick={()=>project('one_word_results')}>дальше → зафиксировать слова</Button></div>}
-    {flow==='one_word_results'&&<div className="film-live-step"><b>рецензия зала зафиксирована</b><Button disabled={busy} onClick={assign}>дальше → рандом кому смотреть</Button></div>}
-    {flow==='question_open'&&currentQuestion&&<div className="film-live-step"><b>вопрос {position}/{target}</b><p>{currentQuestion.prompt}</p><Button disabled={busy} onClick={()=>project('question_results',{position})}>дальше → найти самый близкий ответ</Button></div>}
-    {flow==='question_results'&&currentQuestion&&<div className="film-live-step"><b>животина выбрала самый близкий ответ</b><Button disabled={busy} onClick={()=>project('question_reveal',{position})}>дальше → показать, что было на самом деле</Button></div>}
-    {flow==='question_reveal'&&<div className="film-live-step"><b>ответ показан</b>{position<target?<Button disabled={busy} onClick={()=>project('question_open',{position:position+1})}>дальше → вопрос {position+1}/{target}</Button>:<Button disabled={busy} onClick={assign}>дальше → рандом кому смотреть</Button>}</div>}
-    {flow==='assignment_randomizing'&&<p>животина выбирает человека, который досмотрит фильм.</p>}
-    {flow==='assignment_selected'&&<div className="film-live-step"><b>фильм назначен</b><Button disabled={busy} onClick={()=>run('admin-round-close')}>дальше → закончить раунд</Button></div>}
+    <div className="row spread"><div><div className="section-title">раунд {round.roundNo} · {mode==='review'?'одно слово':'открытые вопросы'}</div><h2>{title}</h2></div><Pill>{round.pitchCount||0} идей</Pill></div>
+    {detail&&<p className="muted">{detail}</p>}
+    <Button disabled={blocked||!canNext} onClick={()=>void next()}>{blocked?'выполняем…':nextLabel}</Button>
   </Card>
 }
-
 function FilmMechanicAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(action:string,payload?:Record<string,unknown>)=>Promise<any>}){
   const round=data.show?.currentRound
   const liveMovie=round?.movie
@@ -947,7 +981,6 @@ function Admin(){
       {!demoMode&&<Card><div className="section-title">telegram</div><Button kind="secondary" disabled={busy} onClick={()=>run('admin-configure-telegram')}>обновить webhook + кнопку бота</Button></Card>}
       <Card><div className="section-title">выгрузка</div><div className="inline"><Button kind="secondary" disabled={busy} onClick={async()=>{const x=await run('admin-export-event');if(x)downloadEventExport(x,'csv')}}>csv</Button><Button kind="secondary" disabled={busy} onClick={async()=>{const x=await run('admin-export-event');if(x)downloadEventExport(x,'json')}}>json</Button></div></Card>
     </div></details>
-    <details className="admin-legacy"><summary>старый экспериментальный пайплайн</summary><IdeaSubmissionAdmin data={data} busy={busy} run={run}/><FilmPackagePrepAdmin data={data} busy={busy} run={run}/><FilmMechanicAdmin data={data} busy={busy} run={run}/><SmartAdmin data={data} reload={reload} adminToken={privileged.token}/></details>
   </div>
 }
 
