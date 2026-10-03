@@ -200,9 +200,11 @@ function ParticipantShow({data,reload}:{data:DemoState;reload:(fresh?:boolean)=>
     const final=show.finalVote
     return <section className="participant-show final-vote"><div className="eyebrow">финальный выбор</div><h2>какой фильм забирает вечер?</h2><p className="muted">можно менять голос до конца таймера</p><div className="final-vote-options">{(final?.options||[]).map(option=><button type="button" disabled={busy||final?.closed} className={final?.myVote===option.id?'selected':''} key={option.id} onClick={()=>void finalVote(option.id)}><b>{option.title}</b>{option.year&&<small>{option.year}</small>}</button>)}</div>{!(final?.options||[]).length&&<p className="muted">ждём фильмы из завершённых раундов</p>}{message&&<div className={message.includes('принят')?'success':'form-error'}>{message}</div>}</section>
   }
-  if(block.type==='music_live')return <section className="participant-show music"><div className="eyebrow">сейчас</div><h2>{block.title}</h2><p>убери телефон. там люди играют музыку</p></section>
+  if(block.type==='break')return <section className="participant-show"><div className="eyebrow">перерыв</div><h2>30 минут</h2><p>телефон можно убрать.</p></section>
+  if(block.type==='final_qr')return <section className="participant-show"><div className="eyebrow">итог вечера</div><h2>вступить в «творог»</h2><a className="btn" href="https://t.me/+CycB09M5MLI0ZWIy" target="_blank" rel="noreferrer">открыть группу</a></section>
+  if(block.type==='music_outro'||block.type==='music_live')return <section className="participant-show music"><div className="eyebrow">после</div><h2>музыка</h2><p>телефон можно убрать.</p></section>
   if(block.type==='post_event')return <section className="participant-show"><div className="eyebrow">вечер закончился</div><h2>животина остаётся с вами</h2><p>крошки, история и всё, что случилось сегодня, никуда не исчезнут</p></section>
-  const intro=block.type==='arrival'?'ты внутри. животина тоже':block.type==='onboarding'?'знакомимся с животиной':block.type==='warm_up'?'первый общий интерактив':block.type==='final_vote'?'финальный выбор':block.type==='finale'?'итог вечера':block.title
+  const intro=block.type==='arrival'?'сбор':block.title
   return <section className="participant-show">
     <div className="row spread participant-show-head"><div><div className="eyebrow">сейчас</div><h2>{intro}</h2></div>{round&&<Pill>раунд {round.roundNo}</Pill>}</div>
     {show.runtime.runStatus==='paused'&&<div className="participant-show-pause">пауза. ведущий скоро продолжит</div>}
@@ -605,7 +607,7 @@ function ShowRoundControl({data,busy,run}:{data:DemoState;busy:boolean;run:(acti
 function ProgramEditor({data,busy,run}:{data:DemoState;busy:boolean;run:(action:string,payload?:Record<string,unknown>)=>Promise<any>}){
   const program=data.show?.program
   const [blocks,setBlocks]=useState<any[]>([])
-  const [roundsTarget,setRoundsTarget]=useState(7)
+  const [roundsTarget,setRoundsTarget]=useState(4)
   const [rewards,setRewards]=useState({join:1,vote:1,round:2,finale:3})
   useEffect(()=>{if(!program)return;setBlocks(program.blocks.map(b=>({...b})));setRoundsTarget(program.roundsTarget);setRewards({...program.rewards})},[JSON.stringify(program)])
   if(!program)return null
@@ -613,7 +615,7 @@ function ProgramEditor({data,busy,run}:{data:DemoState;busy:boolean;run:(action:
   const patch=(index:number,p:any)=>setBlocks(prev=>prev.map((x,i)=>i===index?{...x,...p}:x))
   const remove=(index:number)=>setBlocks(prev=>prev.filter((_,i)=>i!==index).map((x,i)=>({...x,index:i})))
   const add=()=>setBlocks(prev=>[...prev,{id:'block_'+Date.now(),type:'cinema_rounds',title:'новый блок',durationMin:10,roundsTarget:1,autoAdvance:false,audioPlaylist:[],audioVolume:.25,index:prev.length}])
-  return <Card className="program-editor"><div className="section-title">программа вечера</div><p className="muted">порядок и тайминги можно менять без переписывания приложения</p><div className="program-blocks">{blocks.map((b,i)=><div className="program-block" key={b.id}><div className="program-block-order"><button type="button" disabled={i===0} onClick={()=>move(i,-1)}>↑</button><button type="button" disabled={i===blocks.length-1} onClick={()=>move(i,1)}>↓</button></div><input value={b.title} onChange={e=>patch(i,{title:e.target.value})}/><select value={b.type} onChange={e=>patch(i,{type:e.target.value})}><option value="arrival">сбор гостей</option><option value="onboarding">знакомство с животиной</option><option value="warm_up">разогрев</option><option value="cinema_rounds">кинораунды</option><option value="final_vote">финальный выбор</option><option value="finale">финал</option><option value="post_event">после мероприятия</option></select><label>мин<input type="number" min="0" max="240" value={b.durationMin} onChange={e=>patch(i,{durationMin:Number(e.target.value)})}/></label><label className="program-auto"><input type="checkbox" checked={b.autoAdvance===true} onChange={e=>patch(i,{autoAdvance:e.target.checked})}/> авто</label>{b.type==='cinema_rounds'&&<label>раундов<input type="number" min="0" max="20" value={b.roundsTarget} onChange={e=>patch(i,{roundsTarget:Number(e.target.value)})}/></label>}<button type="button" className="text-link" onClick={()=>remove(i)}>удалить</button></div>)}</div><Button kind="secondary" onClick={add}>добавить блок</Button><div className="program-config-grid"><Field label="ориентир фильмов за вечер"><input type="number" min="1" max="20" value={roundsTarget} onChange={e=>setRoundsTarget(Number(e.target.value))}/></Field><Field label="крошки за вход"><input type="number" min="0" max="100" value={rewards.join} onChange={e=>setRewards(v=>({...v,join:Number(e.target.value)}))}/></Field><Field label="крошки за голос"><input type="number" min="0" max="100" value={rewards.vote} onChange={e=>setRewards(v=>({...v,vote:Number(e.target.value)}))}/></Field><Field label="крошки за раунд"><input type="number" min="0" max="100" value={rewards.round} onChange={e=>setRewards(v=>({...v,round:Number(e.target.value)}))}/></Field></div><Button disabled={busy||!blocks.length} onClick={()=>run('admin-program-save',{blocks,roundsTarget,rewards})}>сохранить программу</Button></Card>
+  return <Card className="program-editor"><div className="section-title">программа вечера</div><p className="muted">порядок и тайминги можно менять без переписывания приложения</p><div className="program-blocks">{blocks.map((b,i)=><div className="program-block" key={b.id}><div className="program-block-order"><button type="button" disabled={i===0} onClick={()=>move(i,-1)}>↑</button><button type="button" disabled={i===blocks.length-1} onClick={()=>move(i,1)}>↓</button></div><input value={b.title} onChange={e=>patch(i,{title:e.target.value})}/><select value={b.type} onChange={e=>patch(i,{type:e.target.value})}><option value="arrival">сбор</option><option value="cinema_rounds">кинораунды</option><option value="break">перерыв</option><option value="final_qr">qr творог</option><option value="music_outro">музыка</option><option value="post_event">завершение</option></select><label>мин<input type="number" min="0" max="240" value={b.durationMin} onChange={e=>patch(i,{durationMin:Number(e.target.value)})}/></label><label className="program-auto"><input type="checkbox" checked={b.autoAdvance===true} onChange={e=>patch(i,{autoAdvance:e.target.checked})}/> авто</label>{b.type==='cinema_rounds'&&<label>раундов<input type="number" min="0" max="20" value={b.roundsTarget} onChange={e=>patch(i,{roundsTarget:Number(e.target.value)})}/></label>}<button type="button" className="text-link" onClick={()=>remove(i)}>удалить</button></div>)}</div><Button kind="secondary" onClick={add}>добавить блок</Button><div className="program-config-grid"><Field label="ориентир фильмов за вечер"><input type="number" min="1" max="20" value={roundsTarget} onChange={e=>setRoundsTarget(Number(e.target.value))}/></Field><Field label="крошки за вход"><input type="number" min="0" max="100" value={rewards.join} onChange={e=>setRewards(v=>({...v,join:Number(e.target.value)}))}/></Field><Field label="крошки за голос"><input type="number" min="0" max="100" value={rewards.vote} onChange={e=>setRewards(v=>({...v,vote:Number(e.target.value)}))}/></Field><Field label="крошки за раунд"><input type="number" min="0" max="100" value={rewards.round} onChange={e=>setRewards(v=>({...v,round:Number(e.target.value)}))}/></Field></div><Button disabled={busy||!blocks.length} onClick={()=>run('admin-program-save',{blocks,roundsTarget,rewards})}>сохранить программу</Button></Card>
 }
 
 function MovieCatalogAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(action:string,payload?:Record<string,unknown>)=>Promise<any>}){
@@ -1078,79 +1080,48 @@ function projectorContent(d:DemoState){
   const p=d.projector
   if(!p||['idle','arrival'].includes(p.state))return null
   const payload:any=p.payload||{}
-  if(p.state==='pitch_collecting')return <div className="screen-pitch-progress"><div className="eyebrow">раунд открыт</div><h1>придумайте фильм,<br/>которого не существует</h1><div className="screen-idea-count"><b>{Number(payload.count||0)}</b><span>из {Number(payload.total||0)||'?'}</span></div><p>название + короткое описание в телефоне</p></div>
-  if(p.state==='pitch_locked')return <div className="screen-pitch-locked"><div className="eyebrow">сбор закрыт · {Number(payload.count||0)} идей</div><h1>вот что придумал зал</h1><div className="screen-pitch-cards">{(Array.isArray(payload.pitches)?payload.pitches:[]).map((x:any,i:number)=><article key={i}><b>{String(x.title||'без названия')}</b><span>{String(x.description||'')}</span></article>)}</div></div>
-  if(p.state==='pitch_randomizing')return <div className="screen-assignment-random"><div className="eyebrow">чью идею утащит животина?</div><h1>выбираю</h1><div className="random-rabbits">{[0,1,2,3,4,5,6].map(i=><img key={i} src={import.meta.env.BASE_URL+'assets/rabbit-full.webp'} alt="" draggable={false}/>)}</div></div>
-  if(p.state==='pitch_selected'){const pitch=payload.pitch||{};return <><div className="eyebrow">{String(pitch.animalName||'животина')} придумала фильм</div><h1>{String(pitch.title||'без названия')}</h1><p>{String(pitch.description||'')}</p></>}
-  if(p.state==='movie_searching')return <><div className="eyebrow">животина роется в кино по всему миру...</div><h1>это уже сняли?</h1><p>проверяю фильм и фрагмент. если живой поиск не успеет, включу проверенный резерв</p></>
-  if(p.state==='movie_found'){if(payload.found===false)return <><div className="eyebrow">поиск закончен</div><h1>кажется, это пока не сняли.</h1></>;return <><div className="eyebrow">максимально близко</div><h1>{String(payload.filmTitle||'фильм')}</h1>{payload.year&&<h2>{String(payload.year)}</h2>}{payload.reason&&<p>{String(payload.reason)}</p>}</>}
+  if(p.state==='pitch_collecting')return <div className="screen-pitch-progress"><div className="eyebrow">раунд</div><h1>придумайте фильм,<br/>которого не существует</h1><div className="screen-idea-count"><b>{Number(payload.count||0)}</b><span>из {Number(payload.total||0)||'?'}</span></div><p>название + описание в телефоне</p></div>
+  if(p.state==='pitch_preview'){const pitch=payload.pitch||{};return <div className="screen-pitch-preview"><div className="eyebrow">идея {Number(payload.index||0)+1}/{Number(payload.total||1)} · id {String(pitch.id||'').slice(0,8)}</div><h1>{String(pitch.title||'без названия')}</h1><p>{String(pitch.description||'')}</p></div>}
+  if(p.state==='pitch_locked')return <><div className="eyebrow">идеи собраны</div><h1>смотрим по одной</h1></>
+  if(p.state==='pitch_randomizing')return <div className="screen-assignment-random"><div className="eyebrow">рандом</div><h1>выбираю одну идею</h1><div className="random-rabbits">{[0,1,2,3,4,5,6].map(i=><img key={i} src={import.meta.env.BASE_URL+'assets/rabbit-full.webp'} alt="" draggable={false}/>)}</div></div>
+  if(p.state==='pitch_selected'){const pitch=payload.pitch||{};return <><div className="eyebrow">выбрано</div><h1>{String(pitch.title||'без названия')}</h1><p>{String(pitch.description||'')}</p></>}
+  if(p.state==='movie_searching')return <><div className="eyebrow">поиск</div><h1>ищем похожий реальный фильм</h1></>
+  if(p.state==='movie_found')return <><div className="eyebrow">нашли</div><h1>{String(payload.filmTitle||'фильм')}</h1>{payload.year&&<h2>{String(payload.year)}</h2>}</>
   if(p.state==='film_intro')return <ProjectorFragment fragment={payload.fragment} title={String(payload.filmTitle||'фильм')}/>
-  if(p.state==='one_word_collecting')return <><div className="eyebrow">первое впечатление</div><h1>одно слово.<br/>что это за фильм?</h1><ScreenWordWall groups={Array.isArray(payload.wordGroups)?payload.wordGroups:[]} collecting/></>
-  if(p.state==='one_word_results')return <><div className="eyebrow">зал до полного просмотра</div><h1>вот что вы увидели</h1><ScreenWordWall groups={Array.isArray(payload.wordGroups)?payload.wordGroups:[]}/></>
-  if(p.state==='question_open')return <><div className="eyebrow">что будет дальше · {Number(payload.position||0)}/{Number(payload.totalQuestions||3)}</div><h1>{String(payload.prompt||'что будет дальше?')}</h1><div className="screen-question-options">{(Array.isArray(payload.options)?payload.options:[]).map((x:any,i:number)=><span key={i}>{answerText(x)}</span>)}</div><p>ответьте в телефоне</p></>
-  if(p.state==='question_results')return <><div className="eyebrow">как решил зал · {Number(payload.position||0)}/{Number(payload.totalQuestions||3)}</div><h1>{String(payload.prompt||'результаты')}</h1><ProjectorAnswerBars results={Array.isArray(payload.results)?payload.results:[]}/></>
+  if(p.state==='one_word_collecting')return <><div className="eyebrow">рецензия одним словом</div><h1>что это за фильм?</h1><ScreenWordWall groups={Array.isArray(payload.wordGroups)?payload.wordGroups:[]} collecting/></>
+  if(p.state==='one_word_results')return <><div className="eyebrow">рецензия зала</div><ScreenWordWall groups={Array.isArray(payload.wordGroups)?payload.wordGroups:[]}/></>
+  if(p.state==='question_open')return <><div className="eyebrow">вопрос {Number(payload.position||0)}/{Number(payload.totalQuestions||3)}</div><h1>{String(payload.prompt||'что будет дальше?')}</h1><p>напишите свой вариант в телефоне</p></>
+  if(p.state==='question_results'){const x=payload.closest||{};return <div className="screen-closest-answer"><div className="eyebrow">ближе всех · {Number(payload.answerCount||0)} ответов</div><h1>{String(x.animalName||'нет ответов')}</h1>{x.answer&&<p className="screen-closest-quote">«{String(x.answer)}»</p>}{x.comment&&<p>{String(x.comment)}</p>}</div>}
   if(p.state==='question_reveal'){
     const fragment=payload.revealFragment
-    if(fragment?.videoId||fragment?.sourceUrl)return <><ProjectorFragment fragment={fragment} title={String(payload.filmTitle||'продолжение')}/><div className="screen-reveal-overlay"><small>правильный ответ</small><b>{answerText(payload.correctAnswer)}</b>{payload.revealText&&<span>{String(payload.revealText)}</span>}</div></>
-    return <><div className="eyebrow">правильный ответ · {Number(payload.position||0)}/{Number(payload.totalQuestions||3)}</div><h1>{answerText(payload.correctAnswer)}</h1>{payload.revealText&&<p>{String(payload.revealText)}</p>}</>
+    if(fragment?.videoId||fragment?.sourceUrl)return <><ProjectorFragment fragment={fragment} title={String(payload.filmTitle||'продолжение')}/><div className="screen-reveal-overlay"><small>на самом деле</small><b>{answerText(payload.correctAnswer)}</b>{payload.revealText&&<span>{String(payload.revealText)}</span>}</div></>
+    return <><div className="eyebrow">на самом деле</div><h1>{answerText(payload.correctAnswer)}</h1>{payload.revealText&&<p>{String(payload.revealText)}</p>}</>
   }
-  if(p.state==='round_finished')return <><div className="eyebrow">{payload.roundNo?`раунд ${payload.roundNo}`:'кинораунд'}</div><h1>готово.</h1><p>можно запускать следующий раунд</p></>
-  if(p.state==='assignment_randomizing')return <div className="screen-assignment-random"><div className="eyebrow">этот фильм кто-то унесёт с собой</div><h1>кому он достанется?</h1><div className="random-rabbits">{[0,1,2,3,4,5,6].map(i=><img key={i} src={import.meta.env.BASE_URL+'assets/rabbit-full.webp'} alt="" draggable={false}/>)}</div></div>
-  if(p.state==='assignment_winner')return <div className="screen-assignment-winner"><div className="winner-rabbit"><img src={import.meta.env.BASE_URL+'assets/rabbit-full.webp'} alt="" draggable={false}/></div><div className="eyebrow">этот фильм твой</div><h1>{String(payload.animalName||'животина')}.</h1><h2>{String(payload.filmTitle||'фильм')}</h2><p>до следующей субботы. потом жду рецензию.</p>{payload.dueAt&&<div className="winner-deadline">до {eventDate(String(payload.dueAt))}</div>}</div>
-  if(p.state==='past_review_card')return <div className="screen-past-review"><div className="eyebrow">в прошлый раз</div><h1>{String(payload.animalName||'животина')} × {String(payload.filmTitle||'фильм')}</h1><div className="review-before-after"><span><small>после</small>«{String(payload.afterWord||'')}»</span></div><p>{String(payload.crumbs||'—')}/5 крошек</p>{payload.animalTake&&<h3>{String(payload.animalTake)}</h3>}</div>
+  if(p.state==='assignment_randomizing')return <div className="screen-assignment-random"><div className="eyebrow">рандом</div><h1>кто досмотрит фильм?</h1><div className="random-rabbits">{[0,1,2,3,4,5,6].map(i=><img key={i} src={import.meta.env.BASE_URL+'assets/rabbit-full.webp'} alt="" draggable={false}/>)}</div></div>
+  if(p.state==='assignment_winner')return <div className="screen-assignment-winner"><div className="winner-rabbit"><img src={import.meta.env.BASE_URL+'assets/rabbit-full.webp'} alt="" draggable={false}/></div><div className="eyebrow">этот фильм твой</div><h1>{String(payload.animalName||'животина')}</h1><h2>{String(payload.filmTitle||'фильм')}</h2><p>досмотри целиком и расскажи на следующей встрече</p></div>
+  if(p.state==='round_finished')return <><div className="eyebrow">раунд закончен</div><h1>готово</h1></>
+  if(p.state==='past_review_card')return <div className="screen-past-review"><div className="eyebrow">в прошлый раз</div><h1>{String(payload.animalName||'животина')} × {String(payload.filmTitle||'фильм')}</h1>{payload.animalTake&&<h3>{String(payload.animalTake)}</h3>}</div>
   return null
 }
 
 function screenContent(d:DemoState){
   const projected=projectorContent(d)
   if(projected)return projected
-  if(d.event.status==='IDEAS_OPEN'){
-    const p=d.ideaProgress||{submitted:0,attended:0,ready:false}
-    return <div className="screen-idea-progress">
-      <RabbitMain className="screen-main-rabbit"/>
-      <div className="eyebrow">придумываем фильм</div>
-      <h1>{p.ready?'все готовы':'пишем название и описание'}</h1>
-      <div className="screen-idea-count"><b>{p.submitted}</b><span>из {p.attended}</span></div>
-      <p>{p.ready?'все на месте. можно запускать рандом.':'как закончите, нажмите «готово» в телефоне'}</p>
-    </div>
-  }
-  if(['IDEA_RANDOMIZED','MOVIE_SEARCH'].includes(d.event.status)&&d.selectedIdea){
-    return <div className="screen-selected-idea"><RabbitMain className="screen-main-rabbit"/><div className="eyebrow">рандом выбрал</div><h1>{d.selectedIdea.title}</h1><p>{d.selectedIdea.plot}</p>{d.event.status==='MOVIE_SEARCH'&&<small>животина ищет реальный фильм, похожий на эту идею</small>}</div>
-  }
   const show=d.show
-  if(show&&show.runtime.currentBlock?.type==='arrival'&&!['paused','finished'].includes(show.runtime.runStatus))return <><div className="eyebrow">сбор гостей</div><h1>животины заходят в зал</h1><ScreenCreatureWall data={d}/></>
+  if(show&&show.runtime.currentBlock?.type==='arrival'&&!['paused','finished'].includes(show.runtime.runStatus))return <><div className="eyebrow">сбор</div><h1>животины заходят в зал</h1><ScreenCreatureWall data={d}/></>
   if(show&&show.runtime.runStatus!=='idle'){
     const block=show.runtime.currentBlock
-    const round=show.currentRound
-    if(show.runtime.runStatus==='paused')return <><div className="eyebrow">пауза</div><h1>никуда не уходим</h1><p>ведущий сейчас продолжит</p></>
-    if(block?.type==='music_live')return <><div className="eyebrow">живой блок</div><h1>{block.title}</h1><p>живой звук. животина временно молчит</p></>
-    if(show.runtime.videoState?.status==='playing'&&(show.runtime.currentMovie?.videoId||show.runtime.currentMovie?.sourceUrl))return <><ScreenVideo data={d}/></>
-    if(round?.resultsVisible&&show.voteResults.length)return <><div className="eyebrow">как проголосовал зал</div><h1>{round.question?.prompt||'результаты'}</h1><ShowVoteResults data={d}/></>
-    if(round?.question&&round.voteState==='open')return <><div className="eyebrow">раунд {round.roundNo}</div><h1>{round.question.prompt}</h1><p>голосование открыто. отвечайте в телефоне</p></>
-    if(round?.movie){
-      const noVideo=round.movie.usageStatus==='no_video'||(!round.movie.videoId&&!round.movie.sourceUrl)
-      return <><div className="eyebrow">раунд {round.roundNo}</div><h1>{round.movie.title}</h1>{round.movie.year&&<p>{round.movie.year}{round.movie.genre?`. ${round.movie.genre}`:''}</p>}{noVideo&&<p>{round.movie.animalComment||'видео нет. животина всё равно нашла, что с этим делать'}</p>}</>
-    }
-    if(block?.type==='arrival')return <><div className="eyebrow">сбор гостей</div><h1>заходите</h1><p>{d.event.sold}/{d.event.capacity} в списке. {show.onlineCount} сейчас в приложении</p></>
-    if(block?.type==='onboarding')return <><div className="eyebrow">животина</div><h1>сначала познакомимся</h1><p>телефоны можно достать</p></>
-    if(block?.type==='warm_up')return <><div className="eyebrow">разогрев</div><h1>{block.title}</h1><p>первый общий интерактив появится на телефонах</p></>
-    if(block?.type==='cinema_rounds')return <><div className="eyebrow">кино</div><h1>{block.title}</h1><p>следующий раунд готовится</p></>
-    if(block?.type==='final_vote'){
-      const final=show.finalVote
-      return <div className="screen-final-vote"><div className="eyebrow">финальный выбор · {final?.totalVotes||0} голосов</div><h1>какой фильм забирает вечер?</h1><div className="screen-final-vote-list">{(final?.options||[]).map(x=><div key={x.id}><span>{x.title}{x.year?' · '+x.year:''}</span><b>{x.count}</b></div>)}</div></div>
-    }
-    if(block?.type==='finale'){
-      const winners=show.finalVote?.winners||[]
-      if(winners.length===1)return <div className="screen-finale-winner"><div className="eyebrow">фильм вечера</div><h1>{winners[0].title}</h1>{winners[0].year&&<h2>{winners[0].year}</h2>}<p>{winners[0].count} голосов</p></div>
-      if(winners.length>1)return <div className="screen-finale-winner"><div className="eyebrow">финал</div><h1>ничья</h1><p>{winners.map(x=>x.title).join(' · ')}</p></div>
-      return <><div className="eyebrow">итог</div><h1>ну всё</h1><p>животина собрала вечер</p></>
-    }
-    if(block?.type==='post_event'||show.runtime.runStatus==='finished')return <><h1>вечер закончился</h1><p>животина уходит домой вместе с вами</p></>
+    if(show.runtime.runStatus==='paused')return <><div className="eyebrow">пауза</div><h1>скоро продолжим</h1></>
+    if(block?.type==='break')return <><div className="eyebrow">перерыв</div><h1>30 минут</h1></>
+    if(block?.type==='final_qr')return <div className="screen-final-qr"><div><div className="eyebrow">итог вечера</div><h1>вступить в «творог»</h1><p>наведи камеру</p></div><div className="screen-final-qr-code"><img src={import.meta.env.BASE_URL+'assets/tvorog-qr.svg'} alt="qr-код группы творог"/></div></div>
+    if(block?.type==='music_outro')return <><div className="eyebrow">после</div><h1>музыка</h1></>
+    if(block?.type==='cinema_rounds')return <><div className="eyebrow">кино</div><h1>{block.title}</h1></>
+    if(block?.type==='post_event'||show.runtime.runStatus==='finished')return <><h1>всё</h1><p>спасибо за вечер</p></>
     return <><h1>{block?.title||'шоу идёт'}</h1></>
   }
   const state=d.event.status
-  if(['DRAFT','SALES_OPEN','CHECKIN'].includes(state))return <><h1>скоро начнём</h1><p>{d.event.sold}/{d.event.capacity} в списке</p></>
-  return <><h1>{statusLabel(state)}</h1><p>следите за телефоном</p></>
+  if(['DRAFT','SALES_OPEN','CHECKIN'].includes(state))return <><h1>скоро начнём</h1></>
+  return <><h1>{statusLabel(state)}</h1></>
 }
 
 function showTimerText(data:DemoState,now:number){
