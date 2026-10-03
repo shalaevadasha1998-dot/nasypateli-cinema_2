@@ -248,6 +248,7 @@ export type ShowRound = {
   resultsVisible:boolean
   videoState:Record<string,unknown>
   startedAt?:string
+  updatedAt?:string
   closedAt?:string
 }
 
