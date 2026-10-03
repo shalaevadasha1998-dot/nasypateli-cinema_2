@@ -521,13 +521,21 @@ function ShowControl({data,busy,run}:{data:DemoState;busy:boolean;run:(action:st
   const audio=data.show?.audio
   const audioState=audio?.state
   const currentTrack=audio?.assets.find(x=>x.key===audioState?.track_key)
+  let scheduleCursor=0
+  const exactSlots=new Map(show.program.blocks.map(b=>{
+    const start=scheduleCursor
+    const end=start+Math.max(0,Number(b.durationMin||0))
+    scheduleCursor=end
+    return [b.id,{start,end}] as const
+  }))
+  const minuteMark=(value:number)=>`${String(Math.floor(value/60)).padStart(2,'0')}:${String(Math.round(value%60)).padStart(2,'0')}`
   return <section className={runtime.runStatus==='running'?'show-console live':'show-console'}>
     <div className="show-console-head">
       <div><div className="eyebrow">{finished?'вечер закончен':runtime.runStatus==='idle'?'готово к запуску':runtime.runStatus==='paused'?'шоу на паузе':'шоу идёт'}</div><h1>{block?.title||'программа вечера'}</h1></div>
       <span className={runtime.runStatus==='running'?'show-live-dot on':'show-live-dot'}>{showRunStatusLabel(runtime.runStatus)}</span>
     </div>
     <div className="show-console-stats"><span><b>{confirmed}</b>в списке</span><span><b>{attended}</b>пришли</span><span><b>{show.onlineCount}</b>online</span><span><b>{waiting}</b>ожидание</span></div>
-    <div className="show-timeline">{show.program.blocks.map(b=><button type="button" disabled={busy} onClick={()=>command('jump',{blockId:b.id})} className={b.id===runtime.currentBlockId?'current':''} key={b.id}><span>{b.index+1}</span><b>{b.title}</b><small>{b.durationMin?b.durationMin+' мин'+(b.autoAdvance?' · авто':''):'без таймера'}</small></button>)}</div>
+    <div className="show-timeline">{show.program.blocks.map(b=>{const slot=exactSlots.get(b.id);return <button type="button" disabled={busy} onClick={()=>command('jump',{blockId:b.id})} className={b.id===runtime.currentBlockId?'current':''} key={b.id}><span>{b.index+1}</span><b>{b.title}</b><small>{b.durationMin&&slot?`${minuteMark(slot.start)}–${minuteMark(slot.end)} · ${b.autoAdvance?'авто':'ручной'}`:'после эфира'}</small></button>})}</div>
     {block?.type==='final_vote'&&show.finalVote&&<div className="show-final-vote-admin"><small>финальный выбор · {show.finalVote.totalVotes} голосов</small>{show.finalVote.options.map(x=><span key={x.id}><b>{x.title}</b><em>{x.count}</em></span>)}</div>}
     <div className="show-audio-console">
       <div><small>звук на проекторе</small><b>{currentTrack?.title||'тишина'}</b><span>{audioState?.status==='playing'?'играет':audioState?.status==='paused'?'пауза':'остановлено'} · {audioState?.mode==='auto'?'авто':'ручной'}</span></div>
@@ -1148,6 +1156,12 @@ function ProjectorAudio({data,screenToken}:{data:DemoState;screenToken:string}){
   const asset=audio?.assets.find(x=>x.key===state?.track_key)
   const projectorState=String(data.projector?.state||'')
   const filmActive=['film_intro','playing_clip','question_open','question_results','question_reveal'].includes(projectorState)
+  const runtime=data.show?.runtime
+  const block=runtime?.currentBlock
+  const livePerformance=block?.type==='music_live'
+  const blockCutoffAt=runtime?.blockStartedAt&&block?.durationMin
+    ?new Date(runtime.blockStartedAt).getTime()+Number(block.durationMin)*60_000
+    :0
   const tryPlay=async(el:HTMLAudioElement|null)=>{
     if(!el)return
     try{await el.play();setNeedsUnlock(false)}catch{setNeedsUnlock(true)}
@@ -1158,9 +1172,17 @@ function ProjectorAudio({data,screenToken}:{data:DemoState;screenToken:string}){
     const wanted=asset?.url||''
     if(el.src!==wanted){el.pause();el.src=wanted;el.load()}
     el.volume=Math.max(0,Math.min(1,Number(state?.volume??.28)))
-    if(!wanted||state?.status!=='playing'||filmActive){el.pause();return}
+    if(!wanted||state?.status!=='playing'||filmActive||livePerformance||(blockCutoffAt>0&&Date.now()>=blockCutoffAt)){el.pause();return}
     void tryPlay(el)
-  },[asset?.url,state?.status,state?.volume,filmActive,state?.updated_at])
+  },[asset?.url,state?.status,state?.volume,filmActive,livePerformance,blockCutoffAt,state?.updated_at])
+  useEffect(()=>{
+    const el=background.current
+    if(!el||runtime?.runStatus!=='running'||!blockCutoffAt)return
+    const remaining=blockCutoffAt-Date.now()
+    if(remaining<=0){el.pause();return}
+    const timer=window.setTimeout(()=>el.pause(),remaining)
+    return()=>window.clearTimeout(timer)
+  },[runtime?.runStatus,runtime?.currentBlockId,runtime?.blockStartedAt,blockCutoffAt])
   useEffect(()=>{
     const block=String(data.show?.runtime.currentBlockId||'')
     const key=projectorState==='pitch_randomizing'?'creature-3':projectorState==='pitch_selected'?'creature-4':projectorState==='movie_found'?'creature-5':block==='onboarding'?'creature-1':block==='warm_up'?'creature-2':''
