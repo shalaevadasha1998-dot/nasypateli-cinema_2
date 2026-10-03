@@ -1064,40 +1064,73 @@ export async function handleApi(req:Request){
     if(action==='health')return json(await runtimeHealth(db))
 
     if(action==='screen-bootstrap'){
-      const event=await eventBySlug(db,String(body.slug||'2026-10-03'))
+      const slug=String(body.slug||'2026-10-03')
+      const live=await db.rpc('app_screen_live_state',{p_slug:slug})
+      if(live.error)throw live.error
+      const x:any=live.data
+      if(!x?.event?.id)return err('Событие не найдено',404)
+      const event:any={...x.event,settings:x.event.settings||{}}
       const testScreenOk=await testRoomTokenMatches(event,req.headers.get('x-screen-token')||'')
       const openTestScreen=event?.settings?.test_room===true
       if(!screenTokenOk&&!testScreenOk&&!openTestScreen)return err('Доступ к экрану запрещён',401)
-      const [show,attended,projector]=await Promise.all([
-        buildShowState(db,event),
-        db.from('registrations').select('user_id,created_at').eq('event_id',event.id).eq('status','attended').order('created_at'),
-        projectorPublicState(db,event)
-      ])
-      if(attended.error)throw attended.error
-      const ids=(attended.data||[]).map((x:any)=>String(x.user_id))
-      const creatures=ids.length?await db.from('creatures').select('user_id,name,stage,crumbs,growth_progress,settings').in('user_id',ids):{data:[],error:null} as any
-      if(creatures.error)throw creatures.error
-      const creatureMap=new Map((creatures.data||[]).map((x:any)=>[String(x.user_id),x]))
-      const screenCreatures=(await Promise.all(ids.map(async(userId)=>{
-        const x:any=creatureMap.get(userId)
-        if(!x)return null
-        return {
-          id:await publicScreenAnimalId(event.id,userId),name:String(x.name||'животина'),stage:String(x.stage||'stage_0'),
-          visualVariant:Math.max(1,Math.min(50,Math.round(Number(x.settings?.visual_variant||1)))),
-          crumbs:Number(x.crumbs||0),growthProgress:Number(x.growth_progress||0)
+
+      const config:any=x.program_config||{}
+      const rawBlocks=Array.isArray(config.blocks)?config.blocks:[]
+      const blocks=rawBlocks.filter((b:any)=>b?.enabled!==false).map((b:any,index:number)=>({
+        id:String(b.id||''),type:String(b.type||b.id||''),title:String(b.title||b.id||''),
+        durationMin:Number(b.duration_min??b.durationMin??0)||0,
+        roundsTarget:Number(b.rounds_target??b.roundsTarget??0)||0,
+        autoAdvance:b.auto_advance===true||b.autoAdvance===true,
+        audioPlaylist:(Array.isArray(b.audio_playlist)?b.audio_playlist:Array.isArray(b.audioPlaylist)?b.audioPlaylist:[]).map((v:any)=>String(v)),
+        audioVolume:Number(b.audio_volume??b.audioVolume??.28)||.28,index
+      }))
+      const rewards:any=config.rewards||{}
+      const program:any={
+        version:Number(config.version||1),
+        roundsTarget:Number(config.rounds_target??config.roundsTarget??4)||4,
+        rewards:{join:Number(rewards.join??1),vote:Number(rewards.vote??1),round:Number(rewards.round??2),finale:Number(rewards.finale??3)},
+        blocks
+      }
+      const raw:any=x.runtime||{}
+      const blockIndex=Math.max(0,Math.min(Math.max(0,blocks.length-1),Number(raw.current_block_index||0)))
+      const block=blocks.find((b:any)=>b.id===raw.current_block_id)||blocks[blockIndex]
+      const media=Array.isArray(x.media)?x.media:[]
+      const screen:any=x.screen||{}
+      const creaturesRaw=Array.isArray(x.creatures)?x.creatures:[]
+      const screenCreatures=(await Promise.all(creaturesRaw.map(async(cr:any)=>({
+        id:await publicScreenAnimalId(String(event.id),String(cr.user_id)),
+        name:String(cr.name||'животина'),stage:String(cr.stage||'stage_0'),
+        visualVariant:Math.max(1,Math.min(50,Math.round(Number(cr.settings?.visual_variant||1)))),
+        crumbs:Number(cr.crumbs||0),growthProgress:Number(cr.growth_progress||0)
+      }))))
+      const projectorRaw:any=x.projector||{}
+      const show:any={
+        program,
+        runtime:{
+          runStatus:String(raw.run_status||'idle'),currentBlockId:String(raw.current_block_id||block?.id||''),
+          currentBlockIndex:blockIndex,currentBlock:block,currentRound:Number(raw.current_round||0),
+          currentRoundId:raw.current_round_id||undefined,currentQuestion:raw.current_question||undefined,
+          voteState:String(raw.vote_state||'closed'),resultsVisible:raw.results_visible===true,
+          videoState:raw.video_state||{status:'idle'},revision:Number(raw.revision||0),
+          startedAt:raw.started_at||undefined,blockStartedAt:raw.block_started_at||undefined,
+          pausedAt:raw.paused_at||undefined,updatedAt:raw.updated_at||undefined
+        },
+        voteResults:[],onlineCount:screenCreatures.length,
+        audio:{
+          state:raw.audio_state||{mode:'auto',status:'stopped',track_key:null,playlist_index:0,volume:.28},
+          assets:media.map((m:any)=>({key:String(m.asset_key),title:String(m.title),category:String(m.category),mimeType:String(m.mime_type),durationSec:Number(m.duration_sec||0),url:String(m.public_url||'')})),
+          screen:{unlocked:screen.audio_unlocked===true,online:!!screen.last_seen_at&&Date.now()-new Date(screen.last_seen_at).getTime()<15000,lastSeenAt:screen.last_seen_at||undefined,testNonce:screen.test_nonce||undefined,testAssetKey:screen.test_asset_key||undefined}
         }
-      }))).filter(Boolean)
+      }
       return json({
         event:{
-          id:event.id,slug:event.slug,title:event.title,startsAt:event.starts_at,capacity:event.capacity,
-          sold:ids.length,held:0,ticketPriceRub:event.ticket_price_rub,maxMovieRuntimeMin:event.max_movie_runtime_min,
+          id:event.id,slug:event.slug,title:event.title,startsAt:event.starts_at,capacity:Number(event.capacity||0),
+          sold:screenCreatures.length,held:0,ticketPriceRub:Number(event.ticket_price_rub||0),maxMovieRuntimeMin:Number(event.max_movie_runtime_min||150),
           status:event.status,venueName:event.venue_name,venueAddress:event.venue_address,paymentsAvailable:false,
           nonexistentFilmEnabled:nonexistentFilmEnabled(event),movieAvailabilityStatus:'unchecked'
         },
-        show,
-        screenMessage:event.settings?.screen_message||'',
-        screenCreatures,
-        projector
+        show,screenMessage:event.settings?.screen_message||'',screenCreatures,
+        projector:{state:String(projectorRaw.state||'idle'),revision:Number(projectorRaw.revision||0),payload:projectorRaw.payload||{},updatedAt:projectorRaw.updated_at||undefined}
       })
     }
 
@@ -1434,18 +1467,14 @@ export async function handleApi(req:Request){
     }
 
     if(action==='live-refresh'){
-      const event=testParticipantAccess&&testEvent?testEvent:await eventBySlug(db,requestedSlug||'2026-10-03')
-      if(event?.settings?.test_room===true&&!testParticipantAccess)return err('Тестовая комната закрыта',403)
-      const [runtimeR,projectorR]=await Promise.all([
-        db.from('event_runtime').select('run_status,current_block_id,current_block_index,current_round,current_round_id,current_movie_id,current_question,vote_state,results_visible,video_state,revision,started_at,block_started_at,paused_at,updated_at').eq('event_id',event.id).maybeSingle(),
-        db.from('event_projector_state').select('*').eq('event_id',event.id).maybeSingle()
-      ])
-      if(runtimeR.error)throw runtimeR.error
-      if(projectorR.error)throw projectorR.error
-      const raw:any=runtimeR.data||{}
-      const filmLive=await filmLiveState(db,event,user.id,projectorR.data)
+      if(requestedSlug.startsWith('test-')&&!testParticipantAccess)return err('Тестовая комната закрыта',403)
+      const live=await db.rpc('app_participant_live_state',{p_slug:requestedSlug||'2026-10-03',p_user_id:user.id})
+      if(live.error)throw live.error
+      const x:any=live.data
+      if(!x)return err('Событие не найдено',404)
+      const raw:any=x.runtime||{}
       return json({
-        eventStatus:event.status,
+        eventStatus:x.event_status,
         runtime:{
           runStatus:String(raw.run_status||'idle'),currentBlockId:String(raw.current_block_id||''),
           currentBlockIndex:Number(raw.current_block_index||0),currentRound:Number(raw.current_round||0),
@@ -1455,8 +1484,8 @@ export async function handleApi(req:Request){
           revision:Number(raw.revision||0),startedAt:raw.started_at||undefined,
           blockStartedAt:raw.block_started_at||undefined,pausedAt:raw.paused_at||undefined,updatedAt:raw.updated_at||undefined
         },
-        filmLive,
-        screenMessage:event.settings?.screen_message||''
+        filmLive:x.film_live||undefined,
+        screenMessage:x.screen_message||''
       })
     }
 
