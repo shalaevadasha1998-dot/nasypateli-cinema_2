@@ -1951,17 +1951,13 @@ export async function handleApi(req:Request){
       const q=await db.from('film_questions').select('*').eq('id',questionId).eq('film_package_id',projector.data.film_package_id).maybeSingle()
       if(q.error)throw q.error
       if(!q.data)return err('вопрос не найден',404)
-      const answer=body.answer
-      const encoded=JSON.stringify(answer)
-      if(answer===undefined||encoded.length>1000)return err('некорректный ответ',422)
-      const options=Array.isArray(q.data.options)?q.data.options:[]
-      if(options.length&&!options.some((x:any)=>JSON.stringify(x)===encoded))return err('выберите один из вариантов',422)
-      const isCorrect=JSON.stringify(q.data.correct_answer)===encoded
+      const answer=String(body.answer||'').trim().replace(/\s+/g,' ').slice(0,700)
+      if(answer.length<2)return err('напишите свой вариант',422)
       const creature=await db.from('creatures').select('name').eq('user_id',user.id).single()
       if(creature.error)throw creature.error
       const saved=await db.from('film_predictions').upsert({
         event_id:event.id,round_id:projector.data.round_id,film_package_id:projector.data.film_package_id,
-        question_id:questionId,user_id:user.id,animal_name_snapshot:creature.data.name,answer,is_correct:isCorrect,updated_at:new Date().toISOString()
+        question_id:questionId,user_id:user.id,animal_name_snapshot:creature.data.name,answer,is_correct:false,updated_at:new Date().toISOString()
       },{onConflict:'question_id,user_id'}).select('answer,is_correct').single()
       if(saved.error)throw saved.error
       return json({ok:true,answer:saved.data.answer})
@@ -2184,17 +2180,33 @@ export async function handleApi(req:Request){
         const round=show.currentRound
         if(!round?.id||round.status!=='active')return err('сейчас нет активного раунда',409)
         if(round.flowStatus!=='collecting_films')return err('сбор фильмов сейчас не открыт',409)
-        const pitches=await db.from('invented_films').select('id',{count:'exact'}).eq('round_id',round.id).eq('event_id',event.id)
+        const pitches=await db.from('invented_films').select('id,title,description').eq('round_id',round.id).eq('event_id',event.id).order('created_at')
         if(pitches.error)throw pitches.error
-        if(!Number(pitches.count||0))return err('пока никто не отправил фильм',409)
+        const rows=pitches.data||[]
+        if(!rows.length)return err('пока никто не отправил фильм',409)
         const now=new Date().toISOString()
         const lock=await db.from('invented_films').update({locked_at:now,updated_at:now}).eq('round_id',round.id).eq('event_id',event.id)
         if(lock.error)throw lock.error
         const updated=await db.from('event_rounds').update({flow_status:'films_locked',updated_at:now}).eq('id',round.id).eq('event_id',event.id)
         if(updated.error)throw updated.error
-        const projector=await setProjectorState(db,event,'pitch_locked',round.id,null,{count:Number(pitches.count||0)})
-        return json({ok:true,count:Number(pitches.count||0),projector})
+        const first:any=rows[0]
+        const projector=await setProjectorState(db,event,'pitch_preview',round.id,null,{index:0,total:rows.length,pitch:{id:String(first.id),title:String(first.title),description:String(first.description)}})
+        return json({ok:true,count:rows.length,projector})
       })
+    }
+
+    if(action==='admin-round-pitch-preview'){
+      const show=await buildShowState(db,event)
+      const round=show.currentRound
+      if(!round?.id||round.status!=='active'||round.flowStatus!=='films_locked')return err('сейчас нельзя листать идеи',409)
+      const rows=await db.from('invented_films').select('id,title,description').eq('round_id',round.id).eq('event_id',event.id).order('created_at')
+      if(rows.error)throw rows.error
+      const list=rows.data||[]
+      if(!list.length)return err('идей нет',409)
+      const index=Math.max(0,Math.min(list.length-1,Math.round(Number(body.index)||0)))
+      const pitch:any=list[index]
+      const projector=await setProjectorState(db,event,'pitch_preview',round.id,null,{index,total:list.length,pitch:{id:String(pitch.id),title:String(pitch.title),description:String(pitch.description)}})
+      return json({ok:true,index,total:list.length,projector})
     }
 
     if(action==='admin-round-pitch-draw'){
@@ -2510,14 +2522,52 @@ export async function handleApi(req:Request){
         if(q.error)throw q.error
         if(!q.data)return err('вопрос не найден',404)
         if(op==='question_open'){
-          const options=stableThreeOptions(Array.isArray(q.data.options)?q.data.options:[],q.data.correct_answer,String(q.data.id))
-          state='question_open';payload={filmTitle:pack.data.title_snapshot,questionId:q.data.id,position,totalQuestions:Number(round.data.question_target||3),prompt:q.data.prompt,options}
+          state='question_open';payload={filmTitle:pack.data.title_snapshot,questionId:q.data.id,position,totalQuestions:Number(round.data.question_target||3),prompt:q.data.prompt,answerMode:'text'}
         }else if(op==='question_results'){
-          const answers=await db.from('film_predictions').select('answer').eq('event_id',event.id).eq('round_id',roundId).eq('film_package_id',packageId).eq('question_id',q.data.id)
+          const answers=await db.from('film_predictions').select('id,animal_name_snapshot,answer').eq('event_id',event.id).eq('round_id',roundId).eq('film_package_id',packageId).eq('question_id',q.data.id)
           if(answers.error)throw answers.error
-          const counts=new Map<string,{answer:any;count:number}>()
-          for(const x of answers.data||[]){const key=JSON.stringify(x.answer);const cur=counts.get(key)||{answer:x.answer,count:0};cur.count++;counts.set(key,cur)}
-          state='question_results';payload={filmTitle:pack.data.title_snapshot,questionId:q.data.id,position,totalQuestions:Number(round.data.question_target||3),prompt:q.data.prompt,results:[...counts.values()].sort((a,b)=>b.count-a.count)}
+          const rows=(answers.data||[]).map((x:any)=>({id:String(x.id),animalName:String(x.animal_name_snapshot||'животина'),answer:String(x.answer||'')})).filter((x:any)=>x.answer.trim())
+          let closest:any=null
+          if(rows.length){
+            const actual=[String(q.data.correct_answer||''),String(q.data.reveal_text||'')].filter(Boolean).join(' · ')
+            let winnerId=''
+            let comment=''
+            try{
+              const analysisSchema={type:'object',additionalProperties:false,properties:{
+                winnerId:{type:'string'},comment:{type:'string',minLength:1,maxLength:500}
+              },required:['winnerId','comment']}
+              const ai:any=await Promise.race([
+                structuredResponse<any>({
+                  name:'closest_open_prediction',
+                  schema:analysisSchema,
+                  instructions:'выбери ОДИН ответ участника, который по смыслу ближе всего к тому, что реально происходит дальше в фильме. не требуй буквального совпадения слов. winnerId обязан быть id одного из переданных ответов. comment по-русски, максимум 2 коротких предложения: что человек угадал и в чём промахнулся. не придумывай факты сверх actual.',
+                  input:JSON.stringify({question:q.data.prompt,actual,answers:rows}),
+                  maxOutputTokens:500,reasoningEffort:'low'
+                }),
+                new Promise((_,reject)=>setTimeout(()=>reject(new Error('AI_TIMEOUT')),12000))
+              ])
+              winnerId=String(ai?.winnerId||'')
+              comment=String(ai?.comment||'').trim()
+            }catch{}
+            if(!rows.some((x:any)=>x.id===winnerId)){
+              const tokens=(v:string)=>new Set(v.toLowerCase().replace(/[^a-zа-яё0-9 ]/gi,' ').split(/\s+/).filter((x:string)=>x.length>2))
+              const target=tokens(actual)
+              let best=-1
+              for(const row of rows){
+                const own=tokens(row.answer);let score=0
+                for(const t of own)if(target.has(t))score++
+                if(score>best){best=score;winnerId=row.id}
+              }
+              comment='этот ответ оказался ближе всего к реальному продолжению.'
+            }
+            const winner=rows.find((x:any)=>x.id===winnerId)||rows[0]
+            closest={animalName:winner.animalName,answer:winner.answer,comment}
+            const reset=await db.from('film_predictions').update({is_correct:false}).eq('event_id',event.id).eq('round_id',roundId).eq('question_id',q.data.id)
+            if(reset.error)throw reset.error
+            const mark=await db.from('film_predictions').update({is_correct:true}).eq('id',winner.id)
+            if(mark.error)throw mark.error
+          }
+          state='question_results';payload={filmTitle:pack.data.title_snapshot,questionId:q.data.id,position,totalQuestions:Number(round.data.question_target||3),prompt:q.data.prompt,answerCount:rows.length,closest}
         }else{
           state='question_reveal';payload={filmTitle:pack.data.title_snapshot,questionId:q.data.id,position,totalQuestions:Number(round.data.question_target||3),prompt:q.data.prompt,correctAnswer:q.data.correct_answer,revealText:q.data.reveal_text,revealFragment:q.data.reveal_fragment}
         }
@@ -2922,14 +2972,18 @@ export async function handleApi(req:Request){
         const block=show.runtime.currentBlock
         if(!block||String(block.type)!=='cinema_rounds')return err('кинораунд запускается только внутри киношного блока',409)
         if(show.runtime.runStatus!=='running')return err('сначала запустите шоу',409)
-        const roundTarget=Math.max(1,Math.min(20,Number(block.roundsTarget||show.program.roundsTarget||7)))
-        if(Number(show.runtime.currentRound||0)>=roundTarget&&show.currentRound?.status!=='active')return err('все кинораунды уже завершены · переходите к финальному выбору',409)
+        const roundTarget=Math.max(1,Math.min(20,Number(block.roundsTarget||2)))
+        const blockRounds=await db.from('event_rounds').select('*',{count:'exact',head:true}).eq('event_id',event.id).eq('block_id',block.id)
+        if(blockRounds.error)throw blockRounds.error
+        if(Number(blockRounds.count||0)>=roundTarget&&show.currentRound?.status!=='active')return err('все раунды этого блока уже завершены · нажмите следующий блок',409)
         const now=new Date().toISOString()
         if(show.currentRound?.id&&show.currentRound.status==='active'){
           const c=await db.from('event_rounds').update({status:'closed',flow_status:'round_finished',closed_at:now,updated_at:now,vote_state:'closed'}).eq('id',show.currentRound.id)
           if(c.error)throw c.error
         }
-        const roundNo=Number(show.runtime.currentRound||0)+1
+        const lastRound=await db.from('event_rounds').select('round_no').eq('event_id',event.id).order('round_no',{ascending:false}).limit(1).maybeSingle()
+        if(lastRound.error)throw lastRound.error
+        const roundNo=Number(lastRound.data?.round_no||0)+1
         const ins=await db.from('event_rounds').insert({
           event_id:event.id,round_no:roundNo,block_id:block.id,status:'active',flow_status:'collecting_films',
           question_position:0,question_target:3,vote_state:'closed',results_visible:false,video_state:{status:'idle'},started_at:now
