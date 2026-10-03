@@ -6,14 +6,14 @@ const eventSelect=[
   'event_presence(*)','event_screen_status(*)','event_projector_state(*)',
   'event_rounds!event_rounds_event_id_fkey(*,movie_candidates!event_rounds_movie_candidate_id_fkey(*))',
   'event_votes(*)','event_final_votes(*)','event_outputs(*)','event_runtime_log(*)',
-  'idea_finalists(*,film_ideas(*))',
-  'selected_idea(*,film_ideas(*),users!selected_idea_revealed_author_user_id_fkey(id,display_name,telegram_username,deleted_at))',
-  'movie_finalists(*,movie_candidates(*))','event_movie(*,movie_candidates(*))',
+  'idea_finalists(*,film_ideas!idea_finalists_film_idea_id_fkey(*))',
+  'selected_idea(*,film_ideas!selected_idea_film_idea_id_fkey(*),users!selected_idea_revealed_author_user_id_fkey(id,display_name,telegram_username,deleted_at))',
+  'movie_finalists(*,movie_candidates!movie_finalists_movie_candidate_id_fkey(*))','event_movie(*,movie_candidates!event_movie_movie_candidate_id_fkey(*))',
   'prediction_questions(*)','film_ideas(*)','invented_films(*)',
   'movie_candidates!movie_candidates_event_id_fkey(*)','movie_source_candidates(*)',
-  'registrations(*,users!registrations_user_id_fkey(id,display_name,telegram_username,deleted_at,cinema_profiles(user_id,profile_json),creatures(user_id,name)))',
-  'film_packages(*,film_questions(*))',
-  'film_assignments(*,submitted_reviews(*),users!film_assignments_user_id_fkey(id,display_name,telegram_username,deleted_at))',
+  'registrations(*,users!registrations_user_id_fkey(id,display_name,telegram_username,deleted_at,cinema_profiles!cinema_profiles_user_id_fkey(user_id,profile_json),creatures!creatures_user_id_fkey(user_id,name)))',
+  'film_packages(*,film_questions!film_questions_film_package_id_fkey(*))',
+  'film_assignments(*,submitted_reviews!submitted_reviews_assignment_id_fkey(*),users!film_assignments_user_id_fkey(id,display_name,telegram_username,deleted_at))',
   'film_impressions(*)','film_predictions(*)'
 ].join(',')
 
@@ -57,7 +57,7 @@ export function snapshotReader(tables:Record<string,any[]>){
 export async function loadAdminSnapshot(db:any,eventId:string){
   const [event,leaders,media]=await Promise.all([
     db.from('events').select(eventSelect).eq('id',eventId).single(),
-    db.from('leaderboard').select('*,users(id,display_name,telegram_username,deleted_at)').order('prediction_points',{ascending:false}).limit(20),
+    db.from('leaderboard').select('*,users!leaderboard_user_id_fkey(id,display_name,telegram_username,deleted_at)').order('prediction_points',{ascending:false}).limit(20),
     db.from('media_assets').select('asset_key,title,category,mime_type,duration_sec,public_url,status').eq('status','ready').order('asset_key')
   ])
   for(const r of [event,leaders,media])if(r.error)throw r.error
