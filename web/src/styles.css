@@ -3378,3 +3378,61 @@ html.chat-keyboard-open .chat-compose-inline{
 .screen-final-vote-list b{font-size:1.2em}
 .screen-finale-winner{text-align:center}
 .screen-finale-winner h1{font-size:clamp(64px,10vw,170px);line-height:.88}
+
+
+/* v0.15 — simplified four-round show */
+.screen-pitch-preview{
+  width:min(1120px,88vw);
+  text-align:left;
+}
+.screen-pitch-preview h1{
+  margin:10px 0 22px;
+  font-size:clamp(58px,8vw,138px);
+  line-height:.88;
+}
+.screen-pitch-preview p{
+  max-width:980px;
+  font-size:clamp(22px,2.2vw,36px);
+  line-height:1.35;
+  color:#a2a49d;
+}
+.screen-closest-answer{
+  width:min(1100px,90vw);
+}
+.screen-closest-answer h1{
+  margin:10px 0 20px;
+  font-size:clamp(58px,8vw,132px);
+  line-height:.9;
+}
+.screen-closest-quote{
+  font-size:clamp(28px,3.2vw,54px)!important;
+  line-height:1.2!important;
+  color:#f0ece3!important;
+  max-width:1000px!important;
+}
+.screen-final-qr{
+  width:min(1180px,92vw);
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(280px,40vw);
+  gap:56px;
+  align-items:center;
+}
+.screen-final-qr h1{
+  margin:10px 0;
+  font-size:clamp(64px,8vw,142px);
+  line-height:.88;
+}
+.screen-final-qr-code{
+  background:#fff;
+  border-radius:28px;
+  padding:22px;
+  aspect-ratio:1;
+  display:grid;
+  place-items:center;
+}
+.screen-final-qr-code img{width:100%;height:100%;object-fit:contain}
+.film-live textarea{width:100%}
+@media(max-width:760px){
+  .screen-final-qr{grid-template-columns:1fr;gap:26px}
+  .screen-final-qr-code{width:min(70vw,420px);justify-self:center}
+}
