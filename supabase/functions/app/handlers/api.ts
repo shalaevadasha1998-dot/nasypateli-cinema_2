@@ -594,7 +594,7 @@ async function filmLiveState(db:any,event:any,userId?:string,projectorData?:any)
   if(p.round_id){
     const round=await db.from('event_rounds').select('question_target').eq('id',p.round_id).eq('event_id',event.id).maybeSingle()
     if(round.error)throw round.error
-    questionTarget=Math.max(1,Math.min(5,Number(round.data?.question_target||3)))
+    questionTarget=Math.max(0,Math.min(5,Number(round.data?.question_target??3)))
   }
   if(userId&&p.round_id){
     const pitch=await db.from('invented_films').select('id,title,description,updated_at').eq('round_id',p.round_id).eq('user_id',userId).maybeSingle()
@@ -2260,7 +2260,7 @@ export async function handleApi(req:Request){
         const now=new Date().toISOString()
         const updated=await db.from('event_rounds').update({
           flow_status:'collecting_films',selected_submission_id:null,movie_candidate_id:null,
-          question_position:0,question_target:3,updated_at:now
+          question_position:0,question_target:Number(round.roundNo||0)%2===0?3:0,updated_at:now
         }).eq('id',round.id).eq('event_id',event.id)
         if(updated.error)throw updated.error
         await db.from('invented_films').delete().eq('round_id',round.id).eq('event_id',event.id)
@@ -2428,7 +2428,7 @@ export async function handleApi(req:Request){
             }
             await applyMovieSourceToCandidate(db,event,movie.id,source)
             const now=new Date().toISOString()
-            const ru=await db.from('event_rounds').update({movie_candidate_id:movie.id,flow_status:'movie_found',question_target:3,question_position:0,updated_at:now}).eq('id',round.id).eq('event_id',event.id)
+            const ru=await db.from('event_rounds').update({movie_candidate_id:movie.id,flow_status:'movie_found',question_target:needsQuestions?3:0,question_position:0,updated_at:now}).eq('id',round.id).eq('event_id',event.id)
             if(ru.error)throw ru.error
             const runtime=await db.from('event_runtime').select('revision').eq('event_id',event.id).maybeSingle()
             if(runtime.error)throw runtime.error
@@ -2561,7 +2561,7 @@ export async function handleApi(req:Request){
                   if(qs.error)throw qs.error
                 }
                 const now=new Date().toISOString()
-                const ru=await db.from('event_rounds').update({movie_candidate_id:movie.id,flow_status:'movie_found',question_target:3,question_position:0,updated_at:now}).eq('id',round.id).eq('event_id',event.id)
+                const ru=await db.from('event_rounds').update({movie_candidate_id:movie.id,flow_status:'movie_found',question_target:needsQuestions?3:0,question_position:0,updated_at:now}).eq('id',round.id).eq('event_id',event.id)
                 if(ru.error)throw ru.error
                 const runtime=await db.from('event_runtime').select('revision').eq('event_id',event.id).maybeSingle()
                 if(runtime.error)throw runtime.error
@@ -2667,7 +2667,8 @@ export async function handleApi(req:Request){
         if(!pack.data)return err('киноблок не найден',404)
         const existing=await db.from('film_questions').select('id,position').eq('film_package_id',pack.data.id).order('position')
         if(existing.error)throw existing.error
-        const target=Math.max(1,Math.min(5,Number(round.questionTarget||3)))
+        const target=Math.max(0,Math.min(5,Number(round.questionTarget??3)))
+        if(target===0)return err('в этом раунде вопросы не используются',409)
         const position=(existing.data||[]).length+1
         if(position>target)return err('все вопросы этого раунда уже готовы',409)
         const realOutcome=String(body.realOutcome||'').trim().slice(0,1200)
@@ -2779,7 +2780,7 @@ export async function handleApi(req:Request){
         if(q.error)throw q.error
         if(!q.data)return err('вопрос не найден',404)
         if(op==='question_open'){
-          state='question_open';payload={filmTitle:pack.data.title_snapshot,questionId:q.data.id,position,totalQuestions:Number(round.data.question_target||3),prompt:q.data.prompt,answerMode:'text'}
+          state='question_open';payload={filmTitle:pack.data.title_snapshot,questionId:q.data.id,position,totalQuestions:Number(round.data.question_target??3),prompt:q.data.prompt,answerMode:'text'}
         }else if(op==='question_results'){
           const answers=await db.from('film_predictions').select('id,animal_name_snapshot,answer').eq('event_id',event.id).eq('round_id',roundId).eq('film_package_id',packageId).eq('question_id',q.data.id)
           if(answers.error)throw answers.error
@@ -2824,9 +2825,9 @@ export async function handleApi(req:Request){
             const mark=await db.from('film_predictions').update({is_correct:true}).eq('id',winner.id)
             if(mark.error)throw mark.error
           }
-          state='question_results';payload={filmTitle:pack.data.title_snapshot,questionId:q.data.id,position,totalQuestions:Number(round.data.question_target||3),prompt:q.data.prompt,answerCount:rows.length,closest}
+          state='question_results';payload={filmTitle:pack.data.title_snapshot,questionId:q.data.id,position,totalQuestions:Number(round.data.question_target??3),prompt:q.data.prompt,answerCount:rows.length,closest}
         }else{
-          state='question_reveal';payload={filmTitle:pack.data.title_snapshot,questionId:q.data.id,position,totalQuestions:Number(round.data.question_target||3),prompt:q.data.prompt,correctAnswer:q.data.correct_answer,revealText:q.data.reveal_text,revealFragment:q.data.reveal_fragment}
+          state='question_reveal';payload={filmTitle:pack.data.title_snapshot,questionId:q.data.id,position,totalQuestions:Number(round.data.question_target??3),prompt:q.data.prompt,correctAnswer:q.data.correct_answer,revealText:q.data.reveal_text,revealFragment:q.data.reveal_fragment}
         }
       }else if(op==='assignment_randomizing'){
         state='assignment_randomizing';payload={filmTitle:pack.data.title_snapshot}
@@ -3254,7 +3255,7 @@ export async function handleApi(req:Request){
         const roundNo=Number(lastRound.data?.round_no||0)+1
         const ins=await db.from('event_rounds').insert({
           event_id:event.id,round_no:roundNo,block_id:block.id,status:'active',flow_status:'collecting_films',
-          question_position:0,question_target:3,vote_state:'closed',results_visible:false,video_state:{status:'idle'},started_at:now
+          question_position:0,question_target:roundNo%2===0?3:0,vote_state:'closed',results_visible:false,video_state:{status:'idle'},started_at:now
         }).select('id').single()
         if(ins.error)throw ins.error
         const rt=await db.from('event_runtime').select('revision').eq('event_id',event.id).single();if(rt.error)throw rt.error
