@@ -326,6 +326,40 @@ async function discoverMode(movie:any,mode:'fragment'|'trailer'){
   return dedupeSources(settled.flatMap(x=>x.status==='fulfilled'?x.value:[]))
 }
 
+export async function discoverMovieSourcesFast(movie:any){
+  const fast=(promise:Promise<MovieSourceCandidate[]>,ms:number)=>Promise.race<MovieSourceCandidate[]>([
+    promise,
+    new Promise(resolve=>setTimeout(()=>resolve([]),ms))
+  ])
+  const fragments=await fast(searchYoutubePublic(movie,'fragment'),6500)
+  const usableFragments=fragments.filter(x=>x.verified&&x.embeddable&&x.confidence>=.60)
+  if(usableFragments.length)return {
+    candidates:fragments,
+    fallbackUsed:false,
+    trace:{
+      mode:'fast_youtube',
+      fragmentsSearched:true,
+      fragmentCount:fragments.length,
+      usableFragmentCount:usableFragments.length,
+      trailersSearched:false,
+      trailerCount:0
+    }
+  }
+  const trailers=await fast(searchYoutubePublic(movie,'trailer'),4500)
+  return {
+    candidates:dedupeSources([...fragments,...trailers]),
+    fallbackUsed:true,
+    trace:{
+      mode:'fast_youtube',
+      fragmentsSearched:true,
+      fragmentCount:fragments.length,
+      usableFragmentCount:0,
+      trailersSearched:true,
+      trailerCount:trailers.length
+    }
+  }
+}
+
 export async function discoverMovieSources(movie:any){
   const fragments=await discoverMode(movie,'fragment')
   const usableFragments=fragments.filter(x=>x.verified&&x.embeddable&&x.confidence>=.60)
