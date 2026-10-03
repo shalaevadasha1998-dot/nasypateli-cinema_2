@@ -76,16 +76,37 @@ function normalizeBootstrap(raw:any):DemoState{
 
 let bootstrapInFlight:{key:string;promise:Promise<unknown>}|null=null
 let bootstrapCache:{key:string;at:number;value:unknown}|null=null
+let bootstrapFailures=0
+let bootstrapRetryAt=0
+function storedBootstrapRetryAt(){
+  try{return Number(sessionStorage.getItem('nasypateli-bootstrap-retry-at')||0)||0}catch{return 0}
+}
+function setBootstrapRetryAt(at:number){
+  bootstrapRetryAt=at
+  try{sessionStorage.setItem('nasypateli-bootstrap-retry-at',String(at))}catch{}
+}
 export async function callApi<T=unknown>(action:string,payload:Record<string,unknown>={}):Promise<T>{
   if(action==='bootstrap'){
     const fresh=payload.fresh===true
     const key=String(payload.slug||'__default__')
     const now=Date.now()
+    const retryAt=Math.max(bootstrapRetryAt,storedBootstrapRetryAt())
+    if(now<retryAt)throw new Error('сервер восстанавливается. попробуйте ещё раз через несколько секунд')
     if(!fresh&&bootstrapCache?.key===key&&now-bootstrapCache.at<15000)return bootstrapCache.value as T
     // Never allow overlapping bootstrap requests for the same event. A fresh
     // refresh may bypass the cache, but it must still join the active request.
     if(bootstrapInFlight?.key===key)return bootstrapInFlight.promise as Promise<T>
-    const run=requestApi<any>(action,payload).then(value=>{const normalized=normalizeBootstrap(value);bootstrapCache={key,at:Date.now(),value:normalized};return normalized})
+    const run=requestApi<any>(action,payload).then(value=>{
+      bootstrapFailures=0
+      setBootstrapRetryAt(0)
+      const normalized=normalizeBootstrap(value)
+      bootstrapCache={key,at:Date.now(),value:normalized}
+      return normalized
+    }).catch(error=>{
+      bootstrapFailures++
+      setBootstrapRetryAt(Date.now()+Math.min(60000,5000*2**Math.min(bootstrapFailures-1,4)))
+      throw error
+    })
     const promise=run.finally(()=>{if(bootstrapInFlight?.key===key)bootstrapInFlight=null})
     bootstrapInFlight={key,promise}
     return promise as Promise<T>
