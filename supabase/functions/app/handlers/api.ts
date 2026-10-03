@@ -2576,6 +2576,8 @@ export async function handleApi(req:Request){
       }else return err('неизвестное состояние projector',422)
       const flowPatch:any={updated_at:new Date().toISOString()}
       if(op==='film_intro')flowPatch.flow_status='playing_clip'
+      else if(op==='one_word_open')flowPatch.flow_status='one_word_collecting'
+      else if(op==='one_word_results')flowPatch.flow_status='one_word_results'
       else if(op==='question_open'){flowPatch.flow_status='question_open';flowPatch.question_position=Math.max(1,Math.min(5,Number(body.position)||1))}
       else if(op==='question_results')flowPatch.flow_status='question_results'
       else if(op==='question_reveal')flowPatch.flow_status='question_reveal'
