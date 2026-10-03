@@ -1163,7 +1163,8 @@ export async function handleApi(req:Request){
     if(action==='admin-bootstrap'){
       const event=await eventBySlug(db,String(body.slug||'2026-10-03'))
       const testAdminOk=await testRoomTokenMatches(event,req.headers.get('x-admin-token')||'')
-      if(!adminTokenOk&&!testAdminOk){
+      const openTestAdmin=event?.settings?.test_room===true
+      if(!adminTokenOk&&!testAdminOk&&!openTestAdmin){
         try{
           const adminTg=await telegramUserFromRequest(req)
           const adminUser=await getOrCreateUser(db,adminTg)
@@ -1653,7 +1654,8 @@ export async function handleApi(req:Request){
 
     const slug=String(body.slug||'2026-10-03');const event=await eventBySlug(db,slug)
     const testAdminTokenOk=await testRoomTokenMatches(event,req.headers.get('x-admin-token')||'')
-    if(event?.settings?.test_room===true&&!testParticipantAccess&&!testAdminTokenOk&&!adminTokenOk)return err('Тестовая комната закрыта',403)
+    const openTestAdmin=event?.settings?.test_room===true
+    if(event?.settings?.test_room===true&&!testParticipantAccess&&!testAdminTokenOk&&!adminTokenOk&&!openTestAdmin)return err('Тестовая комната закрыта',403)
 
     if(action==='claim-event-ticket'){
       if(Number(event.ticket_price_rub)!==0)return err('этот билет нельзя получить без оплаты',409)
@@ -2078,7 +2080,7 @@ export async function handleApi(req:Request){
       return json({ok:true,reviewId:inserted.data.id,status:'submitted'})
     }
 
-    if(!adminTokenOk&&!testAdminTokenOk){
+    if(!adminTokenOk&&!testAdminTokenOk&&!openTestAdmin){
       if(!user||!tg)return err('Доступ к пульту запрещён',401)
       await mustAdmin(db,user,tg)
     }
