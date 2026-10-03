@@ -271,11 +271,14 @@ export type EventRuntime = {
 
 export type ShowAudioAsset={key:string;title:string;category:string;mimeType:string;durationSec:number;url:string}
 export type ShowAudioState={mode:'auto'|'manual';status:'playing'|'paused'|'stopped';track_key?:string|null;playlist_index?:number;volume?:number;updated_at?:string}
+export type FinalVoteOption={id:string;title:string;year?:number;genre?:string;count:number}
+export type FinalVoteState={options:FinalVoteOption[];totalVotes:number;winners:FinalVoteOption[];closed:boolean;myVote?:string}
 export type ShowState = {
   program:EventProgram
   runtime:EventRuntime
   currentRound?:ShowRound
   voteResults:{answer:any;count:number}[]
+  finalVote?:FinalVoteState
   onlineCount:number
   myVote?:any
   audio?:{state:ShowAudioState;assets:ShowAudioAsset[]}

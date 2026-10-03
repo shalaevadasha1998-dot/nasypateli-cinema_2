@@ -151,6 +151,37 @@ export async function buildShowState(db:any,event:any){
     if(m.error)throw m.error
     movie=moviePublic(m.data)
   }
+
+  let finalVote:any=undefined
+  if(['final_vote','finale','post_event'].includes(String(block?.type||''))||String(raw.run_status)==='finished'){
+    const [roundMoviesR,finalVotesR]=await Promise.all([
+      db.from('event_rounds').select('round_no,movie_candidate_id,movie_candidates(id,title,year,genre)').eq('event_id',event.id).not('movie_candidate_id','is',null).order('round_no'),
+      db.from('event_final_votes').select('movie_candidate_id').eq('event_id',event.id)
+    ])
+    if(roundMoviesR.error)throw roundMoviesR.error
+    if(finalVotesR.error)throw finalVotesR.error
+    const counts=new Map<string,number>()
+    for(const row of finalVotesR.data||[]){
+      const id=String((row as any).movie_candidate_id||'')
+      if(id)counts.set(id,(counts.get(id)||0)+1)
+    }
+    const seen=new Set<string>()
+    const options:any[]=[]
+    for(const row of roundMoviesR.data||[]){
+      const m:any=(row as any).movie_candidates
+      const id=String((row as any).movie_candidate_id||m?.id||'')
+      if(!id||seen.has(id)||!m)continue
+      seen.add(id)
+      options.push({id,title:String(m.title||'фильм'),year:m.year?Number(m.year):undefined,genre:m.genre||undefined,count:counts.get(id)||0})
+    }
+    const max=options.reduce((n,x)=>Math.max(n,Number(x.count||0)),0)
+    finalVote={
+      options,
+      totalVotes:(finalVotesR.data||[]).length,
+      winners:max>0?options.filter(x=>Number(x.count||0)===max):[],
+      closed:String(block?.type)!=='final_vote'||String(raw.run_status)!=='running'
+    }
+  }
   return {
     program,
     runtime:{
@@ -173,6 +204,7 @@ export async function buildShowState(db:any,event:any){
     },
     currentRound:round,
     voteResults:results,
+    finalVote,
     onlineCount:Number(presenceR.count||0),
     audio:{
       state:raw.audio_state||{mode:'auto',status:'stopped',track_key:null,playlist_index:0,volume:.28},

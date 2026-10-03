@@ -177,6 +177,21 @@ function ParticipantShow({data,reload}:{data:DemoState;reload:(fresh?:boolean)=>
     }catch(e:any){setMessage(e.message||'не получилось отправить ответ')}
     finally{setBusy(false)}
   }
+  const finalVote=async(movieId:string)=>{
+    if(busy)return
+    try{
+      setBusy(true);setMessage('')
+      const result:any=await callApi('event-final-vote',{slug:data.event.slug,movieId})
+      if(result?.crumbs&&!result.crumbs.alreadyAwarded&&result.crumbs.rewardCrumbs)setMessage(`голос принят. +${result.crumbs.rewardCrumbs} крошка${Number(result.crumbs.rewardCrumbs)===1?'':'и'}`)
+      else setMessage('голос принят')
+      await reload(true)
+    }catch(e:any){setMessage(e.message||'не получилось проголосовать')}
+    finally{setBusy(false)}
+  }
+  if(block.type==='final_vote'){
+    const final=show.finalVote
+    return <section className="participant-show final-vote"><div className="eyebrow">финальный выбор</div><h2>какой фильм забирает вечер?</h2><p className="muted">можно менять голос до конца таймера</p><div className="final-vote-options">{(final?.options||[]).map(option=><button type="button" disabled={busy||final?.closed} className={final?.myVote===option.id?'selected':''} key={option.id} onClick={()=>void finalVote(option.id)}><b>{option.title}</b>{option.year&&<small>{option.year}</small>}</button>)}</div>{!(final?.options||[]).length&&<p className="muted">ждём фильмы из завершённых раундов</p>}{message&&<div className={message.includes('принят')?'success':'form-error'}>{message}</div>}</section>
+  }
   if(block.type==='music_live')return <section className="participant-show music"><div className="eyebrow">сейчас</div><h2>{block.title}</h2><p>убери телефон. там люди играют музыку</p></section>
   if(block.type==='post_event')return <section className="participant-show"><div className="eyebrow">вечер закончился</div><h2>животина остаётся с вами</h2><p>крошки, история и всё, что случилось сегодня, никуда не исчезнут</p></section>
   const intro=block.type==='arrival'?'ты внутри. животина тоже':block.type==='onboarding'?'знакомимся с животиной':block.type==='warm_up'?'первый общий интерактив':block.type==='final_vote'?'финальный выбор':block.type==='finale'?'итог вечера':block.title
@@ -512,6 +527,7 @@ function ShowControl({data,busy,run}:{data:DemoState;busy:boolean;run:(action:st
     </div>
     <div className="show-console-stats"><span><b>{confirmed}</b>в списке</span><span><b>{attended}</b>пришли</span><span><b>{show.onlineCount}</b>online</span><span><b>{waiting}</b>ожидание</span></div>
     <div className="show-timeline">{show.program.blocks.map(b=><button type="button" disabled={busy} onClick={()=>command('jump',{blockId:b.id})} className={b.id===runtime.currentBlockId?'current':''} key={b.id}><span>{b.index+1}</span><b>{b.title}</b><small>{b.durationMin?b.durationMin+' мин'+(b.autoAdvance?' · авто':''):'без таймера'}</small></button>)}</div>
+    {block?.type==='final_vote'&&show.finalVote&&<div className="show-final-vote-admin"><small>финальный выбор · {show.finalVote.totalVotes} голосов</small>{show.finalVote.options.map(x=><span key={x.id}><b>{x.title}</b><em>{x.count}</em></span>)}</div>}
     <div className="show-audio-console">
       <div><small>звук на проекторе</small><b>{currentTrack?.title||'тишина'}</b><span>{audioState?.status==='playing'?'играет':audioState?.status==='paused'?'пауза':'остановлено'} · {audioState?.mode==='auto'?'авто':'ручной'}</span></div>
       <div className="inline">
@@ -1070,8 +1086,16 @@ function screenContent(d:DemoState){
     if(block?.type==='onboarding')return <><div className="eyebrow">животина</div><h1>сначала познакомимся</h1><p>телефоны можно достать</p></>
     if(block?.type==='warm_up')return <><div className="eyebrow">разогрев</div><h1>{block.title}</h1><p>первый общий интерактив появится на телефонах</p></>
     if(block?.type==='cinema_rounds')return <><div className="eyebrow">кино</div><h1>{block.title}</h1><p>следующий раунд готовится</p></>
-    if(block?.type==='final_vote')return <><div className="eyebrow">финал</div><h1>выбираем фильм вечера</h1><p>последний голос сегодня</p></>
-    if(block?.type==='finale')return <><div className="eyebrow">итог</div><h1>ну всё</h1><p>сейчас животина соберёт вечер в одну историю</p></>
+    if(block?.type==='final_vote'){
+      const final=show.finalVote
+      return <div className="screen-final-vote"><div className="eyebrow">финальный выбор · {final?.totalVotes||0} голосов</div><h1>какой фильм забирает вечер?</h1><div className="screen-final-vote-list">{(final?.options||[]).map(x=><div key={x.id}><span>{x.title}{x.year?' · '+x.year:''}</span><b>{x.count}</b></div>)}</div></div>
+    }
+    if(block?.type==='finale'){
+      const winners=show.finalVote?.winners||[]
+      if(winners.length===1)return <div className="screen-finale-winner"><div className="eyebrow">фильм вечера</div><h1>{winners[0].title}</h1>{winners[0].year&&<h2>{winners[0].year}</h2>}<p>{winners[0].count} голосов</p></div>
+      if(winners.length>1)return <div className="screen-finale-winner"><div className="eyebrow">финал</div><h1>ничья</h1><p>{winners.map(x=>x.title).join(' · ')}</p></div>
+      return <><div className="eyebrow">итог</div><h1>ну всё</h1><p>животина собрала вечер</p></>
+    }
     if(block?.type==='post_event'||show.runtime.runStatus==='finished')return <><h1>вечер закончился</h1><p>животина уходит домой вместе с вами</p></>
     return <><h1>{block?.title||'шоу идёт'}</h1></>
   }

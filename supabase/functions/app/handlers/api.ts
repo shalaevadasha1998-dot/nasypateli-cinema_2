@@ -1444,6 +1444,11 @@ export async function handleApi(req:Request){
         if(mine.error)throw mine.error
         show={...show,myVote:mine.data?.answer}
       }
+      if(show?.finalVote){
+        const mineFinal=await db.from('event_final_votes').select('movie_candidate_id').eq('event_id',event.id).eq('user_id',user.id).maybeSingle()
+        if(mineFinal.error)throw mineFinal.error
+        show={...show,finalVote:{...show.finalVote,myVote:mineFinal.data?.movie_candidate_id||undefined}}
+      }
       const [filmAssignments,filmLive]=await Promise.all([userFilmAssignments(db,user.id),filmLiveState(db,event,user.id)])
       return json({...common,show,isAdmin,user,profile,filmAssignments,filmLive,onboardingComplete:profile.completed,registration:effectiveRegistrationStatus(reg.data),queuePosition:effectiveRegistrationStatus(reg.data)==='waitlist'?Number(reg.data?.queue_position||0)||undefined:undefined,reservationExpiresAt:effectiveRegistrationStatus(reg.data)==='reserved'?reg.data?.reservation_expires_at||undefined:undefined,idea:idea.data||undefined,predictions:(common.predictions||[]).map((p:any)=>({...p,answer:answerMap.get(p.id)})),predictionSubmitted:(answers.data||[]).length>0,thought:thought.data?.text,reaction:reaction.data?{rating:reaction.data.rating,stateWord:reaction.data.state_word,thought:reaction.data.thought,recommendation:reaction.data.recommendation}:undefined,review:review.data?{rating:review.data.rating,sentence:review.data.final_sentence}:undefined,feedback:feedback.data?{returnIntent:feedback.data.return_intent,strongest:feedback.data.strongest_part||'',improve:feedback.data.improve_text||'',willingness:feedback.data.willingness_to_pay||0,durationFeel:feedback.data.duration_feel||'нормально',inviteFriend:feedback.data.invite_friend===null||feedback.data.invite_friend===undefined?8:Number(feedback.data.invite_friend)}:undefined,...extras,creature,...datingBundle,notificationPrefs:{writeAccess:!!notif.data?.write_access,events:notif.data?.events!==false,creature:notif.data?.creature!==false,stories:notif.data?.stories!==false,matches:notif.data?.matches!==false,tickets:notif.data?.tickets!==false,reminders:notif.data?.reminders!==false,quietHours:notif.data?.quiet_hours!==false}})
     }
@@ -1775,6 +1780,31 @@ export async function handleApi(req:Request){
     if(action==='submit-feedback'){
       if(!await hasPaidAccess(db,event.id,user.id))return err('Нужен оплаченный билет',403);if(!['FEEDBACK','CLOSED'].includes(event.status))return err('Обратная связь сейчас закрыта',409)
       const f=body.feedback||{};const invite=Math.max(0,Math.min(10,Number(f.inviteFriend)));const r=await db.from('event_feedback').upsert({event_id:event.id,user_id:user.id,return_intent:String(f.returnIntent||''),strongest_part:String(f.strongest||'').slice(0,1000),improve_text:String(f.improve||'').slice(0,1000),willingness_to_pay:Number(f.willingness)||null,duration_feel:String(f.durationFeel||''),invite_friend:Number.isFinite(invite)?String(invite):null});if(r.error)throw r.error;return json({ok:true})
+    }
+
+    if(action==='event-final-vote'){
+      const reg=await db.from('registrations').select('status').eq('event_id',event.id).eq('user_id',user.id).maybeSingle()
+      if(reg.error)throw reg.error
+      if(reg.data?.status!=='attended')return err('финальный выбор доступен тем, кто отметился в зале',403)
+      const show=await buildShowState(db,event)
+      if(show.runtime?.runStatus!=='running'||show.runtime?.currentBlock?.type!=='final_vote')return err('финальный выбор сейчас закрыт',409)
+      const movieId=String(body.movieId||'')
+      if(!isUuid(movieId))return err('выберите фильм',422)
+      const allowed=await db.from('event_rounds').select('id').eq('event_id',event.id).eq('movie_candidate_id',movieId).limit(1).maybeSingle()
+      if(allowed.error)throw allowed.error
+      if(!allowed.data)return err('этого фильма нет в финальном выборе',422)
+      const saved=await db.from('event_final_votes').upsert({
+        event_id:event.id,user_id:user.id,movie_candidate_id:movieId,updated_at:new Date().toISOString()
+      },{onConflict:'event_id,user_id'}).select('movie_candidate_id').single()
+      if(saved.error)throw saved.error
+      const reward=Math.max(0,Math.min(100,Number(show.program?.rewards?.finale||0)))
+      let crumbs:any=null
+      if(reward>0){
+        const award=await db.rpc('award_event_crumbs',{p_user_id:user.id,p_event_id:event.id,p_amount:reward,p_reason:'final_vote',p_source_id:event.id})
+        if(award.error)console.error('final vote crumb award failed',award.error)
+        else crumbs=award.data
+      }
+      return json({ok:true,movieId:saved.data.movie_candidate_id,crumbs})
     }
 
     if(action==='event-vote'){

@@ -3364,3 +3364,17 @@ html.chat-keyboard-open .chat-compose-inline{
 .program-auto{display:flex!important;align-items:center;gap:6px}
 .program-auto input{width:auto!important}
 .screen-audio-unlock{position:fixed;z-index:9999;left:50%;bottom:32px;transform:translateX(-50%);border:1px solid rgba(255,255,255,.25);border-radius:999px;padding:16px 26px;background:#f3eee3;color:#10110f;font:700 18px/1 inherit;box-shadow:0 12px 44px rgba(0,0,0,.5)}
+
+/* final movie vote */
+.final-vote-options{display:grid;gap:10px;margin-top:16px}
+.final-vote-options button{display:flex;align-items:center;justify-content:space-between;gap:12px;text-align:left;padding:15px 16px;border:1px solid rgba(234,229,220,.14);border-radius:14px;background:rgba(255,255,255,.035);color:inherit}
+.final-vote-options button.selected{border-color:rgba(234,229,220,.75);background:rgba(234,229,220,.12)}
+.final-vote-options small{opacity:.62}
+.show-final-vote-admin{display:grid;gap:6px;margin:12px 0;padding:12px 14px;border:1px solid rgba(234,229,220,.12);border-radius:14px}
+.show-final-vote-admin>span{display:flex;justify-content:space-between;gap:12px}
+.show-final-vote-admin em{font-style:normal;font-weight:800}
+.screen-final-vote-list{display:grid;gap:14px;width:min(900px,90vw);margin:28px auto 0}
+.screen-final-vote-list>div{display:flex;justify-content:space-between;align-items:center;gap:28px;padding:16px 20px;border-bottom:1px solid rgba(255,255,255,.18);font-size:clamp(24px,3vw,48px)}
+.screen-final-vote-list b{font-size:1.2em}
+.screen-finale-winner{text-align:center}
+.screen-finale-winner h1{font-size:clamp(64px,10vw,170px);line-height:.88}
