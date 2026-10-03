@@ -2989,11 +2989,11 @@ export async function handleApi(req:Request){
           if(found<0)return err('блок не найден в программе',404)
           idx=found;runStatus='running';blockStartedAt=now;pausedAt=null;resetRound=true
         }else if(op==='start_music'){
-          const found=blocks.findIndex((x:any)=>x.type==='music_live')
+          const found=blocks.findIndex((x:any)=>['music_live','music_outro'].includes(String(x.type)))
           if(found<0)return err('в программе нет музыкального блока',409)
           idx=found;runStatus='running';blockStartedAt=now;pausedAt=null;resetRound=true
         }else if(op==='end_music'){
-          const musicIndex=blocks.findIndex((x:any)=>x.id===from.current_block_id&&x.type==='music_live')
+          const musicIndex=blocks.findIndex((x:any)=>x.id===from.current_block_id&&['music_live','music_outro'].includes(String(x.type)))
           if(musicIndex<0)return err('сейчас не музыкальный блок',409)
           idx=Math.min(blocks.length-1,musicIndex+1);runStatus='running';blockStartedAt=now;pausedAt=null;resetRound=true
         }else if(op==='pause'){
