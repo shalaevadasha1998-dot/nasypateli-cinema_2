@@ -905,10 +905,12 @@ function Admin(){
       </div>}
       {preflight?.checkedAt&&<small className="event-preflight-time">проверено {new Date(preflight.checkedAt).toLocaleString('ru-RU')}</small>}
     </Card>
-    <AdminParticipants data={data} reload={reload} adminToken={privileged.token}/>
-    <ReviewQueueAdmin data={data} busy={busy} run={run}/>
-    <ProgramEditor data={data} busy={busy} run={run}/>
-    <MovieCatalogAdmin data={data} busy={busy} run={run}/>
+    <details className="admin-support"><summary>списки и настройки · не нужны во время эфира</summary>
+      <AdminParticipants data={data} reload={reload} adminToken={privileged.token}/>
+      <ReviewQueueAdmin data={data} busy={busy} run={run}/>
+      <ProgramEditor data={data} busy={busy} run={run}/>
+      <MovieCatalogAdmin data={data} busy={busy} run={run}/>
+    </details>
     <details className="admin-technical"><summary>технические настройки события</summary><div className="admin-tech-grid">
       <Card><div className="section-title">событие</div><Field label="дата и время. москва"><input type="datetime-local" value={startsAt} onChange={e=>setStartsAt(e.target.value)}/></Field><Field label="цена билета. ₽"><input type="number" min="0" max="100000" value={ticketPrice} onChange={e=>setTicketPrice(Number(e.target.value))}/></Field><Field label="максимальный хронометраж"><input type="number" min="45" max="360" value={runtimeCap} onChange={e=>setRuntimeCap(Number(e.target.value))}/></Field><Field label="площадка"><input value={venueName} onChange={e=>setVenueName(e.target.value)}/></Field><Field label="адрес"><input value={venueAddress} onChange={e=>setVenueAddress(e.target.value)}/></Field><Button disabled={busy||!moscowIso(startsAt)} onClick={()=>run('admin-event-config',{startsAt:moscowIso(startsAt),ticketPriceRub:ticketPrice,maxMovieRuntimeMin:runtimeCap,venueName,venueAddress})}>сохранить событие</Button></Card>
       <Card><div className="section-title">вместимость</div><div className="inline"><input type="number" min="1" max="500" value={cap} onChange={e=>setCap(Number(e.target.value))}/><Button disabled={busy} onClick={()=>run('admin-capacity',{capacity:cap})}>применить</Button></div><p className="muted">сейчас {data.event.capacity} мест</p></Card>
