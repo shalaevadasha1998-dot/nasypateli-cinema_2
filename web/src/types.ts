@@ -296,7 +296,7 @@ export type ScreenCreature = {
 export type FilmProjectorState =
   | 'idle'|'arrival'|'pitch_collecting'|'pitch_locked'|'pitch_randomizing'|'pitch_selected'|'movie_searching'|'movie_found'|'playing_clip'
   | 'film_intro'|'one_word_collecting'|'one_word_results'
-  | 'question_open'|'question_results'|'question_reveal'
+  | 'question_open'|'question_results'|'question_reveal'|'round_finished'
   | 'assignment_randomizing'|'assignment_winner'|'past_review_card'
 
 export type FilmMission = {

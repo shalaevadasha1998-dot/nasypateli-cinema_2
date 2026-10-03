@@ -371,6 +371,11 @@ async function maybeAutoAdvanceShow(db:any,event:any){
       const u=await db.from('event_runtime').update(patch).eq('event_id',event.id).eq('revision',cur.revision).select('*').maybeSingle()
       if(u.error)throw u.error
       if(!u.data)return false
+      try{
+        await setProjectorState(db,event,'idle',null,null,{})
+      }catch(projectorError){
+        console.error('projector reset after auto advance failed',projectorError)
+      }
       if(finishing&&event.status!=='CLOSED'){
         const absent=await db.from('registrations').update({status:'no_show'}).eq('event_id',event.id).eq('status','paid').select('user_id')
         if(absent.error)throw absent.error
@@ -2743,6 +2748,13 @@ export async function handleApi(req:Request){
         const updated=await db.from('event_runtime').update(patch).eq('event_id',event.id).eq('revision',from.revision).select('*').maybeSingle()
         if(updated.error)throw updated.error
         if(!updated.data)return err('пульт уже изменился в другой вкладке · обновите экран',409)
+        if(resetRound){
+          try{
+            await setProjectorState(db,event,'idle',null,null,{})
+          }catch(projectorError){
+            console.error('projector reset after show control failed',op,projectorError)
+          }
+        }
 
         let lifecycleStatus=event.status
         if(op==='start'&&event.status==='SALES_OPEN'){
@@ -2897,7 +2909,8 @@ export async function handleApi(req:Request){
       const rt=await db.from('event_runtime').select('revision').eq('event_id',event.id).single();if(rt.error)throw rt.error
       const b=await db.from('event_runtime').update({vote_state:'closed',revision:Number(rt.data.revision||0)+1,updated_at:now}).eq('event_id',event.id).eq('revision',rt.data.revision).select('event_id').maybeSingle();if(b.error)throw b.error
       if(!b.data)return err('пульт уже изменился в другой вкладке · обновите экран',409)
-      return json({ok:true,show:await buildShowState(db,event)})
+      const projector=await setProjectorState(db,event,'round_finished',show.currentRound.id,null,{roundNo:show.currentRound.roundNo})
+      return json({ok:true,projector,show:await buildShowState(db,event)})
     }
 
     if(action==='admin-movie-source-action'){

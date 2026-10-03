@@ -714,7 +714,8 @@ function RoundFilmFlowAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(ac
   const currentQuestion=questions.find(q=>q.position===position)
   const project=(op:string,extra:Record<string,unknown>={})=>pack&&run('admin-film-projector',{filmPackageId:pack.id,roundId:round.id,op,...extra})
   const firstFragment:any=pack?.fragments?.[0]
-  const sourceHref=firstFragment?.videoId?`https://www.youtube.com/watch?v=${encodeURIComponent(String(firstFragment.videoId))}&t=${Math.max(0,Number(firstFragment.startSec||0))}s`:String(firstFragment?.sourceUrl||'')
+  const fragmentHref=(fragment:any)=>fragment?.videoId?`https://www.youtube.com/watch?v=${encodeURIComponent(String(fragment.videoId))}&t=${Math.max(0,Number(fragment.startSec||0))}s`:String(fragment?.sourceUrl||'')
+  const sourceHref=fragmentHref(firstFragment)
   const chooseAndSearch=async()=>{
     const selected=await run('admin-round-pitch-draw')
     if(!selected)return
@@ -730,10 +731,10 @@ function RoundFilmFlowAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(ac
     {flow==='submission_selected'&&<><div className="selected-pitch-admin"><div className="eyebrow">{round.selectedPitch?.animalName||'животина'} придумала фильм</div><h3>{round.selectedPitch?.title}</h3><p>{round.selectedPitch?.description}</p></div><p className="muted">нейронка ищет максимально похожее реальное кино по всему миру и проверяет, есть ли воспроизводимый фрагмент.</p></>}
     {flow==='searching_movie'&&<p>животина роется в мировом кино. даём живому поиску до минуты; если проверяемый фрагмент не собирается, автоматически берём резервный киноблок.</p>}
     {flow==='movie_found'&&<>{round.movie&&pack?<><div className="selected-pitch-admin"><div className="eyebrow">максимально близко</div><h3>{round.movie.title}{round.movie.year?' · '+round.movie.year:''}</h3><p>{Math.min(3,questions.length)} вопроса · по 3 варианта · правильное продолжение привязано к реальным таймкодам</p></div><div className="inline"><Button disabled={busy} onClick={()=>project('film_intro')}>запустить фрагмент</Button>{sourceHref&&<Button kind="secondary" onClick={()=>window.open(sourceHref,'_blank','noopener,noreferrer')}>открыть источник ↗</Button>}</div>{sourceHref&&<small className="media-ready-line">готово · источник проверен · если embed не играет, открывайте ссылку</small>}</>:<p className="form-error">не нашли проверяемый фрагмент. выберите другую идею.</p>}</>}
-    {flow==='playing_clip'&&<div className="film-live-step"><b>фрагмент идёт на экране</b><p className="muted">после остановки открываем первый готовый вопрос.</p><Button disabled={busy||!questions.length} onClick={()=>project('question_open',{position:1})}>открыть вопрос 1/{target}</Button></div>}
+    {flow==='playing_clip'&&<div className="film-live-step"><b>фрагмент идёт на экране</b><p className="muted">после остановки открываем первый готовый вопрос. если youtube не стартовал автоматически, на projector доступны обычные controls, а источник можно открыть вручную.</p><div className="inline"><Button disabled={busy||!questions.length} onClick={()=>project('question_open',{position:1})}>открыть вопрос 1/{target}</Button>{sourceHref&&<Button kind="secondary" onClick={()=>window.open(sourceHref,'_blank','noopener,noreferrer')}>открыть источник ↗</Button>}</div></div>}
     {flow==='question_open'&&currentQuestion&&<div className="film-live-step"><b>{position}/{target}. голосование открыто</b><p>{currentQuestion.prompt}</p><Button disabled={busy} onClick={()=>project('question_results',{position})}>закрыть ответы и показать результат</Button></div>}
     {flow==='question_results'&&currentQuestion&&<div className="film-live-step"><b>{position}/{target}. результаты на экране</b><Button disabled={busy} onClick={()=>project('question_reveal',{position})}>показать правильный ответ + продолжение</Button></div>}
-    {flow==='question_reveal'&&<div className="film-live-step"><b>{position}/{target}. продолжение показано</b>{position<target?<Button disabled={busy} onClick={()=>project('question_open',{position:position+1})}>открыть вопрос {position+1}/{target}</Button>:<Button disabled={busy} onClick={()=>run('admin-round-close')}>закончить раунд</Button>}</div>}
+    {flow==='question_reveal'&&<div className="film-live-step"><b>{position}/{target}. продолжение показано</b><div className="inline">{position<target?<Button disabled={busy} onClick={()=>project('question_open',{position:position+1})}>открыть вопрос {position+1}/{target}</Button>:<Button disabled={busy} onClick={()=>run('admin-round-close')}>закончить раунд</Button>}{fragmentHref(currentQuestion?.revealFragment)&&<Button kind="secondary" onClick={()=>window.open(fragmentHref(currentQuestion?.revealFragment),'_blank','noopener,noreferrer')}>открыть продолжение ↗</Button>}</div></div>}
     {flow==='round_finished'&&<div className="success">раунд закончен. запускайте следующий.</div>}
   </Card>
 }
@@ -948,7 +949,7 @@ function ProjectorMedia({media,title}:{media:any;title:string}){
   const end=media?.endSec&&Number(media.endSec)>start?Number(media.endSec):undefined
   const platform=String(media?.sourcePlatform||((media?.videoId)?'youtube':''))
   if(media?.videoId&&(platform==='youtube'||!platform)){
-    const qs=new URLSearchParams({autoplay:'1',controls:'0',rel:'0',modestbranding:'1',start:String(start)})
+    const qs=new URLSearchParams({autoplay:'1',controls:'1',rel:'0',modestbranding:'1',playsinline:'1',start:String(start)})
     if(end)qs.set('end',String(end))
     return <div className="screen-video-wrap"><iframe title={title} src={`https://www.youtube.com/embed/${encodeURIComponent(String(media.videoId))}?${qs.toString()}`} allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen/></div>
   }
@@ -1046,6 +1047,7 @@ function projectorContent(d:DemoState){
     if(fragment?.videoId||fragment?.sourceUrl)return <><ProjectorFragment fragment={fragment} title={String(payload.filmTitle||'продолжение')}/><div className="screen-reveal-overlay"><small>правильный ответ</small><b>{answerText(payload.correctAnswer)}</b>{payload.revealText&&<span>{String(payload.revealText)}</span>}</div></>
     return <><div className="eyebrow">правильный ответ · {Number(payload.position||0)}/{Number(payload.totalQuestions||3)}</div><h1>{answerText(payload.correctAnswer)}</h1>{payload.revealText&&<p>{String(payload.revealText)}</p>}</>
   }
+  if(p.state==='round_finished')return <><div className="eyebrow">{payload.roundNo?`раунд ${payload.roundNo}`:'кинораунд'}</div><h1>готово.</h1><p>можно запускать следующий раунд</p></>
   if(p.state==='assignment_randomizing')return <div className="screen-assignment-random"><div className="eyebrow">этот фильм кто-то унесёт с собой</div><h1>кому он достанется?</h1><div className="random-rabbits">{[0,1,2,3,4,5,6].map(i=><img key={i} src={import.meta.env.BASE_URL+'assets/rabbit-full.webp'} alt="" draggable={false}/>)}</div></div>
   if(p.state==='assignment_winner')return <div className="screen-assignment-winner"><div className="winner-rabbit"><img src={import.meta.env.BASE_URL+'assets/rabbit-full.webp'} alt="" draggable={false}/></div><div className="eyebrow">этот фильм твой</div><h1>{String(payload.animalName||'животина')}.</h1><h2>{String(payload.filmTitle||'фильм')}</h2><p>до следующей субботы. потом жду рецензию.</p>{payload.dueAt&&<div className="winner-deadline">до {eventDate(String(payload.dueAt))}</div>}</div>
   if(p.state==='past_review_card')return <div className="screen-past-review"><div className="eyebrow">в прошлый раз</div><h1>{String(payload.animalName||'животина')} × {String(payload.filmTitle||'фильм')}</h1><div className="review-before-after"><span><small>после</small>«{String(payload.afterWord||'')}»</span></div><p>{String(payload.crumbs||'—')}/5 крошек</p>{payload.animalTake&&<h3>{String(payload.animalTake)}</h3>}</div>
@@ -1114,7 +1116,7 @@ function showTimerText(data:DemoState,now:number){
   return `${Math.floor(left/60)}:${String(left%60).padStart(2,'0')}`
 }
 
-function projectorStateLabel(state:string){const m:Record<string,string>={pitch_collecting:'сбор фильмов',pitch_locked:'сбор закрыт',pitch_randomizing:'рандом идеи',pitch_selected:'идея выбрана',movie_searching:'поиск фильма',movie_found:'фильм найден',playing_clip:'фрагмент',film_intro:'фрагмент',one_word_collecting:'одно слово',one_word_results:'слова зала',question_open:'вопрос открыт',question_results:'результаты',question_reveal:'продолжение',assignment_randomizing:'рандом',assignment_winner:'фильм назначен',past_review_card:'из архива'};return m[state]||state}
+function projectorStateLabel(state:string){const m:Record<string,string>={pitch_collecting:'сбор фильмов',pitch_locked:'сбор закрыт',pitch_randomizing:'рандом идеи',pitch_selected:'идея выбрана',movie_searching:'поиск фильма',movie_found:'фильм найден',playing_clip:'фрагмент',film_intro:'фрагмент',one_word_collecting:'одно слово',one_word_results:'слова зала',question_open:'вопрос открыт',question_results:'результаты',question_reveal:'продолжение',round_finished:'раунд закончен',assignment_randomizing:'рандом',assignment_winner:'фильм назначен',past_review_card:'из архива'};return m[state]||state}
 const projectorDemoCreatures:ScreenCreature[]=[
   {id:'demo-01',visualVariant:1,name:'животина 01',stage:'stage_0',crumbs:0,growthProgress:0},
   {id:'demo-02',visualVariant:2,name:'животина 02',stage:'stage_1',crumbs:4,growthProgress:18},
