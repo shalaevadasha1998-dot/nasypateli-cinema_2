@@ -201,6 +201,7 @@ function ParticipantShow({data,reload}:{data:DemoState;reload:(fresh?:boolean)=>
   if(!show||show.runtime.runStatus==='idle'||!['paid','attended'].includes(data.registration))return null
   const block=show.runtime.currentBlock
   if(!block)return null
+  if(show.runtime.runStatus==='finished')return <section className="participant-show"><div className="eyebrow">вечер закончился</div><h2>спасибо за вечер</h2><p>животина остаётся с вами. всё, что случилось сегодня, сохранено.</p></section>
   const round=show.currentRound
   const question=round?.question
   const myVote=show.myVote
@@ -1174,6 +1175,7 @@ function screenContent(d:DemoState){
   if(show&&show.runtime.currentBlock?.type==='arrival'&&!['paused','finished'].includes(show.runtime.runStatus))return <><div className="eyebrow">сбор</div><h1>животины заходят в зал</h1><ScreenCreatureWall data={d}/></>
   if(show&&show.runtime.runStatus!=='idle'){
     const block=show.runtime.currentBlock
+    if(show.runtime.runStatus==='finished')return <><div className="eyebrow">вечер закончен</div><h1>всё</h1><p>спасибо за вечер</p></>
     if(show.runtime.runStatus==='paused')return <><div className="eyebrow">пауза</div><h1>скоро продолжим</h1></>
     if(block?.type==='break')return <><div className="eyebrow">перерыв</div><h1>30 минут</h1></>
     if(block?.type==='final_qr')return <div className="screen-final-qr"><div><div className="eyebrow">итог вечера</div><h1>вступить в «творог»</h1><p>наведи камеру</p></div><div className="screen-final-qr-code"><img src={import.meta.env.BASE_URL+'assets/tvorog-qr.svg'} alt="qr-код группы творог"/></div></div>
