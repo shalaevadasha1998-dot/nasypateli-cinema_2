@@ -1342,10 +1342,8 @@ export async function handleApi(req:Request){
         if(await testRoomTokenMatches(candidate,testRoomHeader)){
           testEvent=candidate
           testParticipantAccess=true
-          try{
-            tg=await telegramUserFromRequest(req)
-            user=await getOrCreateUser(db,tg)
-          }catch{
+          const useTestProfile=body.testProfile===true
+          if(useTestProfile){
             const testUserId=String(candidate?.settings?.test_user_id||'')
             if(!isUuid(testUserId))return err('Тестовая комната настроена некорректно',500)
             const testUser=await db.from('users').select('*').eq('id',testUserId).maybeSingle()
@@ -1353,6 +1351,19 @@ export async function handleApi(req:Request){
             if(!testUser.data)return err('Тестовый участник не найден',500)
             user=testUser.data
             tg={id:0,first_name:'тестовый участник'}
+          }else{
+            try{
+              tg=await telegramUserFromRequest(req)
+              user=await getOrCreateUser(db,tg)
+            }catch{
+              const testUserId=String(candidate?.settings?.test_user_id||'')
+              if(!isUuid(testUserId))return err('Тестовая комната настроена некорректно',500)
+              const testUser=await db.from('users').select('*').eq('id',testUserId).maybeSingle()
+              if(testUser.error)throw testUser.error
+              if(!testUser.data)return err('Тестовый участник не найден',500)
+              user=testUser.data
+              tg={id:0,first_name:'тестовый участник'}
+            }
           }
         }
       }catch(e:any){if(e?.message!=='EVENT_NOT_FOUND')throw e}
@@ -2826,6 +2837,7 @@ export async function handleApi(req:Request){
         blocks=blocks.map((block:any,index:number)=>({
           ...block,
           auto_advance:false,
+          ...(index===0?{duration_min:15}:{}),
           ...(index===1||index===3?{rounds_target:2}:{}),
           ...(index===2?{duration_min:30}:{})
         }))
