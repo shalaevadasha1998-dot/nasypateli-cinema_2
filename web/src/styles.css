@@ -3436,3 +3436,13 @@ html.chat-keyboard-open .chat-compose-inline{
   .screen-final-qr{grid-template-columns:1fr;gap:26px}
   .screen-final-qr-code{width:min(70vw,420px);justify-self:center}
 }
+
+
+/* v0.15 automatic show slides */
+.screen-round-intro{width:min(1180px,92vw);display:grid;gap:14px;align-content:center}
+.screen-round-intro h1{margin:0;font-size:clamp(72px,10vw,150px)}
+.screen-round-intro h2{margin:10px 0 0;font-size:clamp(52px,7vw,104px);font-variant-numeric:tabular-nums}
+.screen-round-intro small{font-size:clamp(18px,1.8vw,28px);color:#aaa79f}
+.screen-round-steps{display:grid;grid-template-columns:1fr 1fr;gap:10px 30px;margin:10px 0 4px;max-width:1100px}
+.screen-round-steps p{margin:0!important;font-size:clamp(20px,2.1vw,34px)!important;line-height:1.18!important;color:#e8e3d9!important}
+@media(max-width:760px){.screen-round-steps{grid-template-columns:1fr}.screen-round-intro h1{font-size:clamp(52px,14vw,92px)}}
