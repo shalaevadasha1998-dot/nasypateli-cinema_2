@@ -2,7 +2,7 @@ import { adminDb } from '../_shared/db.ts'
 import { cors, err, json } from '../_shared/http.ts'
 import { telegramUserFromRequest, isConfiguredAdmin } from '../_shared/telegram.ts'
 import { secureIndex } from '../_shared/random.ts'
-import { structuredResponse, transcribeAudio } from '../_shared/openai.ts'
+import { structuredResponse, structuredWebResponse, transcribeAudio } from '../_shared/openai.ts'
 import { creatureState, emitStoryTrigger, ensureCreature } from '../_shared/stories.ts'
 import { allowedGender, connectionKind, datingState, intentsCompatible } from '../_shared/dating.ts'
 import { JIPITINA, jipitinaInstructions } from '../_shared/jipitina.ts'
@@ -2300,10 +2300,10 @@ export async function handleApi(req:Request){
         await setProjectorState(db,event,'movie_searching',round.id,null,{pitch:{animalName:pitch.data.animal_name_snapshot,title:pitch.data.title,description:pitch.data.description},scope:'worldwide'})
 
         const liveSearchStartedAt=Date.now()
-        const liveSearchBudgetMs=55_000
+        const liveSearchBudgetMs=24_000
         const sourceTrace:any[]=[]
         const candidateSchema={type:'object',additionalProperties:false,properties:{
-          candidates:{type:'array',minItems:6,maxItems:8,items:{type:'object',additionalProperties:false,properties:{
+          candidates:{type:'array',minItems:3,maxItems:4,items:{type:'object',additionalProperties:false,properties:{
             title:{type:'string'},originalTitle:{type:'string'},internationalTitle:{type:'string'},year:{type:['integer','null']},
             country:{type:'string'},language:{type:'string'},similarityScore:{type:'number',minimum:0,maximum:100},reason:{type:'string'}
           },required:['title','originalTitle','internationalTitle','year','country','language','similarityScore','reason']}}
@@ -2312,39 +2312,43 @@ export async function handleApi(req:Request){
         try{
           if(body.preparedOnly===true)throw new Error('PREPARED_ONLY')
           ai=await Promise.race<any>([
-            structuredResponse<any>({
+            structuredWebResponse<any>({
               name:'worldwide_movie_match',
               schema:candidateSchema,
-              instructions:'по названию и описанию придуманного фильма найди максимально похожие РЕАЛЬНО СУЩЕСТВУЮЩИЕ полнометражные фильмы мирового кино. ищи без языковых и страновых ограничений: европа, азия, латинская америка, ближний восток, африка, сша, ссср/россия и т.д. можно предлагать малоизвестные фильмы, если сходство сильнее. обязательно дай оригинальное название на языке фильма и международное/английское название, если есть. не выдумывай фильмы. сортируй прежде всего по сходству сюжета, конфликта, атмосферы и ключевой идеи.',
-              input:JSON.stringify({invented:{title:pitch.data.title,description:pitch.data.description}}),
-              maxOutputTokens:2200,model:Deno.env.get('OPENAI_FILM_MODEL')||'gpt-5.6-terra',reasoningEffort:'low'
+              instructions:'обязательно используй web search прямо сейчас. найди в открытом интернете максимально похожие РЕАЛЬНО СУЩЕСТВУЮЩИЕ полнометражные фильмы по смыслу придуманной идеи. проверяй существование фильма по нескольким публичным источникам, а не по памяти модели. ищи без языковых и страновых ограничений. верни только 3–4 самых сильных совпадения, чтобы live-поиск был быстрым. оригинальное и международное название указывай точно. не выдумывай фильмы. сортируй прежде всего по сходству сюжета, конфликта, атмосферы и ключевой идеи.',
+              input:JSON.stringify({invented:{title:pitch.data.title,description:pitch.data.description},goal:'найти реальный фильм и затем быстро найти воспроизводимый фрагмент'}),
+              maxOutputTokens:1400,model:Deno.env.get('OPENAI_FILM_MODEL')||'gpt-5.6-terra',reasoningEffort:'none',searchContextSize:'low'
             }),
-            new Promise((_,reject)=>setTimeout(()=>reject(new Error('LIVE_MOVIE_SEARCH_TIMEOUT')),28_000))
+            new Promise((_,reject)=>setTimeout(()=>reject(new Error('LIVE_MOVIE_SEARCH_TIMEOUT')),11_000))
           ])
         }catch(e:any){
           if(String(e?.message||e)==='LIVE_MOVIE_SEARCH_TIMEOUT')sourceTrace.push({stage:'candidate_match',error:'timeout'})
           else sourceTrace.push({stage:'candidate_match',error:String(e?.message||e).slice(0,200)})
         }
 
-        const validated:any[]=[]
-        for(const c of ai.candidates||[]){
-          if(validated.length>=5||Date.now()-liveSearchStartedAt>liveSearchBudgetMs)break
+        const validationJobs=(ai.candidates||[]).slice(0,4).map(async(c:any)=>{
           const names=[c.originalTitle,c.internationalTitle,c.title].map((x:any)=>String(x||'').trim()).filter(Boolean)
           let v:any=null
-          for(const name of [...new Set(names)]){
-            v=await validateMovieTitle(name,c.year||undefined)
+          for(const name of [...new Set(names)].slice(0,2)){
+            try{
+              v=await Promise.race([
+                validateMovieTitle(name,c.year||undefined),
+                new Promise(resolve=>setTimeout(()=>resolve(null),4500))
+              ])
+            }catch{}
             if(v)break
           }
-          if(!v?.runtimeMin||v.runtimeMin>event.max_movie_runtime_min)continue
-          validated.push({
+          if(!v?.runtimeMin||v.runtimeMin>event.max_movie_runtime_min)return null
+          return {
             ...c,...v,
             originalTitle:String(c.originalTitle||v.originalTitle||v.title),
             searchTitles:[...new Set([...names,...(Array.isArray(v.searchTitles)?v.searchTitles:[])])].slice(0,30)
-          })
-        }
+          }
+        })
+        const validated=(await Promise.all(validationJobs)).filter(Boolean) as any[]
         validated.sort((x:any,y:any)=>Number(y.similarityScore||0)-Number(x.similarityScore||0))
 
-        for(const c of validated.slice(0,4)){
+        for(const c of validated.slice(0,2)){
           if(Date.now()-liveSearchStartedAt>liveSearchBudgetMs)break
           const inserted=await db.from('movie_candidates').insert({
             event_id:event.id,provider:'wikidata',provider_id:c.wikidataId,title:c.title,original_title:c.originalTitle||c.title,
@@ -2358,7 +2362,7 @@ export async function handleApi(req:Request){
             const resolved=await discoverAndPersistMovieSources(db,event,movie)
             const sourceCandidates=(resolved.discovery?.candidates||[]).filter((x:any)=>x.videoId&&x.verified&&x.embeddable&&x.rightsStatus!=='blocked').sort((x:any,y:any)=>Number(y.confidence||0)-Number(x.confidence||0))
             sourceTrace.push({movieId:movie.id,title:movie.title,sources:sourceCandidates.length})
-            for(const source of sourceCandidates.slice(0,3)){
+            for(const source of sourceCandidates.slice(0,2)){
               if(Date.now()-liveSearchStartedAt>liveSearchBudgetMs)break
               try{
                 const livePack=await buildTranscriptQuestionPackage(movie,source)
@@ -2397,6 +2401,14 @@ export async function handleApi(req:Request){
               }catch(e:any){sourceTrace.push({movieId:movie.id,title:movie.title,source:String(source.videoId||source.sourceUrl||''),error:String(e?.message||e)})}
             }
           }catch(e:any){sourceTrace.push({movieId:movie.id,title:movie.title,error:String(e?.message||e)})}
+        }
+
+        if(body.preparedOnly!==true){
+          const projector=await setProjectorState(db,event,'movie_searching',round.id,null,{
+            pitch:{animalName:pitch.data.animal_name_snapshot,title:pitch.data.title,description:pitch.data.description},
+            scope:'internet',message:'не нашли проверяемый фрагмент за 24 секунды · нажми ещё раз'
+          })
+          return json({ok:true,found:false,retry:true,searchMode:'live_internet_retry',sourceTrace,projector})
         }
 
         const fallbackPackages=await db.from('film_packages').select('id,movie_candidate_id,title_snapshot,fragments,status').eq('event_id',event.id).eq('status','ready').is('origin_submission_id',null)
