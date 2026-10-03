@@ -561,6 +561,7 @@ function ShowControl({data,busy,run}:{data:DemoState;busy:boolean;run:(action:st
   const currentTrack=audio?.assets.find(x=>x.key===audioState?.track_key)
   const screenAudio=audio?.screen
   const screenReady=screenAudio?.online===true&&screenAudio?.unlocked===true
+  const cinemaRoundActive=block?.type==='cinema_rounds'&&show.currentRound?.status==='active'
   const activeParticipant=rows.find(x=>x.status==='attended')||rows[0]
   const creatureName=uiLower(activeParticipant?.creatureName||'животина')
   const testRoom=String(data.event.slug||'').startsWith('test-')
@@ -596,12 +597,12 @@ function ShowControl({data,busy,run}:{data:DemoState;busy:boolean;run:(action:st
     </>}
 
     {runtime.runStatus==='paused'&&<Button disabled={busy} onClick={()=>command('resume')}>продолжить мероприятие</Button>}
-    {runtime.runStatus==='running'&&<div className="show-primary-controls">
+    {runtime.runStatus==='running'&&!cinemaRoundActive&&<div className="show-primary-controls">
       <Button kind="secondary" disabled={busy||runtime.currentBlockIndex===0} onClick={()=>command('back')}>← назад</Button>
       <Button disabled={busy||runtime.currentBlockIndex>=show.program.blocks.length-1} onClick={()=>command('next')}>следующий блок →</Button>
     </div>}
 
-    {runtime.runStatus!=='idle'&&<div className="show-timeline">{show.program.blocks.map(b=>{const slot=exactSlots.get(b.id);return <button type="button" disabled={busy} onClick={()=>command('jump',{blockId:b.id})} className={b.id===runtime.currentBlockId?'current':''} key={b.id}><span>{b.index+1}</span><b>{b.title}</b><small>{b.durationMin&&slot?`${minuteMark(slot.start)}–${minuteMark(slot.end)}`:'после эфира'}</small></button>})}</div>}
+    {runtime.runStatus!=='idle'&&!cinemaRoundActive&&<div className="show-timeline">{show.program.blocks.map(b=>{const slot=exactSlots.get(b.id);return <button type="button" disabled={busy} onClick={()=>command('jump',{blockId:b.id})} className={b.id===runtime.currentBlockId?'current':''} key={b.id}><span>{b.index+1}</span><b>{b.title}</b><small>{b.durationMin&&slot?`${minuteMark(slot.start)}–${minuteMark(slot.end)}`:'после эфира'}</small></button>})}</div>}
 
     {block?.type==='cinema_rounds'&&<div className="show-live-workspace">
       <ShowRoundControl data={data} busy={busy} run={run}/>
@@ -610,12 +611,12 @@ function ShowControl({data,busy,run}:{data:DemoState;busy:boolean;run:(action:st
 
     {block?.type==='final_vote'&&show.finalVote&&<div className="show-final-vote-admin"><small>финальный выбор · {show.finalVote.totalVotes} голосов</small>{show.finalVote.options.map(x=><span key={x.id}><b>{x.title}</b><em>{x.count}</em></span>)}</div>}
 
-    {['running','paused'].includes(runtime.runStatus)&&<div className="show-secondary-controls">
+    {['running','paused'].includes(runtime.runStatus)&&<details className="show-emergency-controls"><summary>аварийные действия</summary><div className="show-secondary-controls">
       {runtime.runStatus==='running'&&<Button kind="secondary" disabled={busy} onClick={()=>command('pause')}>пауза мероприятия</Button>}
       <Button kind="secondary" disabled={busy} onClick={()=>command('restart')}>перезапустить текущий блок</Button>
       {testRoom&&<Button kind="secondary" disabled={busy} onClick={()=>{if(window.confirm('сбросить тестовую комнату полностью и начать с нуля?'))void run('admin-test-room-reset')}}>сбросить тест с нуля</Button>}
-    </div>}
-    {!finished&&runtime.runStatus!=='idle'&&<Button kind="danger" disabled={busy} onClick={()=>{if(window.confirm('закончить мероприятие?'))void command('end_event')}}>закончить мероприятие</Button>}
+      {!finished&&<Button kind="danger" disabled={busy} onClick={()=>{if(window.confirm('закончить мероприятие?'))void command('end_event')}}>закончить мероприятие</Button>}
+    </div></details>}
   </section>
 }
 
@@ -630,7 +631,7 @@ function ShowRoundControl({data,busy,run}:{data:DemoState;busy:boolean;run:(acti
   const complete=!active&&current>=target
   return <Card className="show-round-card">
     <div className="row spread"><div><div className="section-title">этот блок</div><h2>{active?`раунд ${round?.roundNo} · ${round&&round.roundNo%2===1?'одно слово':'вопросы'}`:complete?`${target}/${target} готово`:`раунд ${current+1} из ${target}`}</h2></div></div>
-    {!active?complete?<Button disabled={busy} onClick={()=>run('admin-show-control',{op:'next'})}>дальше → следующий блок</Button>:<Button disabled={busy||show.runtime.runStatus!=='running'} onClick={()=>run('admin-round-start')}>запустить раунд</Button>:<p className="muted">весь раунд идёт ниже одной цепочкой кнопок «дальше».</p>}
+    {!active?complete?<Button disabled={busy} onClick={()=>run('admin-show-control',{op:'next'})}>дальше → следующий блок</Button>:<Button disabled={busy||show.runtime.runStatus!=='running'} onClick={()=>run('admin-round-start')}>запустить раунд</Button>:<p className="muted">по программе блок занимает {block.durationMin} мин. весь активный раунд управляется одной кнопкой «дальше» ниже.</p>}
   </Card>
 }
 
