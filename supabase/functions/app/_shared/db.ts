@@ -16,5 +16,10 @@ function secretKey(){
 export function adminDb(){
   const url=Deno.env.get('SUPABASE_URL')
   if(!url) throw new Error('SUPABASE_URL is missing')
-  return createClient(url,secretKey(),{auth:{persistSession:false,autoRefreshToken:false}})
+  return createClient(url,secretKey(),{
+    auth:{persistSession:false,autoRefreshToken:false},
+    // Do not amplify a degraded PostgREST pool. supabase-js retries transient
+    // 503/504 responses by default; the app handles recovery/backoff upstream.
+    db:{retry:false}
+  })
 }
