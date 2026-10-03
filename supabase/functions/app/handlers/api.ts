@@ -1160,6 +1160,7 @@ export async function handleApi(req:Request){
 
     if(action==='screen-bootstrap'){
       const slug=String(body.slug||'2026-10-03')
+      if(!screenTokenOk&&!slug.startsWith('test-'))return err('Доступ к экрану запрещён',401)
       const live=await db.rpc('app_screen_live_state',{p_slug:slug})
       if(live.error)throw live.error
       const x:any=live.data
