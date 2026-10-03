@@ -974,7 +974,7 @@ function Admin(){
       <AdminParticipants data={data} reload={reload} adminToken={privileged.token}/>
       <ReviewQueueAdmin data={data} busy={busy} run={run}/>
       {!['2026-10-03','test-2026-10-03'].includes(data.event.slug)&&<ProgramEditor data={data} busy={busy} run={run}/>}
-      {['2026-10-03','test-2026-10-03'].includes(data.event.slug)&&<Card><div className="section-title">программа вечера</div><p>сбор → 2 раунда → перерыв 30 минут → 2 раунда → qr «творог» → музыка</p><p className="muted">на 3 октября порядок и число раундов зафиксированы.</p></Card>}
+      {['2026-10-03','test-2026-10-03'].includes(data.event.slug)&&<Card><div className="section-title">программа вечера</div><p>сбор 15 минут → 2 раунда → перерыв 30 минут → 2 раунда → qr «творог» → музыка</p><p className="muted">на 3 октября порядок и число раундов зафиксированы.</p></Card>}
       <MovieCatalogAdmin data={data} busy={busy} run={run}/>
     </details>
     <details className="admin-technical"><summary>технические настройки события</summary><div className="admin-tech-grid">
@@ -1347,11 +1347,12 @@ function ProjectorAudio({data,screenToken}:{data:DemoState;screenToken:string}){
     let timeout:number|undefined
     try{
       if(!bg||!fx||!cueAsset?.url)throw new Error('проверочный звук ещё не загрузился. повтори через несколько секунд')
-      // Both play calls must occur synchronously inside the click gesture.
-      bg.pause();bg.src=cueAsset.url;bg.muted=false;bg.volume=.001;bg.load()
+      // Проверка звука должна звучать ровно из одного audio-элемента.
+      // Фоновый плеер остаётся остановленным до подтверждения lease.
+      bg.pause();bg.removeAttribute('src');bg.load()
       fx.pause();fx.src=cueAsset.url;fx.muted=false;fx.volume=.65;fx.load()
-      const plays=Promise.all([bg.play(),fx.play()])
-      await Promise.race([plays,new Promise((_,reject)=>{timeout=window.setTimeout(()=>reject(new Error('звук не загрузился за 8 секунд. проверь соединение и повтори')),8000)})])
+      const play=fx.play()
+      await Promise.race([play,new Promise((_,reject)=>{timeout=window.setTimeout(()=>reject(new Error('звук не загрузился за 8 секунд. проверь соединение и повтори')),8000)})])
       const lease=await pingAudio(true)
       if(!lease.owner)throw new Error('звук уже включён на другом экране. закрой его и повтори через 20 секунд')
       // Preserve the audible cue while bootstraps continue polling.
@@ -1373,7 +1374,7 @@ function ProjectorAudio({data,screenToken}:{data:DemoState;screenToken:string}){
   </>
 }
 
-function Screen(){const {slug}=useParams();const [search]=useSearchParams();const privileged=usePrivilegedState('screen',slug);const {data,error}=privileged;const [now,setNow]=useState(()=>Date.now());useEffect(()=>{const t=window.setInterval(()=>setNow(Date.now()),1000);return()=>window.clearInterval(t)},[]);if(!data)return <Loading error={error}/>;const animalDemo=search.get('demo')==='animals';const content=animalDemo?<ScreenCreatureDemo data={data}/>:screenContent(data);const timer=animalDemo?'':showTimerText(data,now);const status=animalDemo?'репетиция животин':data.projector&&!['idle','arrival'].includes(data.projector.state)?projectorStateLabel(data.projector.state):data.show?.runtime.currentBlock?.type==='arrival'?'сбор гостей':data.show?.runtime.runStatus!=='idle'?data.show?.runtime.currentBlock?.title:statusLabel(data.event.status);return <div className="screen-page"><ProjectorAudio data={data} screenToken={privileged.token}/><div className="screen-brand">НАСЫПАТЕЛИ В КИНО</div><div className="screen-status">{status}{timer&&<b>{timer}</b>}</div>{!animalDemo&&data.screenMessage&&<div className="screen-message">{data.screenMessage}</div>}<div className="screen-content">{content}</div><div className="screen-footer">{animalDemo?'demo · база не меняется':eventDate(data.event.startsAt)+'. НАСЫПАТЕЛИ В КИНО'}</div></div>}
+function Screen(){const {slug}=useParams();const [search]=useSearchParams();const privileged=usePrivilegedState('screen',slug);const {data,error}=privileged;const [now,setNow]=useState(()=>Date.now());useEffect(()=>{const t=window.setInterval(()=>setNow(Date.now()),1000);return()=>window.clearInterval(t)},[]);if(!data)return <Loading error={error}/>;const animalDemo=search.get('demo')==='animals';const content=animalDemo?<ScreenCreatureDemo data={data}/>:screenContent(data);const timer=animalDemo?'':showTimerText(data,now);const status=animalDemo?'репетиция животин':data.projector&&!['idle','arrival'].includes(data.projector.state)?projectorStateLabel(data.projector.state):data.show?.runtime.currentBlock?.type==='arrival'?'сбор гостей':data.show?.runtime.runStatus!=='idle'?data.show?.runtime.currentBlock?.title:statusLabel(data.event.status);return <div className="screen-page">{!animalDemo&&<ProjectorAudio data={data} screenToken={privileged.token}/>}<div className="screen-brand">НАСЫПАТЕЛИ В КИНО</div><div className="screen-status">{status}{timer&&<b>{timer}</b>}</div>{!animalDemo&&data.screenMessage&&<div className="screen-message">{data.screenMessage}</div>}<div className="screen-content">{content}</div><div className="screen-footer">{animalDemo?'demo · база не меняется':eventDate(data.event.startsAt)+'. НАСЫПАТЕЛИ В КИНО'}</div></div>}
 
 function TelegramStartRouter(){
   const nav=useNavigate()
