@@ -624,17 +624,135 @@ function ShowRoundControl({data,busy,run}:{data:DemoState;busy:boolean;run:(acti
   const show=data.show
   const block=show?.runtime.currentBlock
   const round=show?.currentRound
+  const [clock,setClock]=useState(()=>Date.now())
+  const autoRef=useRef('')
+  useEffect(()=>{const t=window.setInterval(()=>setClock(Date.now()),1000);return()=>window.clearInterval(t)},[])
+
+  const fire=(key:string,action:string,payload:Record<string,unknown>={})=>{
+    if(busy||autoRef.current===key)return
+    autoRef.current=key
+    void run(action,payload).finally(()=>{
+      window.setTimeout(()=>{if(autoRef.current===key)autoRef.current=''},6000)
+    })
+  }
+  useEffect(()=>{
+    if(!show||!block||block.type!=='cinema_rounds'||show.runtime.runStatus!=='running'||busy)return
+    const active=round?.status==='active'
+    const target=Math.max(1,Math.min(20,Number(block.roundsTarget||2)))
+    const current=Math.max(0,Number((show.runtime as any).currentBlockRoundCount||0))
+    const projector:any=data.projector
+    const elapsed=(iso?:string)=>iso?Math.max(0,clock-new Date(iso).getTime()):0
+    const projectorElapsed=elapsed(projector?.updatedAt||round?.updatedAt||round?.startedAt)
+    const attended=Math.max(0,(data.adminParticipants||[]).filter(x=>x.status==='attended').length)
+
+    if(!active){
+      if(current<target){
+        if(projector?.state==='round_finished'&&projectorElapsed<6000)return
+        fire(`auto-start:${block.id}:${current}`,'admin-round-start')
+        return
+      }
+      if(current>=target){
+        if(projector?.state==='round_finished'&&projectorElapsed<8000)return
+        fire(`auto-next-block:${block.id}:${current}`,'admin-show-control',{op:'next'})
+      }
+      return
+    }
+    if(!round)return
+    const flow=round.flowStatus||'round_intro'
+    const mode=round.roundNo%2===1?'review':'questions'
+    const pack=round.movie?(data.filmPackages||[]).find(x=>x.movieCandidateId===round.movie?.id):undefined
+    const project=(op:string,extra:Record<string,unknown>={})=>pack&&fire(`project:${round.id}:${op}:${projector?.revision||0}`,'admin-film-projector',{filmPackageId:pack.id,roundId:round.id,op,...extra})
+    const clipMs=(fragment:any,maxSec:number,defaultSec:number)=>{
+      const start=Math.max(0,Number(fragment?.startSec||0))
+      const rawEnd=fragment?.endSec==null?NaN:Number(fragment.endSec)
+      const sec=Number.isFinite(rawEnd)&&rawEnd>start?rawEnd-start:defaultSec
+      return Math.max(8,Math.min(maxSec,sec))*1000
+    }
+
+    if(flow==='round_intro'){
+      if(projectorElapsed>=305000)fire(`intro-fallback:${round.id}`,'admin-round-pitches-open')
+      return
+    }
+    if(flow==='collecting_films'){
+      const count=Number(round.pitchCount||0)
+      const everyone=attended>0&&count>=attended
+      if((everyone||(projectorElapsed>=300000&&count>0)))fire(`close-pitches:${round.id}:${count}`,'admin-round-pitches-close')
+      return
+    }
+    if(flow==='films_locked'){
+      if(projectorElapsed>=2000)fire(`draw-pitch:${round.id}`,'admin-round-pitch-draw')
+      return
+    }
+    if(flow==='randomizing_submission')return
+    if(flow==='submission_selected'){
+      if(projectorElapsed>=5000)fire(`find-movie:${round.id}`,'admin-round-find-movie')
+      return
+    }
+    if(flow==='searching_movie')return
+    if(flow==='movie_found'){
+      if(pack&&projectorElapsed>=4000)project('film_intro')
+      return
+    }
+    if(flow==='playing_clip'){
+      if(!pack)return
+      const watchMs=clipMs(projector?.payload?.fragment,600,600)
+      if(projectorElapsed<watchMs+2000)return
+      if(mode==='review')fire(`assign-viewer:${round.id}`,'admin-film-assign',{filmPackageId:pack.id,roundId:round.id})
+      else project('question_open',{position:1})
+      return
+    }
+    if(flow==='assignment_selected'){
+      if(!pack||projectorElapsed<300000)return
+      if(mode==='review')project('one_word_open')
+      else fire(`close-seer-round:${round.id}`,'admin-round-close')
+      return
+    }
+    if(flow==='one_word_collecting'){
+      const wordCount=(Array.isArray(projector?.payload?.wordGroups)?projector.payload.wordGroups:[]).reduce((sum:number,x:any)=>sum+Number(x.count||0),0)
+      const everyone=attended>0&&wordCount>=attended
+      if((everyone||(projectorElapsed>=300000&&wordCount>0)))project('one_word_results')
+      return
+    }
+    if(flow==='one_word_results'){
+      if(projectorElapsed>=12000)fire(`close-review-round:${round.id}`,'admin-round-close')
+      return
+    }
+    if(flow==='question_open'){
+      const answerCount=Number(projector?.payload?.answerCount||0)
+      const total=Number(projector?.payload?.totalParticipants||attended||0)
+      const everyone=total>0&&answerCount>=total
+      if((everyone||(projectorElapsed>=120000&&answerCount>0)))project('question_results',{position:Math.max(1,Number(round.questionPosition||1))})
+      return
+    }
+    if(flow==='question_results'){
+      if(projectorElapsed>=10000)project('question_reveal',{position:Math.max(1,Number(round.questionPosition||1))})
+      return
+    }
+    if(flow==='question_reveal'){
+      const revealMs=clipMs(projector?.payload?.revealFragment,180,20)
+      if(projectorElapsed<revealMs+3000)return
+      const pos=Math.max(1,Number(round.questionPosition||1))
+      const qTarget=Math.max(1,Math.min(3,Number(round.questionTarget||3)))
+      if(pos<qTarget)project('question_open',{position:pos+1})
+      else project('assignment_randomizing')
+      return
+    }
+    if(flow==='assignment_randomizing'){
+      if(pack&&projectorElapsed>=2200)fire(`assign-seer:${round.id}`,'admin-film-assign',{filmPackageId:pack.id,roundId:round.id})
+    }
+  },[clock,busy,show?.runtime.runStatus,show?.runtime.currentBlockId,show?.runtime.currentBlockRoundCount,round?.id,round?.status,round?.flowStatus,round?.pitchCount,round?.questionPosition,round?.movie?.id,data.projector?.revision,data.projector?.updatedAt,data.adminParticipants?.length,data.inventedFilms?.length])
+
   if(!show||!block||block.type!=='cinema_rounds')return null
   const active=round?.status==='active'
   const target=Math.max(1,Math.min(20,Number(block.roundsTarget||2)))
   const current=Math.max(0,Number((show.runtime as any).currentBlockRoundCount||0))
   const complete=!active&&current>=target
   return <Card className="show-round-card">
-    <div className="row spread"><div><div className="section-title">этот блок</div><h2>{active?`раунд ${round?.roundNo} · ${round&&round.roundNo%2===1?'одно слово':'вопросы'}`:complete?`${target}/${target} готово`:`раунд ${current+1} из ${target}`}</h2></div></div>
-    {!active?complete?<Button disabled={busy} onClick={()=>run('admin-show-control',{op:'next'})}>дальше → следующий блок</Button>:<Button disabled={busy||show.runtime.runStatus!=='running'} onClick={()=>run('admin-round-start')}>запустить раунд</Button>:<p className="muted">по программе блок занимает {block.durationMin} мин. весь активный раунд управляется одной кнопкой «дальше» ниже.</p>}
+    <div className="row spread"><div><div className="section-title">авторежиссёр включён</div><h2>{active?`раунд ${round?.roundNo} · ${round&&round.roundNo%2===1?'рецензия':'3 прогноза'}`:complete?`${target}/${target} готово`:`готовим раунд ${current+1} из ${target}`}</h2></div><Pill>auto</Pill></div>
+    <p className="muted">обычный эфир переключается сам. кнопки ниже нужны только если надо форсировать переход.</p>
+    {!active?complete?<Button kind="secondary" disabled={busy} onClick={()=>run('admin-show-control',{op:'next'})}>форсировать следующий блок</Button>:<Button kind="secondary" disabled={busy||show.runtime.runStatus!=='running'} onClick={()=>run('admin-round-start')}>форсировать старт раунда</Button>:null}
   </Card>
 }
-
 function ProgramEditor({data,busy,run}:{data:DemoState;busy:boolean;run:(action:string,payload?:Record<string,unknown>)=>Promise<any>}){
   const program=data.show?.program
   const [blocks,setBlocks]=useState<any[]>([])
