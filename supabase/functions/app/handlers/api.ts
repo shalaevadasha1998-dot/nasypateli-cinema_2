@@ -693,6 +693,18 @@ async function projectorPublicState(db:any,event:any){
     }
     payload={...payload,wordGroups:[...groups.values()].sort((a,b)=>b.count-a.count||a.word.localeCompare(b.word,'ru')).slice(0,40)}
   }
+  if(p.round_id&&p.film_package_id&&String(p.state)==='question_open'){
+    const questionId=String(payload.questionId||'')
+    if(isUuid(questionId)){
+      const [answers,attended]=await Promise.all([
+        db.from('film_predictions').select('*',{count:'exact',head:true}).eq('event_id',event.id).eq('round_id',p.round_id).eq('film_package_id',p.film_package_id).eq('question_id',questionId),
+        db.from('registrations').select('*',{count:'exact',head:true}).eq('event_id',event.id).eq('status','attended')
+      ])
+      if(answers.error)throw answers.error
+      if(attended.error)throw attended.error
+      payload={...payload,answerCount:Number(answers.count||0),totalParticipants:Number(attended.count||0)}
+    }
+  }
   return {state:String(p.state||'idle'),revision:Number(p.revision||0),payload,updatedAt:p.updated_at}
 }
 
@@ -2327,8 +2339,7 @@ export async function handleApi(req:Request){
         if(lock.error)throw lock.error
         const updated=await db.from('event_rounds').update({flow_status:'films_locked',updated_at:now}).eq('id',round.id).eq('event_id',event.id)
         if(updated.error)throw updated.error
-        const first:any=rows[0]
-        const projector=await setProjectorState(db,event,'pitch_preview',round.id,null,{index:0,total:rows.length,pitch:{id:String(first.id),title:String(first.title),description:String(first.description)}})
+        const projector=await setProjectorState(db,event,'pitch_locked',round.id,null,{count:rows.length})
         return json({ok:true,count:rows.length,projector})
       })
     }
@@ -2807,7 +2818,14 @@ export async function handleApi(req:Request){
       if(String(round.data.movie_candidate_id||'')!==String(pack.data.movie_candidate_id))return err('этот пакет не соответствует фильму текущего раунда',409)
       let state='film_intro',payload:any={filmTitle:pack.data.title_snapshot}
       if(op==='film_intro'){
-        state='film_intro';payload={filmTitle:pack.data.title_snapshot,fragment:(Array.isArray(pack.data.fragments)?pack.data.fragments:[])[0]||null}
+        const rawFragment:any=(Array.isArray(pack.data.fragments)?pack.data.fragments:[])[0]||null
+        let fragment=rawFragment
+        if(rawFragment){
+          const start=Math.max(0,Number(rawFragment.startSec||0))
+          const rawEnd=rawFragment.endSec==null?null:Number(rawFragment.endSec)
+          fragment={...rawFragment,startSec:start,endSec:rawEnd&&rawEnd>start?Math.min(rawEnd,start+600):start+600}
+        }
+        state='film_intro';payload={filmTitle:pack.data.title_snapshot,fragment}
       }else if(op==='one_word_open'){
         state='one_word_collecting';payload={filmTitle:pack.data.title_snapshot,prompt:'одно слово. что это за фильм?'}
       }else if(op==='one_word_results'){
@@ -2897,9 +2915,13 @@ export async function handleApi(req:Request){
       const packageId=String(body.filmPackageId||'')
       const roundId=String(body.roundId||'')
       if(!isUuid(packageId)||!isUuid(roundId))return err('не выбран фильм или раунд',422)
-      const pack=await db.from('film_packages').select('id,title_snapshot').eq('id',packageId).eq('event_id',event.id).maybeSingle()
+      const [pack,roundInfo]=await Promise.all([
+        db.from('film_packages').select('id,title_snapshot').eq('id',packageId).eq('event_id',event.id).maybeSingle(),
+        db.from('event_rounds').select('question_target,round_no').eq('id',roundId).eq('event_id',event.id).maybeSingle()
+      ])
       if(pack.error)throw pack.error
-      if(!pack.data)return err('киноблок не найден',404)
+      if(roundInfo.error)throw roundInfo.error
+      if(!pack.data||!roundInfo.data)return err('киноблок не найден',404)
       const assignment=await db.rpc('assign_film_mission',{p_event_id:event.id,p_round_id:roundId,p_film_package_id:packageId})
       if(assignment.error){
         const m=String(assignment.error.message||'')
@@ -2913,7 +2935,11 @@ export async function handleApi(req:Request){
       if(current.error)throw current.error
       const projector=await db.from('event_projector_state').upsert({
         event_id:event.id,state:'assignment_winner',film_package_id:packageId,round_id:roundId,
-        payload:{animalName:winner.animal_name,filmTitle:pack.data.title_snapshot,dueAt:winner.due_at},
+        payload:{
+          animalName:winner.animal_name,filmTitle:pack.data.title_snapshot,dueAt:winner.due_at,
+          assignmentKind:Number(roundInfo.data.question_target||0)>0?'seer':'viewer',
+          correctCount:Number(winner.correct_count||0),totalQuestions:Number(winner.total_questions||0)
+        },
         revision:Number(current.data?.revision||0)+1,updated_at:new Date().toISOString()
       },{onConflict:'event_id'})
       if(projector.error)throw projector.error
