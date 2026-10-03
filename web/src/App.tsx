@@ -63,12 +63,37 @@ function useStateData(enabled=true,eventSlug=''){
 
 function usePrivilegedState(kind:'admin'|'screen',slug:string|undefined){
   const [search,setSearch]=useSearchParams();const [data,setData]=useState<DemoState|null>(null);const [error,setError]=useState('')
-  const storageKey=`nasypateli-${kind}-token`;const queryToken=search.get('token')||''
+  const inFlight=useRef(false)
+  const storageKey=`nasypateli-${kind}-token`
+  const roomToken=kind==='admin'?(search.get('room')||''):''
+  const queryToken=search.get('token')||roomToken
   const token=queryToken||(typeof sessionStorage!=='undefined'?sessionStorage.getItem(storageKey)||'':'')
   const tokenlessTestScreen=kind==='screen'&&String(slug||'').startsWith('test-')
-  useEffect(()=>{if(!queryToken)return;sessionStorage.setItem(storageKey,queryToken);const next=new URLSearchParams(search);next.delete('token');setSearch(next,{replace:true})},[queryToken,storageKey])
-  const reload=()=>{if(!slug){setError('не указано событие');return Promise.resolve()}if(kind==='screen'&&!token&&!demoMode&&!tokenlessTestScreen){setError('нужен закрытый ключ экрана');return Promise.resolve()}const action=kind==='admin'?'admin-bootstrap':'screen-bootstrap';const fn=kind==='admin'?callAdminApi:callScreenApi;return fn<DemoState>(action,{slug},token).then(d=>{setData(d);setError('')}).catch(e=>setError(e.message))}
-  useEffect(()=>{reload();const timer=window.setInterval(reload,kind==='screen'?1800:1500);return()=>window.clearInterval(timer)},[kind,slug,token])
+  useEffect(()=>{
+    if(!queryToken)return
+    sessionStorage.setItem(storageKey,queryToken)
+    const next=new URLSearchParams(search)
+    next.delete('token')
+    if(kind==='admin')next.delete('room')
+    setSearch(next,{replace:true})
+  },[queryToken,storageKey,kind])
+  const reload=()=>{
+    if(inFlight.current)return Promise.resolve()
+    if(!slug){setError('не указано событие');return Promise.resolve()}
+    if(kind==='screen'&&!token&&!demoMode&&!tokenlessTestScreen){setError('нужен закрытый ключ экрана');return Promise.resolve()}
+    const action=kind==='admin'?'admin-bootstrap':'screen-bootstrap'
+    const fn=kind==='admin'?callAdminApi:callScreenApi
+    inFlight.current=true
+    return fn<DemoState>(action,{slug},token)
+      .then(d=>{setData(d);setError('')})
+      .catch(e=>setError(e.message))
+      .finally(()=>{inFlight.current=false})
+  }
+  useEffect(()=>{
+    void reload()
+    const timer=window.setInterval(()=>{void reload()},kind==='screen'?1800:3000)
+    return()=>window.clearInterval(timer)
+  },[kind,slug,token])
   return {data,error,reload,token}
 }
 
