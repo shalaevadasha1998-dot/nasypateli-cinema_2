@@ -26,63 +26,81 @@ function looksLikeFilm(entity:any,description=''){
 export async function validateMovieTitle(title:string,expectedYear?:number):Promise<ValidatedMovie|null>{
   const raw=String(title||'').trim()
   if(!raw)return null
-  const languages=['en','ru','es','fr','de','it','pt','ja','ko','zh','pl','tr']
+
+  const getJson=async(url:string,ms=2600)=>{
+    const controller=new AbortController()
+    const timeout=setTimeout(()=>controller.abort(),ms)
+    try{
+      const r=await fetch(url,{headers:{'api-user-agent':'NasypateliCinema/1.0'},signal:controller.signal})
+      if(!r.ok)return null
+      return await r.json()
+    }catch{return null}
+    finally{clearTimeout(timeout)}
+  }
+
+  // Live-проверка должна занимать секунды, а не обходить языки и карточки
+  // последовательно. Параллельно ищем одно и то же название в основных
+  // индексах Wikidata, затем параллельно проверяем сами сущности.
+  const languages=['en','ru','es','fr','de','it','pt','ja']
+  const searchResults=await Promise.allSettled(languages.map(async language=>{
+    const qs=new URLSearchParams({action:'wbsearchentities',search:raw,language,format:'json',limit:'4',origin:'*'})
+    return await getJson('https://www.wikidata.org/w/api.php?'+qs.toString(),2200)
+  }))
   const hitMap=new Map<string,any>()
-  for(const language of languages){
-    try{
-      const qs=new URLSearchParams({action:'wbsearchentities',search:raw,language,format:'json',limit:'5',origin:'*'})
-      const sr=await fetch(`https://www.wikidata.org/w/api.php?${qs}`,{headers:{'api-user-agent':'NasypateliCinema/1.0'}})
-      if(!sr.ok)continue
-      const sj=await sr.json()
-      for(const hit of sj.search||[])if(hit?.id&&!hitMap.has(String(hit.id)))hitMap.set(String(hit.id),hit)
+  for(const result of searchResults){
+    if(result.status!=='fulfilled')continue
+    for(const hit of result.value?.search||[]){
+      if(hit?.id&&!hitMap.has(String(hit.id)))hitMap.set(String(hit.id),hit)
       if(hitMap.size>=10)break
-    }catch{}
+    }
+    if(hitMap.size>=10)break
   }
-  const hits=[...hitMap.values()].slice(0,12)
-  const candidates:any[]=[]
-  for(const hit of hits){
-    if(!hit?.id)continue
-    try{
-      const er=await fetch(`https://www.wikidata.org/wiki/Special:EntityData/${hit.id}.json`,{headers:{'api-user-agent':'NasypateliCinema/1.0'}})
-      if(!er.ok)continue
-      const ej=await er.json();const entity=ej.entities?.[hit.id]
-      if(!entity)continue
-      const descriptions=Object.values(entity.descriptions||{}) as any[]
-      const description=String(entity.descriptions?.en?.value||entity.descriptions?.ru?.value||descriptions.find((x:any)=>x?.value)?.value||hit.description||'')
-      if(!looksLikeFilm(entity,description))continue
-      const runtime=claimNumber(entity,'P2047')
-      if(!runtime||runtime<=0||runtime>600)continue
-      const year=claimYear(entity)
-      const names=labelSet(entity)
-      const target=normalize(raw)
-      let titleScore=0
-      for(const n of names){
-        const nn=normalize(n)
-        if(!nn)continue
-        if(nn===target)titleScore=Math.max(titleScore,100)
-        else if(nn.includes(target)||target.includes(nn))titleScore=Math.max(titleScore,78)
-        else{
-          const wanted=new Set(target.split(' ').filter(x=>x.length>1))
-          const have=new Set(nn.split(' ').filter(x=>x.length>1))
-          const overlap=[...wanted].filter(x=>have.has(x)).length/Math.max(1,wanted.size)
-          titleScore=Math.max(titleScore,Math.round(overlap*65))
-        }
+
+  const hits=[...hitMap.values()].slice(0,10)
+  if(!hits.length)return null
+  const entityResults=await Promise.allSettled(hits.map(async hit=>{
+    if(!hit?.id)return null
+    const ej=await getJson('https://www.wikidata.org/wiki/Special:EntityData/'+encodeURIComponent(String(hit.id))+'.json',2400)
+    const entity=ej?.entities?.[hit.id]
+    if(!entity)return null
+    const descriptions=Object.values(entity.descriptions||{}) as any[]
+    const description=String(entity.descriptions?.en?.value||entity.descriptions?.ru?.value||descriptions.find((x:any)=>x?.value)?.value||hit.description||'')
+    if(!looksLikeFilm(entity,description))return null
+    const runtime=claimNumber(entity,'P2047')
+    if(!runtime||runtime<=0||runtime>600)return null
+    const year=claimYear(entity)
+    const names=labelSet(entity)
+    const target=normalize(raw)
+    let titleScore=0
+    for(const n of names){
+      const nn=normalize(n)
+      if(!nn)continue
+      if(nn===target)titleScore=Math.max(titleScore,100)
+      else if(nn.includes(target)||target.includes(nn))titleScore=Math.max(titleScore,78)
+      else{
+        const wanted=new Set(target.split(' ').filter(x=>x.length>1))
+        const have=new Set(nn.split(' ').filter(x=>x.length>1))
+        const overlap=[...wanted].filter(x=>have.has(x)).length/Math.max(1,wanted.size)
+        titleScore=Math.max(titleScore,Math.round(overlap*65))
       }
-      if(titleScore<25)continue
-      const yearScore=expectedYear&&year?Math.max(0,30-Math.abs(expectedYear-year)*8):10
-      const preferredLabel=entity.labels?.en?.value||entity.labels?.ru?.value||(Object.values(entity.labels||{}) as any[]).find((x:any)=>x?.value)?.value||hit.label||raw
-      const originalLabel=entity.labels?.mul?.value||entity.labels?.en?.value||preferredLabel
-      candidates.push({
-        score:titleScore+yearScore,title:String(preferredLabel),wikidataId:hit.id,description,runtimeMin:runtime,year,
-        url:`https://www.wikidata.org/wiki/${hit.id}`,
-        originalTitle:String(originalLabel),
-        searchTitles:[...new Set([raw,...names])].slice(0,30)
-      })
-    }catch{}
-  }
-  candidates.sort((a,b)=>b.score-a.score)
+    }
+    if(titleScore<25)return null
+    const yearScore=expectedYear&&year?Math.max(0,30-Math.abs(expectedYear-year)*8):10
+    const preferredLabel=entity.labels?.en?.value||entity.labels?.ru?.value||(Object.values(entity.labels||{}) as any[]).find((x:any)=>x?.value)?.value||hit.label||raw
+    const originalLabel=entity.labels?.mul?.value||entity.labels?.en?.value||preferredLabel
+    return {
+      score:titleScore+yearScore,title:String(preferredLabel),wikidataId:String(hit.id),description,runtimeMin:Number(runtime),year,
+      url:'https://www.wikidata.org/wiki/'+String(hit.id),
+      originalTitle:String(originalLabel),
+      searchTitles:[...new Set([raw,...names])].slice(0,30)
+    }
+  }))
+
+  const candidates=entityResults
+    .flatMap(x=>x.status==='fulfilled'&&x.value?[x.value]:[])
+    .sort((a:any,b:any)=>Number(b.score||0)-Number(a.score||0))
   if(!candidates.length)return null
-  const {score:_,...best}=candidates[0]
+  const {score:_,...best}=candidates[0] as any
   return best as ValidatedMovie
 }
 
