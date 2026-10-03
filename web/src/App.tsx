@@ -1265,7 +1265,7 @@ function ProjectorAudio({data,screenToken}:{data:DemoState;screenToken:string}){
   const tryPlay=async(el:HTMLAudioElement|null)=>{
     if(!el)return
     try{await el.play();setNeedsUnlock(false)}
-    catch(e:any){if(e?.name==='AbortError')return;setAudioError('звук заблокирован браузером — нажми кнопку ниже');setNeedsUnlock(true);setArmed(false)}
+    catch(e:any){if(e?.name==='AbortError'){if(el===cue.current)setCuePlaying(false);return}setAudioError('звук заблокирован браузером — нажми кнопку ниже');setNeedsUnlock(true);setArmed(false);if(el===cue.current)setCuePlaying(false)}
   }
   useEffect(()=>{
     const ping=()=>void pingAudio(armed).then(r=>{
