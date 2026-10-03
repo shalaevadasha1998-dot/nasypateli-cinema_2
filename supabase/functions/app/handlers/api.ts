@@ -691,7 +691,14 @@ async function projectorPublicState(db:any,event:any){
       if(row.animal_name_snapshot)current.animals.push(String(row.animal_name_snapshot))
       groups.set(key,current)
     }
-    payload={...payload,wordGroups:[...groups.values()].sort((a,b)=>b.count-a.count||a.word.localeCompare(b.word,'ru')).slice(0,40)}
+    payload={
+      ...payload,
+      wordGroups:[...groups.values()].sort((a,b)=>b.count-a.count||a.word.localeCompare(b.word,'ru')).slice(0,40),
+      wordCount:(impressions.data||[]).length
+    }
+    const attended=await db.from('registrations').select('*',{count:'exact',head:true}).eq('event_id',event.id).eq('status','attended')
+    if(attended.error)throw attended.error
+    payload={...payload,totalParticipants:Number(attended.count||0)}
   }
   if(p.round_id&&p.film_package_id&&String(p.state)==='question_open'){
     const questionId=String(payload.questionId||'')
