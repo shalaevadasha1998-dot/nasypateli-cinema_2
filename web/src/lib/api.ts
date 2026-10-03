@@ -82,9 +82,10 @@ export async function callApi<T=unknown>(action:string,payload:Record<string,unk
     const key=String(payload.slug||'__default__')
     const now=Date.now()
     if(!fresh&&bootstrapCache?.key===key&&now-bootstrapCache.at<15000)return bootstrapCache.value as T
-    if(!fresh&&bootstrapInFlight?.key===key)return bootstrapInFlight.promise as Promise<T>
+    // Never allow overlapping bootstrap requests for the same event. A fresh
+    // refresh may bypass the cache, but it must still join the active request.
+    if(bootstrapInFlight?.key===key)return bootstrapInFlight.promise as Promise<T>
     const run=requestApi<any>(action,payload).then(value=>{const normalized=normalizeBootstrap(value);bootstrapCache={key,at:Date.now(),value:normalized};return normalized})
-    if(fresh)return run as Promise<T>
     const promise=run.finally(()=>{if(bootstrapInFlight?.key===key)bootstrapInFlight=null})
     bootstrapInFlight={key,promise}
     return promise as Promise<T>
