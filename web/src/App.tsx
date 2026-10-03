@@ -516,14 +516,16 @@ function ShowControl({data,busy,run}:{data:DemoState;busy:boolean;run:(action:st
   const waiting=rows.filter(row=>row.status==='waitlist').length
   const runtime=show.runtime
   const block=runtime.currentBlock
-  const music=block?.type==='music_live'
   const finished=runtime.runStatus==='finished'
   const command=(op:string,extra:Record<string,unknown>={})=>run('admin-show-control',{op,...extra})
-  const audio=data.show?.audio
+  const audio=show.audio
   const audioState=audio?.state
   const currentTrack=audio?.assets.find(x=>x.key===audioState?.track_key)
   const screenAudio=audio?.screen
   const screenReady=screenAudio?.online===true&&screenAudio?.unlocked===true
+  const activeParticipant=rows.find(x=>x.status==='attended')||rows[0]
+  const creatureName=uiLower(activeParticipant?.creatureName||'животина')
+  const testRoom=String(data.event.slug||'').startsWith('test-')
   let scheduleCursor=0
   const exactSlots=new Map(show.program.blocks.map(b=>{
     const start=scheduleCursor
@@ -534,34 +536,48 @@ function ShowControl({data,busy,run}:{data:DemoState;busy:boolean;run:(action:st
   const minuteMark=(value:number)=>`${String(Math.floor(value/60)).padStart(2,'0')}:${String(Math.round(value%60)).padStart(2,'0')}`
   return <section className={runtime.runStatus==='running'?'show-console live':'show-console'}>
     <div className="show-console-head">
-      <div><div className="eyebrow">{finished?'вечер закончен':runtime.runStatus==='idle'?'готово к запуску':runtime.runStatus==='paused'?'шоу на паузе':'шоу идёт'}</div><h1>{block?.title||'программа вечера'}</h1></div>
+      <div><div className="eyebrow">{testRoom?`тест · ${creatureName} · ${attended} из ${Math.max(confirmed,1)}`:finished?'вечер закончен':runtime.runStatus==='idle'?'готово к запуску':runtime.runStatus==='paused'?'шоу на паузе':'шоу идёт'}</div><h1>{block?.title||'мероприятие'}</h1></div>
       <span className={runtime.runStatus==='running'?'show-live-dot on':'show-live-dot'}>{showRunStatusLabel(runtime.runStatus)}</span>
     </div>
+
     <div className="show-console-stats"><span><b>{confirmed}</b>в списке</span><span><b>{attended}</b>пришли</span><span><b>{show.onlineCount}</b>online</span><span><b>{waiting}</b>ожидание</span></div>
-    <div className="show-timeline">{show.program.blocks.map(b=>{const slot=exactSlots.get(b.id);return <button type="button" disabled={busy} onClick={()=>command('jump',{blockId:b.id})} className={b.id===runtime.currentBlockId?'current':''} key={b.id}><span>{b.index+1}</span><b>{b.title}</b><small>{b.durationMin&&slot?`${minuteMark(slot.start)}–${minuteMark(slot.end)} · ${b.autoAdvance?'авто':'ручной'}`:'после эфира'}</small></button>})}</div>
-    {block?.type==='final_vote'&&show.finalVote&&<div className="show-final-vote-admin"><small>финальный выбор · {show.finalVote.totalVotes} голосов</small>{show.finalVote.options.map(x=><span key={x.id}><b>{x.title}</b><em>{x.count}</em></span>)}</div>}
+
     <div className="show-audio-console">
-      <div><small>звук идёт только с ноутбука projector</small><b>{currentTrack?.title||'тишина'}</b><span>{audioState?.status==='playing'?'играет':audioState?.status==='paused'?'пауза':'остановлено'} · {audioState?.mode==='auto'?'авто':'ручной'} · {screenReady?'ноутбук готов':screenAudio?.online?'на ноутбуке нужно нажать «включить звук»':'projector не в сети'}</span></div>
+      <div><small>звук физически идёт с ноутбука projector</small><b>{currentTrack?.title||'тишина'}</b><span>{screenReady?'ноутбук готов':screenAudio?.online?'на ноутбуке не активирован звук':'projector не в сети'} · {audioState?.status==='playing'?'музыка играет':audioState?.status==='paused'?'музыка на паузе':'музыка остановлена'}</span></div>
       <div className="inline">
-        <Button kind="secondary" disabled={busy||!screenReady} onClick={()=>run('admin-audio-control',{op:'test',trackKey:'creature-3'})}>тест звука</Button>
-        <Button kind="secondary" disabled={busy} onClick={()=>run('admin-audio-control',{op:'prev'})}>← трек</Button>
-        {audioState?.status==='playing'?<Button kind="secondary" disabled={busy} onClick={()=>run('admin-audio-control',{op:'pause'})}>пауза</Button>:<Button kind="secondary" disabled={busy} onClick={()=>run('admin-audio-control',{op:'play'})}>▶ музыка</Button>}
-        <Button kind="secondary" disabled={busy} onClick={()=>run('admin-audio-control',{op:'next'})}>трек →</Button>
-        <Button kind="secondary" disabled={busy} onClick={()=>run('admin-audio-control',{op:'stop'})}>стоп</Button>
-        <Button kind="secondary" disabled={busy} onClick={()=>run('admin-audio-control',{op:'auto'})}>авто</Button>
+        <Button kind="secondary" disabled={busy||!screenReady} onClick={()=>run('admin-audio-control',{op:'test',trackKey:'creature-3'})}>проверить звук</Button>
+        {audioState?.status==='playing'?<Button kind="secondary" disabled={busy} onClick={()=>run('admin-audio-control',{op:'pause'})}>пауза музыки</Button>:<Button kind="secondary" disabled={busy||!screenReady} onClick={()=>run('admin-audio-control',{op:'play'})}>▶ музыка</Button>}
+        <Button kind="secondary" disabled={busy} onClick={()=>run('admin-audio-control',{op:'next'})}>следующий трек</Button>
+        <Button kind="secondary" disabled={busy} onClick={()=>run('admin-audio-control',{op:'auto'})}>вернуть авто</Button>
       </div>
     </div>
-    {runtime.runStatus==='idle'&&<Button disabled={busy} onClick={()=>command('start')}>начать мероприятие</Button>}
-    {runtime.runStatus==='paused'&&<Button disabled={busy} onClick={()=>command('resume')}>продолжить шоу</Button>}
-    {runtime.runStatus==='running'&&!music&&<div className="show-primary-controls"><Button kind="secondary" disabled={busy||runtime.currentBlockIndex===0} onClick={()=>command('back')}>← назад</Button><Button disabled={busy} onClick={()=>command('next')}>следующий блок →</Button></div>}
-    {runtime.runStatus==='running'&&music&&<Button disabled={busy} onClick={()=>command('end_music')}>закончить выступление</Button>}
-    {runtime.runStatus==='running'&&!music&&show.program.blocks.some(b=>b.type==='music_live')&&<Button kind="secondary" disabled={busy} onClick={()=>command('start_music')}>начать music live</Button>}
-    {['running','paused'].includes(runtime.runStatus)&&<div className="show-secondary-controls">
-      {runtime.runStatus==='running'&&<Button kind="secondary" disabled={busy} onClick={()=>command('pause')}>пауза</Button>}
-      <Button kind="secondary" disabled={busy} onClick={()=>command('restart')}>перезапустить блок</Button>
-      <Button kind="secondary" disabled={busy} onClick={()=>command('skip')}>пропустить блок</Button>
+
+    {runtime.runStatus==='idle'&&<>
+      <Button disabled={busy||!screenReady} onClick={()=>command('start')}>начать мероприятие + музыку</Button>
+      {!screenReady&&<p className="muted">сначала на ноутбуке projector нажми «включить звук и проверить». после этого эта кнопка станет активной.</p>}
+    </>}
+
+    {runtime.runStatus==='paused'&&<Button disabled={busy} onClick={()=>command('resume')}>продолжить мероприятие</Button>}
+    {runtime.runStatus==='running'&&<div className="show-primary-controls">
+      <Button kind="secondary" disabled={busy||runtime.currentBlockIndex===0} onClick={()=>command('back')}>← назад</Button>
+      <Button disabled={busy||runtime.currentBlockIndex>=show.program.blocks.length-1} onClick={()=>command('next')}>следующий блок →</Button>
     </div>}
-    {!finished&&runtime.runStatus!=='idle'&&<Button kind="danger" disabled={busy} onClick={()=>{if(window.confirm('закончить мероприятие? это переведёт всех в финальное состояние'))void command('end_event')}}>закончить мероприятие</Button>}
+
+    {runtime.runStatus!=='idle'&&<div className="show-timeline">{show.program.blocks.map(b=>{const slot=exactSlots.get(b.id);return <button type="button" disabled={busy} onClick={()=>command('jump',{blockId:b.id})} className={b.id===runtime.currentBlockId?'current':''} key={b.id}><span>{b.index+1}</span><b>{b.title}</b><small>{b.durationMin&&slot?`${minuteMark(slot.start)}–${minuteMark(slot.end)}`:'после эфира'}</small></button>})}</div>}
+
+    {block?.type==='cinema_rounds'&&<div className="show-live-workspace">
+      <ShowRoundControl data={data} busy={busy} run={run}/>
+      <RoundFilmFlowAdmin data={data} busy={busy} run={run}/>
+    </div>}
+
+    {block?.type==='final_vote'&&show.finalVote&&<div className="show-final-vote-admin"><small>финальный выбор · {show.finalVote.totalVotes} голосов</small>{show.finalVote.options.map(x=><span key={x.id}><b>{x.title}</b><em>{x.count}</em></span>)}</div>}
+
+    {['running','paused'].includes(runtime.runStatus)&&<div className="show-secondary-controls">
+      {runtime.runStatus==='running'&&<Button kind="secondary" disabled={busy} onClick={()=>command('pause')}>пауза мероприятия</Button>}
+      <Button kind="secondary" disabled={busy} onClick={()=>command('restart')}>перезапустить текущий блок</Button>
+      {testRoom&&<Button kind="secondary" disabled={busy} onClick={()=>{if(window.confirm('сбросить тестовую комнату полностью и начать с нуля?'))void run('admin-test-room-reset')}}>сбросить тест с нуля</Button>}
+    </div>}
+    {!finished&&runtime.runStatus!=='idle'&&<Button kind="danger" disabled={busy} onClick={()=>{if(window.confirm('закончить мероприятие?'))void command('end_event')}}>закончить мероприятие</Button>}
   </section>
 }
 
@@ -575,7 +591,7 @@ function ShowRoundControl({data,busy,run}:{data:DemoState;busy:boolean;run:(acti
     <div className="row spread"><div><div className="section-title">кинораунд</div><h2>{active?'раунд '+round?.roundNo:'готов к запуску'}</h2></div>{active&&<Pill>{round?.pitchCount||0} идей</Pill>}</div>
     {!active
       ?<><p className="muted">одна кнопка сразу откроет сбор идей на телефонах и большом экране.</p><Button disabled={busy||show.runtime.runStatus!=='running'} onClick={()=>run('admin-round-start')}>{show.runtime.currentRound?'запустить следующий раунд':'запустить раунд'}</Button></>
-      :<p className="muted">раунд запущен. следующий шаг находится ниже и меняется автоматически.</p>}
+      :<p className="muted">раунд запущен. всё управление этим раундом находится в этом же окне.</p>}
   </Card>
 }
 
@@ -590,7 +606,7 @@ function ProgramEditor({data,busy,run}:{data:DemoState;busy:boolean;run:(action:
   const patch=(index:number,p:any)=>setBlocks(prev=>prev.map((x,i)=>i===index?{...x,...p}:x))
   const remove=(index:number)=>setBlocks(prev=>prev.filter((_,i)=>i!==index).map((x,i)=>({...x,index:i})))
   const add=()=>setBlocks(prev=>[...prev,{id:'block_'+Date.now(),type:'cinema_rounds',title:'новый блок',durationMin:10,roundsTarget:1,autoAdvance:false,audioPlaylist:[],audioVolume:.25,index:prev.length}])
-  return <Card className="program-editor"><div className="section-title">программа вечера</div><p className="muted">порядок и тайминги можно менять без переписывания приложения</p><div className="program-blocks">{blocks.map((b,i)=><div className="program-block" key={b.id}><div className="program-block-order"><button type="button" disabled={i===0} onClick={()=>move(i,-1)}>↑</button><button type="button" disabled={i===blocks.length-1} onClick={()=>move(i,1)}>↓</button></div><input value={b.title} onChange={e=>patch(i,{title:e.target.value})}/><select value={b.type} onChange={e=>patch(i,{type:e.target.value})}><option value="arrival">сбор гостей</option><option value="onboarding">знакомство с животиной</option><option value="warm_up">разогрев</option><option value="cinema_rounds">кинораунды</option><option value="music_live">живое выступление</option><option value="final_vote">финальный выбор</option><option value="finale">финал</option><option value="post_event">после мероприятия</option></select><label>мин<input type="number" min="0" max="240" value={b.durationMin} onChange={e=>patch(i,{durationMin:Number(e.target.value)})}/></label><label className="program-auto"><input type="checkbox" checked={b.autoAdvance===true} onChange={e=>patch(i,{autoAdvance:e.target.checked})}/> авто</label>{b.type==='cinema_rounds'&&<label>раундов<input type="number" min="0" max="20" value={b.roundsTarget} onChange={e=>patch(i,{roundsTarget:Number(e.target.value)})}/></label>}<button type="button" className="text-link" onClick={()=>remove(i)}>удалить</button></div>)}</div><Button kind="secondary" onClick={add}>добавить блок</Button><div className="program-config-grid"><Field label="ориентир фильмов за вечер"><input type="number" min="1" max="20" value={roundsTarget} onChange={e=>setRoundsTarget(Number(e.target.value))}/></Field><Field label="крошки за вход"><input type="number" min="0" max="100" value={rewards.join} onChange={e=>setRewards(v=>({...v,join:Number(e.target.value)}))}/></Field><Field label="крошки за голос"><input type="number" min="0" max="100" value={rewards.vote} onChange={e=>setRewards(v=>({...v,vote:Number(e.target.value)}))}/></Field><Field label="крошки за раунд"><input type="number" min="0" max="100" value={rewards.round} onChange={e=>setRewards(v=>({...v,round:Number(e.target.value)}))}/></Field></div><Button disabled={busy||!blocks.length} onClick={()=>run('admin-program-save',{blocks,roundsTarget,rewards})}>сохранить программу</Button></Card>
+  return <Card className="program-editor"><div className="section-title">программа вечера</div><p className="muted">порядок и тайминги можно менять без переписывания приложения</p><div className="program-blocks">{blocks.map((b,i)=><div className="program-block" key={b.id}><div className="program-block-order"><button type="button" disabled={i===0} onClick={()=>move(i,-1)}>↑</button><button type="button" disabled={i===blocks.length-1} onClick={()=>move(i,1)}>↓</button></div><input value={b.title} onChange={e=>patch(i,{title:e.target.value})}/><select value={b.type} onChange={e=>patch(i,{type:e.target.value})}><option value="arrival">сбор гостей</option><option value="onboarding">знакомство с животиной</option><option value="warm_up">разогрев</option><option value="cinema_rounds">кинораунды</option><option value="final_vote">финальный выбор</option><option value="finale">финал</option><option value="post_event">после мероприятия</option></select><label>мин<input type="number" min="0" max="240" value={b.durationMin} onChange={e=>patch(i,{durationMin:Number(e.target.value)})}/></label><label className="program-auto"><input type="checkbox" checked={b.autoAdvance===true} onChange={e=>patch(i,{autoAdvance:e.target.checked})}/> авто</label>{b.type==='cinema_rounds'&&<label>раундов<input type="number" min="0" max="20" value={b.roundsTarget} onChange={e=>patch(i,{roundsTarget:Number(e.target.value)})}/></label>}<button type="button" className="text-link" onClick={()=>remove(i)}>удалить</button></div>)}</div><Button kind="secondary" onClick={add}>добавить блок</Button><div className="program-config-grid"><Field label="ориентир фильмов за вечер"><input type="number" min="1" max="20" value={roundsTarget} onChange={e=>setRoundsTarget(Number(e.target.value))}/></Field><Field label="крошки за вход"><input type="number" min="0" max="100" value={rewards.join} onChange={e=>setRewards(v=>({...v,join:Number(e.target.value)}))}/></Field><Field label="крошки за голос"><input type="number" min="0" max="100" value={rewards.vote} onChange={e=>setRewards(v=>({...v,vote:Number(e.target.value)}))}/></Field><Field label="крошки за раунд"><input type="number" min="0" max="100" value={rewards.round} onChange={e=>setRewards(v=>({...v,round:Number(e.target.value)}))}/></Field></div><Button disabled={busy||!blocks.length} onClick={()=>run('admin-program-save',{blocks,roundsTarget,rewards})}>сохранить программу</Button></Card>
 }
 
 function MovieCatalogAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(action:string,payload?:Record<string,unknown>)=>Promise<any>}){
@@ -855,6 +871,7 @@ function Admin(){
   return <div className="admin-page">
     <div className="row spread admin-title-row"><div><div className="eyebrow">админка. экран ведущего</div><h2>{data.event.title}</h2></div><Pill>{data.show?showRunStatusLabel(data.show.runtime.runStatus):statusLabel(data.event.status)}</Pill></div>
     {actionError&&<div className="form-error">{actionError}</div>}
+    <ShowControl data={data} busy={busy} run={run}/>
     <Card className="projector-access-card"><div className="section-title">общий экран / проектор</div><p className="muted">откройте эту ссылку на ноутбуке, подключённом к проектору, и разверните браузер на весь экран. экран обновляется сам.</p><div className="inline"><Button kind="secondary" disabled={busy} onClick={async()=>{const x:any=await run('admin-screen-link');if(x?.screenUrl)setProjectorLink(String(x.screenUrl))}}>получить ссылку экрана</Button>{projectorLink&&<><Button onClick={()=>window.open(projectorLink,'_blank','noopener,noreferrer')}>открыть экран ↗</Button><Button kind="secondary" onClick={()=>window.open(projectorLink+'&demo=animals','_blank','noopener,noreferrer')}>репетиция животин ↗</Button><Button kind="secondary" onClick={async()=>{try{await navigator.clipboard.writeText(projectorLink)}catch{window.prompt('скопируйте ссылку',projectorLink)}}}>скопировать</Button></>}</div>{projectorLink&&<input className="share-link" readOnly value={projectorLink}/>}</Card>
     <Card className="event-preflight-card">
       <div className="row spread"><div><div className="section-title">проверка перед началом</div><h3>{preflight?preflight.ready?'технически готово':'есть блокеры':'проверка одним нажатием'}</h3></div>{preflight&&<Pill>{preflight.summary?.failed?preflight.summary.failed+' блокер(а)':'готово'}</Pill>}</div>
@@ -866,9 +883,6 @@ function Admin(){
       </div>}
       {preflight?.checkedAt&&<small className="event-preflight-time">проверено {new Date(preflight.checkedAt).toLocaleString('ru-RU')}</small>}
     </Card>
-    <ShowControl data={data} busy={busy} run={run}/>
-    <ShowRoundControl data={data} busy={busy} run={run}/>
-    <RoundFilmFlowAdmin data={data} busy={busy} run={run}/>
     <AdminParticipants data={data} reload={reload} adminToken={privileged.token}/>
     <ReviewQueueAdmin data={data} busy={busy} run={run}/>
     <ProgramEditor data={data} busy={busy} run={run}/>
@@ -1194,7 +1208,6 @@ function ProjectorAudio({data,screenToken}:{data:DemoState;screenToken:string}){
     catch{setNeedsUnlock(true);setArmed(false)}
   }
   useEffect(()=>{
-    if(!screenToken)return
     const ping=()=>void callScreenApi('screen-audio-heartbeat',{slug:data.event.slug,audioUnlocked:armed},screenToken).catch(()=>{})
     ping()
     const timer=window.setInterval(ping,5000)
@@ -1264,30 +1277,28 @@ function ProjectorAudio({data,screenToken}:{data:DemoState;screenToken:string}){
   const unlock=async()=>{
     const bg=background.current
     const fx=cue.current
-    const primeUrl=asset?.url||audio?.assets.find(x=>x.category==='calm')?.url||audio?.assets[0]?.url||''
-    const cueUrl=audio?.assets.find(x=>x.key==='creature-3')?.url||primeUrl
-    const prepared:[HTMLAudioElement,string,number][]=[]
-    if(bg&&primeUrl)prepared.push([bg,primeUrl,bg.volume])
-    if(fx&&cueUrl)prepared.push([fx,cueUrl,fx.volume])
+    const cueAsset=audio?.assets.find(x=>x.key==='creature-3')||audio?.assets.find(x=>x.category==='calm')||audio?.assets[0]
+    if(!bg||!cueAsset?.url){setArmed(false);setNeedsUnlock(true);return}
     try{
-      for(const [el,url] of prepared){
-        el.pause()
-        if(el.src!==url){el.src=url;el.load()}
-        el.muted=false;el.volume=0
-      }
-      const attempts=await Promise.allSettled(prepared.map(([el])=>el.play()))
-      for(const [el,,volume] of prepared){el.pause();el.currentTime=0;el.volume=volume}
-      const ok=attempts.length>0&&attempts.every(x=>x.status==='fulfilled')
-      setArmed(ok);setNeedsUnlock(!ok);lastSync.current='';setAudioTick(x=>x+1)
-      await callScreenApi('screen-audio-heartbeat',{slug:data.event.slug,audioUnlocked:ok},screenToken).catch(()=>{})
+      bg.pause();bg.src=cueAsset.url;bg.load();bg.muted=false;bg.volume=.55
+      if(fx){fx.pause();fx.src=cueAsset.url;fx.load();fx.muted=false;fx.volume=.001;void fx.play().catch(()=>{})}
+      await bg.play()
+      setArmed(true);setNeedsUnlock(false)
+      await callScreenApi('screen-audio-heartbeat',{slug:data.event.slug,audioUnlocked:true},screenToken).catch(()=>{})
+      window.setTimeout(()=>{
+        bg.pause();try{bg.currentTime=0}catch{}
+        lastSync.current=''
+        setAudioTick(x=>x+1)
+      },650)
     }catch{
       setArmed(false);setNeedsUnlock(true)
+      await callScreenApi('screen-audio-heartbeat',{slug:data.event.slug,audioUnlocked:false},screenToken).catch(()=>{})
     }
   }
   return <>
     <audio ref={background} onEnded={()=>{setAudioTick(x=>x+1);if(asset?.key)void callScreenApi('screen-audio-ended',{slug:data.event.slug,trackKey:asset.key},screenToken)}}/>
     <audio ref={cue}/>
-    {(!armed||needsUnlock)&&<button className="screen-audio-unlock" onClick={()=>void unlock()}>включить звук на этом ноутбуке</button>}
+    {(!armed||needsUnlock)&&<button className="screen-audio-unlock" onClick={()=>void unlock()}>включить звук и проверить</button>}
   </>
 }
 

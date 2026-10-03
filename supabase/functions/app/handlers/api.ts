@@ -765,14 +765,17 @@ async function adminParticipantRows(db:any,eventId:string){
   if(regs.error)throw regs.error
   const ids=(regs.data||[]).map((x:any)=>x.user_id)
   if(!ids.length)return []
-  const [users,profiles]=await Promise.all([
+  const [users,profiles,creatures]=await Promise.all([
     db.from('users').select('id,display_name,telegram_username,deleted_at').in('id',ids),
-    db.from('cinema_profiles').select('user_id,profile_json').in('user_id',ids)
+    db.from('cinema_profiles').select('user_id,profile_json').in('user_id',ids),
+    db.from('creatures').select('user_id,name').in('user_id',ids)
   ])
   if(users.error)throw users.error
   if(profiles.error)throw profiles.error
+  if(creatures.error)throw creatures.error
   const userMap=new Map((users.data||[]).map((x:any)=>[x.id,x]))
   const profileMap=new Map((profiles.data||[]).map((x:any)=>[x.user_id,x.profile_json||{}]))
+  const creatureMap=new Map((creatures.data||[]).map((x:any)=>[x.user_id,String(x.name||'животина')]))
   return (regs.data||[]).map((r:any)=>{
     const u:any=userMap.get(r.user_id)||{}
     const p:any=profileMap.get(r.user_id)||{}
@@ -781,6 +784,7 @@ async function adminParticipantRows(db:any,eventId:string){
       registrationId:r.id,
       displayName:deleted?'удалённый участник':u.display_name||u.telegram_username||'участник',
       telegramUsername:deleted?'':u.telegram_username?('@'+u.telegram_username):'',
+      creatureName:deleted?'':creatureMap.get(r.user_id)||'животина',
       deleted,
       profileComplete:!deleted&&p.completed===true,
       onboardingStep:deleted?0:Number(p.onboarding_step||0),
@@ -2627,7 +2631,7 @@ export async function handleApi(req:Request){
       add('telegram','telegram',telegram?'pass':'fail',telegram?'бот и связь с приложением работают':'бот или связь с приложением не прошли проверку')
 
       const blocks=Array.isArray(programR.data?.config?.blocks)?programR.data.config.blocks.filter((x:any)=>x?.enabled!==false):[]
-      const requiredTypes=['arrival','onboarding','warm_up','cinema_rounds','music_live','final_vote','finale']
+      const requiredTypes=['arrival','onboarding','warm_up','cinema_rounds','final_vote','finale']
       const missingTypes=requiredTypes.filter(type=>!blocks.some((x:any)=>String(x?.type)===type))
       const duration=blocks.reduce((sum:number,x:any)=>sum+Math.max(0,Number(x?.duration_min||0)),0)
       add('program','программа вечера',blocks.length&&missingTypes.length===0?'pass':'fail',
@@ -2725,6 +2729,52 @@ export async function handleApi(req:Request){
         if(!u.data)return err('пульт уже изменился в другой вкладке · обновите экран',409)
       }
       return json({ok:true,show:await buildShowState(db,event)})
+    }
+
+    if(action==='admin-test-room-reset'){
+      if(event?.settings?.test_room!==true)return err('сброс доступен только в тестовой комнате',403)
+      return await withEventOperation(db,event.id,'test-room-reset',async()=>{
+        const keepUser=String(event?.settings?.test_user_id||'')
+        if(isUuid(keepUser)){
+          const regs=await db.from('registrations').delete().eq('event_id',event.id).neq('user_id',keepUser)
+          if(regs.error)throw regs.error
+          const admitted=await db.from('registrations').upsert({
+            event_id:event.id,user_id:keepUser,status:'attended',queue_position:null,payment_provider:'test_room',
+            provider_payment_id:null,telegram_payment_charge_id:null,amount_rub:0,photo_video_consent:false,
+            paid_at:new Date().toISOString(),reservation_expires_at:null
+          },{onConflict:'event_id,user_id'})
+          if(admitted.error)throw admitted.error
+        }
+        for(const table of ['event_final_votes','event_presence','event_runtime_log','random_draws']){
+          const d=await db.from(table).delete().eq('event_id',event.id)
+          if(d.error)throw d.error
+        }
+        const rounds=await db.from('event_rounds').delete().eq('event_id',event.id)
+        if(rounds.error)throw rounds.error
+        const screen=await db.from('event_screen_status').delete().eq('event_id',event.id)
+        if(screen.error)throw screen.error
+        const now=new Date().toISOString()
+        const ev=await db.from('events').update({status:'CHECKIN',winner_user_id:null}).eq('id',event.id)
+        if(ev.error)throw ev.error
+        const rt=await db.from('event_runtime').select('revision').eq('event_id',event.id).single()
+        if(rt.error)throw rt.error
+        const runtime=await db.from('event_runtime').update({
+          run_status:'idle',current_block_id:'arrival',current_block_index:0,current_round:0,current_round_id:null,
+          current_movie_id:null,current_question:null,vote_state:'closed',results_visible:false,video_state:{status:'idle'},
+          started_at:null,block_started_at:null,paused_at:null,director_cue_index:0,
+          audio_state:{mode:'auto',status:'stopped',track_key:null,playlist_index:0,volume:.32,updated_at:null},
+          revision:Number(rt.data.revision||0)+1,updated_at:now
+        }).eq('event_id',event.id)
+        if(runtime.error)throw runtime.error
+        const projector=await db.from('event_projector_state').select('revision').eq('event_id',event.id).maybeSingle()
+        if(projector.error)throw projector.error
+        const p=await db.from('event_projector_state').upsert({
+          event_id:event.id,state:'arrival',round_id:null,film_package_id:null,payload:{},
+          revision:Number(projector.data?.revision||0)+1,updated_at:now
+        },{onConflict:'event_id'})
+        if(p.error)throw p.error
+        return json({ok:true,show:await buildShowState(db,{...event,status:'CHECKIN'})})
+      })
     }
 
     if(action==='admin-show-control'){

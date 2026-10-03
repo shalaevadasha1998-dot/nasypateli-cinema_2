@@ -120,6 +120,7 @@ export type AdminParticipant = {
   registrationId:string
   displayName:string
   telegramUsername?:string
+  creatureName?:string
   deleted?:boolean
   profileComplete:boolean
   onboardingStep:number
