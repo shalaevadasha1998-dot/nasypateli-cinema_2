@@ -599,7 +599,9 @@ function ShowControl({data,busy,run}:{data:DemoState;busy:boolean;run:(action:st
     {runtime.runStatus==='paused'&&<Button disabled={busy} onClick={()=>command('resume')}>продолжить мероприятие</Button>}
     {runtime.runStatus==='running'&&!cinemaRoundActive&&<div className="show-primary-controls">
       <Button kind="secondary" disabled={busy||runtime.currentBlockIndex===0} onClick={()=>command('back')}>← назад</Button>
-      <Button disabled={busy||runtime.currentBlockIndex>=show.program.blocks.length-1} onClick={()=>command('next')}>следующий блок →</Button>
+      {runtime.currentBlockIndex>=show.program.blocks.length-1
+        ?<Button disabled={busy} onClick={()=>{if(window.confirm('закончить мероприятие после музыки?'))void command('end_event')}}>закончить мероприятие</Button>
+        :<Button disabled={busy} onClick={()=>command('next')}>следующий блок →</Button>}
     </div>}
 
     {runtime.runStatus!=='idle'&&!cinemaRoundActive&&<div className="show-timeline">{show.program.blocks.map(b=>{const slot=exactSlots.get(b.id);return <button type="button" disabled={busy} onClick={()=>command('jump',{blockId:b.id})} className={b.id===runtime.currentBlockId?'current':''} key={b.id}><span>{b.index+1}</span><b>{b.title}</b><small>{b.durationMin&&slot?`${minuteMark(slot.start)}–${minuteMark(slot.end)}`:'после эфира'}</small></button>})}</div>}
