@@ -2317,8 +2317,37 @@ export async function handleApi(req:Request){
             .limit(5)
           if(cached.error)throw cached.error
           for(const movie of cached.data||[]){
-            const source=await resolvedMovieSource(db,String(movie.id))
-            if(!source||!source.verified||!source.embeddable||source.rightsStatus==='blocked')continue
+            const cachedSources=await db.from('movie_source_candidates')
+              .select('*')
+              .eq('event_id',event.id)
+              .eq('movie_candidate_id',movie.id)
+              .eq('verified',true)
+              .eq('embeddable',true)
+              .eq('availability_status','ready')
+              .neq('rights_status','blocked')
+              .order('confidence',{ascending:false})
+              .limit(1)
+            if(cachedSources.error)throw cachedSources.error
+            const rawSource:any=cachedSources.data?.[0]
+            if(!rawSource)continue
+            const source:any={
+              id:String(rawSource.id),
+              useMode:String(rawSource.use_mode||'fragment'),
+              sourceType:String(rawSource.source_type||'clip'),
+              sourcePlatform:String(rawSource.source_platform||'youtube'),
+              sourceUrl:String(rawSource.source_url||''),
+              videoId:rawSource.video_id?String(rawSource.video_id):undefined,
+              title:rawSource.title?String(rawSource.title):undefined,
+              sourceChannel:rawSource.source_channel?String(rawSource.source_channel):undefined,
+              startSec:Number(rawSource.start_sec||0),
+              endSec:rawSource.end_sec==null?null:Number(rawSource.end_sec),
+              verified:rawSource.verified===true,
+              embeddable:rawSource.embeddable===true,
+              official:rawSource.official===true,
+              rightsStatus:String(rawSource.rights_status||'unknown'),
+              confidence:Number(rawSource.confidence||0),
+              metadata:rawSource.metadata||{}
+            }
             const start=Math.max(0,Math.round(Number(source.startSec)||0))
             const rawEnd=source.endSec==null?null:Math.round(Number(source.endSec))
             const end=rawEnd&&rawEnd>start?Math.min(rawEnd,start+75):start+45
@@ -2421,6 +2450,7 @@ export async function handleApi(req:Request){
         })
         const validated=(await Promise.all(validationJobs)).filter(Boolean) as any[]
         validated.sort((x:any,y:any)=>Number(y.similarityScore||0)-Number(x.similarityScore||0))
+        sourceTrace.push({stage:'validate_candidates',candidateCount:Number(ai.candidates?.length||0),validatedCount:validated.length,elapsedMs:Date.now()-liveSearchStartedAt})
 
         for(const c of validated.slice(0,2)){
           const inserted=await db.from('movie_candidates').insert({
