@@ -161,6 +161,7 @@ function FilmLiveParticipant({data,reload}:{data:DemoState;reload:(fresh?:boolea
   const submitPitch=async()=>{try{setBusy(true);setMessage('');await callApi('invented-film-submit',{slug:data.event.slug,title,description});setMessage('фильм принят. до закрытия можно поправить');await reload(true)}catch(e:any){setMessage(e.message||'не получилось отправить фильм')}finally{setBusy(false)}}
   const submitWord=async()=>{try{setBusy(true);setMessage('');await callApi('film-one-word',{slug:data.event.slug,word});setMessage('слово на экране');await reload(true)}catch(e:any){setMessage(e.message||'не получилось отправить слово')}finally{setBusy(false)}}
   const predict=async()=>{try{setBusy(true);setMessage('');await callApi('film-prediction',{slug:data.event.slug,questionId,answer:answerDraft});setMessage('ответ принят');await reload(true)}catch(e:any){setMessage(e.message||'не получилось отправить ответ')}finally{setBusy(false)}}
+  if(state==='round_intro')return <section className="participant-show film-live"><div className="eyebrow">раунд {Number(live.payload?.roundNo||data.show.currentRound?.roundNo||0)}</div><h2>сейчас объясняем механику</h2><p>через 5 минут сбор названий включится автоматически.</p></section>
   if(state==='pitch_collecting')return <section className="participant-show film-live pitch-live"><div className="eyebrow">раунд</div><h2>придумай фильм, которого не существует</h2><Field label="название фильма"><input maxLength={120} value={title} placeholder="название" onChange={e=>{setTitle(e.target.value);setMessage('')}}/></Field><Field label="описание"><textarea maxLength={800} rows={4} value={description} placeholder="что в нём происходит" onChange={e=>{setDescription(e.target.value);setMessage('')}}/></Field><Button disabled={busy||title.trim().length<2||description.trim().length<8} onClick={submitPitch}>{busy?'отправляем…':live.myPitch?'обновить':'готово'}</Button>{message&&<div className={message.startsWith('фильм принят')?'success':'form-error'}>{message}</div>}</section>
   if(state==='pitch_preview'||state==='pitch_locked')return <section className="participant-show film-live"><div className="eyebrow">идеи собраны</div><h2>смотрим, что придумал зал</h2><p>сейчас ведущий листает фильмы на большом экране.</p></section>
   if(state==='pitch_randomizing')return <section className="participant-show film-live"><div className="eyebrow">рандом</div><h2>выбираем одну идею</h2><p>смотри на большой экран.</p></section>
@@ -807,6 +808,7 @@ function RoundFilmFlowAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(ac
   }
   const next=async()=>{
     if(blocked)return
+    if(flow==='round_intro')return
     if(flow==='collecting_films'){await run('admin-round-pitches-close');return}
     if(flow==='films_locked'){
       if(previewIndex<previewTotal-1){await run('admin-round-pitch-preview',{index:previewIndex+1});return}
@@ -831,7 +833,8 @@ function RoundFilmFlowAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(ac
   let detail=''
   let nextLabel='дальше'
   let canNext=true
-  if(flow==='collecting_films'){title='гости придумывают фильмы';detail=`${round.pitchCount||0} идей уже отправлено`;canNext=pitches.length>0}
+  if(flow==='round_intro'){title='объясняем механику';detail='5 минут на объяснение. после этого сбор названий включится сам';nextLabel='сбор включится автоматически';canNext=false}
+  else if(flow==='collecting_films'){title='гости придумывают фильмы';detail=`${round.pitchCount||0} идей уже отправлено`;canNext=pitches.length>0}
   else if(flow==='films_locked'){title=`идея ${Math.min(previewIndex+1,Math.max(previewTotal,1))}/${Math.max(previewTotal,1)}`;detail='карточка сейчас на большом экране';nextLabel=previewIndex<previewTotal-1?'дальше':'дальше → рандом'}
   else if(flow==='randomizing_submission'){title='рандом выбирает идею';detail='смотри на большой экран';canNext=false;nextLabel='выбираем…'}
   else if(flow==='submission_selected'||flow==='searching_movie'){title='ищем реальный фильм';detail='берём проверенный воспроизводимый фрагмент';nextLabel='дальше → найти фильм'}
@@ -971,7 +974,7 @@ function Admin(){
       <AdminParticipants data={data} reload={reload} adminToken={privileged.token}/>
       <ReviewQueueAdmin data={data} busy={busy} run={run}/>
       {!['2026-10-03','test-2026-10-03'].includes(data.event.slug)&&<ProgramEditor data={data} busy={busy} run={run}/>}
-      {['2026-10-03','test-2026-10-03'].includes(data.event.slug)&&<Card><div className="section-title">программа вечера</div><p>сбор 15 минут → 2 раунда → перерыв 30 минут → 2 раунда → qr «творог» → музыка</p><p className="muted">на 3 октября порядок и число раундов зафиксированы.</p></Card>}
+      {['2026-10-03','test-2026-10-03'].includes(data.event.slug)&&<Card><div className="section-title">программа вечера</div><p>сбор 15 минут → животина настоящая 5 минут → снимаем кино → перерыв 30 минут → снимаем кино → qr «творог» → музыка</p><p className="muted">каждый раунд начинается с 5 минут объяснения механики, затем сбор названий открывается автоматически.</p></Card>}
       <MovieCatalogAdmin data={data} busy={busy} run={run}/>
     </details>
     <details className="admin-technical"><summary>технические настройки события</summary><div className="admin-tech-grid">
@@ -1144,6 +1147,7 @@ function projectorContent(d:DemoState){
   const p=d.projector
   if(!p||['idle','arrival'].includes(p.state))return null
   const payload:any=p.payload||{}
+  if(p.state==='round_intro'){const openAt=new Date(String(payload.opensAt||0)).getTime();const left=Number.isFinite(openAt)?Math.max(0,Math.ceil((openAt-Date.now())/1000)):300;const timer=`${Math.floor(left/60)}:${String(left%60).padStart(2,'0')}`;return <><div className="eyebrow">раунд {Number(payload.roundNo||0)}</div><h1>объясняем механику</h1><h2>{timer}</h2><p>после таймера сбор названий включится сам</p></>}
   if(p.state==='pitch_collecting')return <div className="screen-pitch-progress"><div className="eyebrow">раунд</div><h1>придумайте фильм,<br/>которого не существует</h1><div className="screen-idea-count"><b>{Number(payload.count||0)}</b><span>из {Number(payload.total||0)||'?'}</span></div><p>название + описание в телефоне</p></div>
   if(p.state==='pitch_preview'){const pitch=payload.pitch||{};return <div className="screen-pitch-preview"><div className="eyebrow">идея {Number(payload.index||0)+1}/{Number(payload.total||1)} · id {String(pitch.id||'').slice(0,8)}</div><h1>{String(pitch.title||'без названия')}</h1><p>{String(pitch.description||'')}</p></div>}
   if(p.state==='pitch_locked')return <><div className="eyebrow">идеи собраны</div><h1>смотрим по одной</h1></>
@@ -1177,6 +1181,7 @@ function screenContent(d:DemoState){
     const block=show.runtime.currentBlock
     if(show.runtime.runStatus==='finished')return <><div className="eyebrow">вечер закончен</div><h1>всё</h1><p>спасибо за вечер</p></>
     if(show.runtime.runStatus==='paused')return <><div className="eyebrow">пауза</div><h1>скоро продолжим</h1></>
+    if(block?.type==='creature_intro')return <><div className="eyebrow">знакомство</div><h1>животина настоящая</h1><p>5 минут</p></>
     if(block?.type==='break')return <><div className="eyebrow">перерыв</div><h1>30 минут</h1></>
     if(block?.type==='final_qr')return <div className="screen-final-qr"><div><div className="eyebrow">итог вечера</div><h1>вступить в «творог»</h1><p>наведи камеру</p></div><div className="screen-final-qr-code"><img src={import.meta.env.BASE_URL+'assets/tvorog-qr.svg'} alt="qr-код группы творог"/></div></div>
     if(block?.type==='music_outro')return <><div className="eyebrow">после</div><h1>музыка</h1></>
@@ -1199,7 +1204,7 @@ function showTimerText(data:DemoState,now:number){
   return `${Math.floor(left/60)}:${String(left%60).padStart(2,'0')}`
 }
 
-function projectorStateLabel(state:string){const m:Record<string,string>={pitch_collecting:'сбор фильмов',pitch_locked:'сбор закрыт',pitch_randomizing:'рандом идеи',pitch_selected:'идея выбрана',movie_searching:'поиск фильма',movie_found:'фильм найден',playing_clip:'фрагмент',film_intro:'фрагмент',one_word_collecting:'одно слово',one_word_results:'слова зала',question_open:'вопрос открыт',question_results:'результаты',question_reveal:'продолжение',round_finished:'раунд закончен',assignment_randomizing:'рандом',assignment_winner:'фильм назначен',past_review_card:'из архива'};return m[state]||state}
+function projectorStateLabel(state:string){const m:Record<string,string>={round_intro:'объясняем механику',pitch_collecting:'сбор фильмов',pitch_locked:'сбор закрыт',pitch_randomizing:'рандом идеи',pitch_selected:'идея выбрана',movie_searching:'поиск фильма',movie_found:'фильм найден',playing_clip:'фрагмент',film_intro:'фрагмент',one_word_collecting:'одно слово',one_word_results:'слова зала',question_open:'вопрос открыт',question_results:'результаты',question_reveal:'продолжение',round_finished:'раунд закончен',assignment_randomizing:'рандом',assignment_winner:'фильм назначен',past_review_card:'из архива'};return m[state]||state}
 const projectorDemoCreatures:ScreenCreature[]=[
   {id:'demo-01',visualVariant:1,name:'животина 01',stage:'stage_0',crumbs:0,growthProgress:0},
   {id:'demo-02',visualVariant:2,name:'животина 02',stage:'stage_1',crumbs:4,growthProgress:18},
