@@ -587,11 +587,16 @@ function ShowRoundControl({data,busy,run}:{data:DemoState;busy:boolean;run:(acti
   const round=show?.currentRound
   if(!show||!block||block.type!=='cinema_rounds')return null
   const active=round?.status==='active'
+  const target=Math.max(1,Math.min(20,Number(block.roundsTarget||show.program.roundsTarget||7)))
+  const current=Math.max(0,Number(show.runtime.currentRound||0))
+  const complete=!active&&current>=target
   return <Card className="show-round-card">
-    <div className="row spread"><div><div className="section-title">кинораунд</div><h2>{active?'раунд '+round?.roundNo:'готов к запуску'}</h2></div>{active&&<Pill>{round?.pitchCount||0} идей</Pill>}</div>
+    <div className="row spread"><div><div className="section-title">кинораунд</div><h2>{active?'раунд '+round?.roundNo:complete?`${target}/${target} раундов завершено`:'готов к запуску'}</h2></div>{active&&<Pill>{round?.pitchCount||0} идей</Pill>}</div>
     {!active
-      ?<><p className="muted">одна кнопка сразу откроет сбор идей на телефонах и большом экране.</p><Button disabled={busy||show.runtime.runStatus!=='running'} onClick={()=>run('admin-round-start')}>{show.runtime.currentRound?'запустить следующий раунд':'запустить раунд'}</Button></>
-      :<p className="muted">раунд запущен. всё управление этим раундом находится в этом же окне.</p>}
+      ?complete
+        ?<><p className="muted">кинораунды закончены. дальше по программе финальный выбор фильма вечера.</p><Button disabled={busy||show.runtime.runStatus!=='running'} onClick={()=>run('admin-show-control',{op:'next'})}>перейти к финальному выбору</Button></>
+        :<><p className="muted">одна кнопка сразу откроет сбор идей на телефонах и большом экране. раунд {current+1} из {target}.</p><Button disabled={busy||show.runtime.runStatus!=='running'} onClick={()=>run('admin-round-start')}>{current?'запустить следующий раунд':'запустить раунд'}</Button></>
+      :<p className="muted">раунд {round?.roundNo} из {target} запущен. всё управление этим раундом находится в этом же окне.</p>}
   </Card>
 }
 
