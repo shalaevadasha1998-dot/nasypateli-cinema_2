@@ -2351,7 +2351,13 @@ export async function handleApi(req:Request){
         if(movies.error)throw movies.error
         const movieMap=new Map((movies.data||[]).map((x:any)=>[String(x.id),x]))
         const fallbacks=rows.map((p:any)=>({package:p,movie:movieMap.get(String(p.movie_candidate_id))})).filter((x:any)=>x.movie)
-        let chosen:any=fallbacks[0]
+        const usedFallbackRounds=await db.from('event_rounds').select('movie_candidate_id').eq('event_id',event.id).not('movie_candidate_id','is',null)
+        if(usedFallbackRounds.error)throw usedFallbackRounds.error
+        const usedFallbackIds=new Set((usedFallbackRounds.data||[]).map((x:any)=>String(x.movie_candidate_id)))
+        const unusedFallbacks=fallbacks.filter((x:any)=>!usedFallbackIds.has(String(x.movie.id)))
+        const rotationPool=unusedFallbacks.length?unusedFallbacks:fallbacks
+        const fallbackPick=secureIndex(rotationPool.length)
+        let chosen:any=rotationPool[fallbackPick.index]
         try{
           if(body.preparedOnly===true)throw new Error('PREPARED_ONLY')
           const match=await structuredResponse<any>({
