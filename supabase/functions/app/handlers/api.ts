@@ -2922,6 +2922,8 @@ export async function handleApi(req:Request){
         const block=show.runtime.currentBlock
         if(!block||String(block.type)!=='cinema_rounds')return err('кинораунд запускается только внутри киношного блока',409)
         if(show.runtime.runStatus!=='running')return err('сначала запустите шоу',409)
+        const roundTarget=Math.max(1,Math.min(20,Number(block.roundsTarget||show.program.roundsTarget||7)))
+        if(Number(show.runtime.currentRound||0)>=roundTarget&&show.currentRound?.status!=='active')return err('все кинораунды уже завершены · переходите к финальному выбору',409)
         const now=new Date().toISOString()
         if(show.currentRound?.id&&show.currentRound.status==='active'){
           const c=await db.from('event_rounds').update({status:'closed',flow_status:'round_finished',closed_at:now,updated_at:now,vote_state:'closed'}).eq('id',show.currentRound.id)
@@ -2930,7 +2932,7 @@ export async function handleApi(req:Request){
         const roundNo=Number(show.runtime.currentRound||0)+1
         const ins=await db.from('event_rounds').insert({
           event_id:event.id,round_no:roundNo,block_id:block.id,status:'active',flow_status:'collecting_films',
-          question_position:0,question_target:5,vote_state:'closed',results_visible:false,video_state:{status:'idle'},started_at:now
+          question_position:0,question_target:3,vote_state:'closed',results_visible:false,video_state:{status:'idle'},started_at:now
         }).select('id').single()
         if(ins.error)throw ins.error
         const rt=await db.from('event_runtime').select('revision').eq('event_id',event.id).single();if(rt.error)throw rt.error
