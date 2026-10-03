@@ -140,7 +140,7 @@ export async function buildShowState(db:any,event:any){
         selectedPitch:selectedPitch?{id:String(selectedPitch.id),animalName:String(selectedPitch.animal_name_snapshot),title:String(selectedPitch.title),description:String(selectedPitch.description)}:undefined,
         pitchCount:Number(pitchCountR.count||0),
         questionPosition:Number(rr.question_position||0),
-        questionTarget:Number(rr.question_target||3),
+        questionTarget:Number(rr.question_target??3),
         movie:moviePublic(rr.movie_candidates),
         question:rr.question||undefined,
         voteState:rr.vote_state,
