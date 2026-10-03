@@ -2576,48 +2576,71 @@ export async function handleApi(req:Request){
           }catch(e:any){sourceTrace.push({movieId:movie.id,title:movie.title,error:String(e?.message||e)})}
         }
 
-        if(body.preparedOnly!==true){
-          const projector=await setProjectorState(db,event,'movie_searching',round.id,null,{
-            pitch:{animalName:pitch.data.animal_name_snapshot,title:pitch.data.title,description:pitch.data.description},
-            scope:'internet',message:'не нашли проверяемый фрагмент · нажми ещё раз'
-          })
-          return json({ok:true,found:false,retry:true,searchMode:'live_internet_retry',sourceTrace,projector})
-        }
+        // Live matching is best-effort. From here on the critical path is fully non-AI:
+        // use a pre-verified package so an OpenAI/web-search timeout can never stall the show.
+        sourceTrace.push({stage:'non_ai_fallback',reason:body.preparedOnly===true?'prepared_only':'live_search_exhausted',elapsedMs:Date.now()-liveSearchStartedAt})
 
-        const fallbackPackages=await db.from('film_packages').select('id,movie_candidate_id,title_snapshot,fragments,status').eq('event_id',event.id).eq('status','ready').is('origin_submission_id',null)
+        const fallbackPackages=await db.from('film_packages')
+          .select('id,movie_candidate_id,title_snapshot,fragments,status')
+          .eq('event_id',event.id)
+          .eq('status','ready')
+          .is('origin_submission_id',null)
         if(fallbackPackages.error)throw fallbackPackages.error
         const rows=fallbackPackages.data||[]
+        const packageIds=rows.map((x:any)=>String(x.id))
+        const fallbackQuestions=packageIds.length
+          ?await db.from('film_questions').select('film_package_id,id,position').in('film_package_id',packageIds)
+          :{data:[],error:null} as any
+        if(fallbackQuestions.error)throw fallbackQuestions.error
+        const questionCounts=new Map<string,number>()
+        for(const q of fallbackQuestions.data||[]){
+          const key=String(q.film_package_id)
+          questionCounts.set(key,(questionCounts.get(key)||0)+1)
+        }
         if(!rows.length){
           await db.from('event_rounds').update({flow_status:'movie_found',movie_candidate_id:null,updated_at:new Date().toISOString()}).eq('id',round.id)
           const projector=await setProjectorState(db,event,'movie_found',round.id,null,{found:false,message:'не нашли проверяемый фрагмент'})
-          return json({ok:true,found:false,searchMode:'live_failed',sourceTrace,projector})
+          return json({ok:true,found:false,searchMode:'live_failed_no_fallback',sourceTrace,projector})
         }
         const ids=rows.map((x:any)=>String(x.movie_candidate_id))
         const movies=await db.from('movie_candidates').select('id,title,original_title,year,genre,reason').in('id',ids)
         if(movies.error)throw movies.error
         const movieMap=new Map((movies.data||[]).map((x:any)=>[String(x.id),x]))
-        const fallbacks=rows.map((p:any)=>({package:p,movie:movieMap.get(String(p.movie_candidate_id))})).filter((x:any)=>x.movie)
+        const fallbacks=rows.map((p:any)=>({
+          package:p,
+          movie:movieMap.get(String(p.movie_candidate_id)),
+          questionCount:questionCounts.get(String(p.id))||0
+        })).filter((x:any)=>{
+          if(!x.movie)return false
+          const fragments=Array.isArray(x.package.fragments)?x.package.fragments:[]
+          const first:any=fragments[0]||{}
+          const playable=!!String(first.videoId||first.sourceUrl||'').trim()
+          return playable&&(!needsQuestions||x.questionCount>=3)
+        })
+        if(!fallbacks.length){
+          await db.from('event_rounds').update({flow_status:'movie_found',movie_candidate_id:null,updated_at:new Date().toISOString()}).eq('id',round.id)
+          const projector=await setProjectorState(db,event,'movie_found',round.id,null,{
+            found:false,message:needsQuestions?'нет резервного фильма с готовыми вопросами':'нет резервного фильма с готовым видео'
+          })
+          return json({ok:true,found:false,searchMode:'live_failed_no_eligible_fallback',sourceTrace,projector})
+        }
         const usedFallbackRounds=await db.from('event_rounds').select('movie_candidate_id').eq('event_id',event.id).not('movie_candidate_id','is',null)
         if(usedFallbackRounds.error)throw usedFallbackRounds.error
         const usedFallbackIds=new Set((usedFallbackRounds.data||[]).map((x:any)=>String(x.movie_candidate_id)))
         const unusedFallbacks=fallbacks.filter((x:any)=>!usedFallbackIds.has(String(x.movie.id)))
         const rotationPool=unusedFallbacks.length?unusedFallbacks:fallbacks
         const fallbackPick=secureIndex(rotationPool.length)
-        let chosen:any=rotationPool[fallbackPick.index]
-        try{
-          if(body.preparedOnly===true)throw new Error('PREPARED_ONLY')
-          const match=await structuredResponse<any>({
-            name:'prepared_fallback_match',
-            schema:{type:'object',additionalProperties:false,properties:{movieId:{type:'string',enum:fallbacks.map((x:any)=>String(x.movie.id))}},required:['movieId']},
-            instructions:'выбери из резервного списка фильм, наиболее похожий на придуманную идею. только один id.',
-            input:JSON.stringify({invented:{title:pitch.data.title,description:pitch.data.description},candidates:fallbacks.map((x:any)=>({id:x.movie.id,title:x.movie.title,year:x.movie.year,genre:x.movie.genre}))}),
-            maxOutputTokens:180,reasoningEffort:'none'
-          })
-          chosen=fallbacks.find((x:any)=>String(x.movie.id)===String(match.movieId))||chosen
-        }catch{}
+        const chosen:any=rotationPool[fallbackPick.index]
+        sourceTrace.push({
+          stage:'fallback_selected',
+          movieId:String(chosen.movie.id),
+          title:String(chosen.movie.title||''),
+          questionCount:Number(chosen.questionCount||0),
+          elapsedMs:Date.now()-liveSearchStartedAt
+        })
         const existingQuestions=await db.from('film_questions').select('id,position').eq('film_package_id',chosen.package.id).order('position')
         if(existingQuestions.error)throw existingQuestions.error
-        const target=Math.min(3,Math.max(1,(existingQuestions.data||[]).length))
+        const target=needsQuestions?Math.min(3,(existingQuestions.data||[]).length):0
         const now=new Date().toISOString()
         const ru=await db.from('event_rounds').update({movie_candidate_id:chosen.movie.id,flow_status:'movie_found',question_target:target,question_position:0,updated_at:now}).eq('id',round.id).eq('event_id',event.id)
         if(ru.error)throw ru.error
@@ -2628,8 +2651,8 @@ export async function handleApi(req:Request){
           if(up.error)throw up.error
         }
         const fragment=(Array.isArray(chosen.package.fragments)?chosen.package.fragments:[])[0]||null
-        const projector=await setProjectorState(db,event,'movie_found',round.id,chosen.package.id,{found:true,filmTitle:chosen.movie.title,year:chosen.movie.year,reason:'резервный проверенный киноблок',fragment,searchMode:'fallback_prepared'})
-        return json({ok:true,found:true,searchMode:'fallback_prepared',movie:{id:chosen.movie.id,title:chosen.movie.title,year:chosen.movie.year,reason:'резервный проверенный киноблок'},filmPackageId:chosen.package.id,projector,sourceTrace})
+        const projector=await setProjectorState(db,event,'movie_found',round.id,chosen.package.id,{found:true,filmTitle:chosen.movie.title,year:chosen.movie.year,reason:'резервный проверенный киноблок',fragment,searchMode:'fallback_prepared_non_ai'})
+        return json({ok:true,found:true,searchMode:'fallback_prepared_non_ai',movie:{id:chosen.movie.id,title:chosen.movie.title,year:chosen.movie.year,reason:'резервный проверенный киноблок'},filmPackageId:chosen.package.id,projector,sourceTrace})
       },240)
     }
 
