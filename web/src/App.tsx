@@ -521,6 +521,8 @@ function ShowControl({data,busy,run}:{data:DemoState;busy:boolean;run:(action:st
   const audio=data.show?.audio
   const audioState=audio?.state
   const currentTrack=audio?.assets.find(x=>x.key===audioState?.track_key)
+  const screenAudio=audio?.screen
+  const screenReady=screenAudio?.online===true&&screenAudio?.unlocked===true
   let scheduleCursor=0
   const exactSlots=new Map(show.program.blocks.map(b=>{
     const start=scheduleCursor
@@ -538,8 +540,9 @@ function ShowControl({data,busy,run}:{data:DemoState;busy:boolean;run:(action:st
     <div className="show-timeline">{show.program.blocks.map(b=>{const slot=exactSlots.get(b.id);return <button type="button" disabled={busy} onClick={()=>command('jump',{blockId:b.id})} className={b.id===runtime.currentBlockId?'current':''} key={b.id}><span>{b.index+1}</span><b>{b.title}</b><small>{b.durationMin&&slot?`${minuteMark(slot.start)}–${minuteMark(slot.end)} · ${b.autoAdvance?'авто':'ручной'}`:'после эфира'}</small></button>})}</div>
     {block?.type==='final_vote'&&show.finalVote&&<div className="show-final-vote-admin"><small>финальный выбор · {show.finalVote.totalVotes} голосов</small>{show.finalVote.options.map(x=><span key={x.id}><b>{x.title}</b><em>{x.count}</em></span>)}</div>}
     <div className="show-audio-console">
-      <div><small>звук на проекторе</small><b>{currentTrack?.title||'тишина'}</b><span>{audioState?.status==='playing'?'играет':audioState?.status==='paused'?'пауза':'остановлено'} · {audioState?.mode==='auto'?'авто':'ручной'}</span></div>
+      <div><small>звук идёт только с ноутбука projector</small><b>{currentTrack?.title||'тишина'}</b><span>{audioState?.status==='playing'?'играет':audioState?.status==='paused'?'пауза':'остановлено'} · {audioState?.mode==='auto'?'авто':'ручной'} · {screenReady?'ноутбук готов':screenAudio?.online?'на ноутбуке нужно нажать «включить звук»':'projector не в сети'}</span></div>
       <div className="inline">
+        <Button kind="secondary" disabled={busy||!screenReady} onClick={()=>run('admin-audio-control',{op:'test',trackKey:'creature-3'})}>тест звука</Button>
         <Button kind="secondary" disabled={busy} onClick={()=>run('admin-audio-control',{op:'prev'})}>← трек</Button>
         {audioState?.status==='playing'?<Button kind="secondary" disabled={busy} onClick={()=>run('admin-audio-control',{op:'pause'})}>пауза</Button>:<Button kind="secondary" disabled={busy} onClick={()=>run('admin-audio-control',{op:'play'})}>▶ музыка</Button>}
         <Button kind="secondary" disabled={busy} onClick={()=>run('admin-audio-control',{op:'next'})}>трек →</Button>
@@ -1149,32 +1152,86 @@ function ScreenCreatureDemo({data}:{data:DemoState}){
 function ProjectorAudio({data,screenToken}:{data:DemoState;screenToken:string}){
   const background=useRef<HTMLAudioElement|null>(null)
   const cue=useRef<HTMLAudioElement|null>(null)
-  const [needsUnlock,setNeedsUnlock]=useState(false)
   const lastCue=useRef('')
+  const lastTest=useRef('')
+  const lastSync=useRef('')
+  const [armed,setArmed]=useState(false)
+  const [needsUnlock,setNeedsUnlock]=useState(false)
+  const [audioTick,setAudioTick]=useState(0)
   const audio=data.show?.audio
   const state=audio?.state
-  const asset=audio?.assets.find(x=>x.key===state?.track_key)
-  const projectorState=String(data.projector?.state||'')
-  const filmActive=['film_intro','playing_clip','question_open','question_results','question_reveal'].includes(projectorState)
   const runtime=data.show?.runtime
   const block=runtime?.currentBlock
+  const projectorState=String(data.projector?.state||'')
+  const filmActive=['film_intro','playing_clip','question_open','question_results','question_reveal'].includes(projectorState)
   const livePerformance=block?.type==='music_live'
   const blockCutoffAt=runtime?.blockStartedAt&&block?.durationMin
     ?new Date(runtime.blockStartedAt).getTime()+Number(block.durationMin)*60_000
     :0
+  const clockNow=runtime?.runStatus==='paused'&&runtime.pausedAt?new Date(runtime.pausedAt).getTime():Date.now()
+  const elapsedSec=runtime?.blockStartedAt?Math.max(0,(clockNow-new Date(runtime.blockStartedAt).getTime())/1000):0
+  const playlistAssets=(block?.audioPlaylist||[]).map(key=>audio?.assets.find(x=>x.key===key)).filter(Boolean) as NonNullable<typeof audio>['assets']
+  const autoTarget=(()=>{
+    if(state?.mode!=='auto'||!playlistAssets.length)return undefined
+    const cycle=playlistAssets.reduce((sum,x)=>sum+Math.max(.1,Number(x.durationSec||0)),0)
+    if(!cycle)return undefined
+    let pos=elapsedSec%cycle
+    for(const item of playlistAssets){
+      const duration=Math.max(.1,Number(item.durationSec||0))
+      if(pos<duration)return {asset:item,offset:pos}
+      pos-=duration
+    }
+    return {asset:playlistAssets[0],offset:0}
+  })()
+  const asset=state?.mode==='auto'&&autoTarget?.asset
+    ?autoTarget.asset
+    :audio?.assets.find(x=>x.key===state?.track_key)
+  const desiredOffset=state?.mode==='auto'?Number(autoTarget?.offset||0):0
   const tryPlay=async(el:HTMLAudioElement|null)=>{
     if(!el)return
-    try{await el.play();setNeedsUnlock(false)}catch{setNeedsUnlock(true)}
+    try{await el.play();setNeedsUnlock(false)}
+    catch{setNeedsUnlock(true);setArmed(false)}
   }
+  useEffect(()=>{
+    if(!screenToken)return
+    const ping=()=>void callScreenApi('screen-audio-heartbeat',{slug:data.event.slug,audioUnlocked:armed},screenToken).catch(()=>{})
+    ping()
+    const timer=window.setInterval(ping,5000)
+    return()=>window.clearInterval(timer)
+  },[screenToken,data.event.slug,armed])
   useEffect(()=>{
     const el=background.current
     if(!el)return
     const wanted=asset?.url||''
-    if(el.src!==wanted){el.pause();el.src=wanted;el.load()}
-    el.volume=Math.max(0,Math.min(1,Number(state?.volume??.28)))
-    if(!wanted||state?.status!=='playing'||filmActive||livePerformance||(blockCutoffAt>0&&Date.now()>=blockCutoffAt)){el.pause();return}
-    void tryPlay(el)
-  },[asset?.url,state?.status,state?.volume,filmActive,livePerformance,blockCutoffAt,state?.updated_at])
+    const suppress=!wanted||state?.status!=='playing'||filmActive||livePerformance||(blockCutoffAt>0&&Date.now()>=blockCutoffAt)
+    if(suppress){
+      el.pause()
+      if(filmActive||livePerformance)lastSync.current=''
+      return
+    }
+    const signature=[runtime?.currentBlockId,runtime?.blockStartedAt,state?.mode,asset?.key,state?.updated_at,audioTick].join('|')
+    const sourceChanged=el.src!==wanted
+    if(sourceChanged){el.pause();el.src=wanted;el.load();lastSync.current=''}
+    const syncAndPlay=()=>{
+      if(state?.mode==='auto'&&Number.isFinite(desiredOffset)){
+        try{if(Math.abs(el.currentTime-desiredOffset)>2)el.currentTime=Math.max(0,desiredOffset)}catch{}
+      }
+      lastSync.current=signature
+      void tryPlay(el)
+    }
+    if(lastSync.current!==signature){
+      if(el.readyState>=1)syncAndPlay()
+      else{
+        const onMeta=()=>{el.removeEventListener('loadedmetadata',onMeta);syncAndPlay()}
+        el.addEventListener('loadedmetadata',onMeta)
+        return()=>el.removeEventListener('loadedmetadata',onMeta)
+      }
+    }else if(el.paused&&armed)void tryPlay(el)
+  },[asset?.url,asset?.key,state?.status,state?.mode,state?.volume,state?.updated_at,filmActive,livePerformance,blockCutoffAt,runtime?.currentBlockId,runtime?.blockStartedAt,desiredOffset,audioTick,armed])
+  useEffect(()=>{
+    const el=background.current
+    if(el)el.volume=Math.max(0,Math.min(1,Number(state?.volume??.28)))
+  },[state?.volume])
   useEffect(()=>{
     const el=background.current
     if(!el||runtime?.runStatus!=='running'||!blockCutoffAt)return
@@ -1184,27 +1241,54 @@ function ProjectorAudio({data,screenToken}:{data:DemoState;screenToken:string}){
     return()=>window.clearTimeout(timer)
   },[runtime?.runStatus,runtime?.currentBlockId,runtime?.blockStartedAt,blockCutoffAt])
   useEffect(()=>{
-    const block=String(data.show?.runtime.currentBlockId||'')
-    const key=projectorState==='pitch_randomizing'?'creature-3':projectorState==='pitch_selected'?'creature-4':projectorState==='movie_found'?'creature-5':block==='onboarding'?'creature-1':block==='warm_up'?'creature-2':''
-    const signature=block+'|'+projectorState+'|'+key
+    const blockId=String(runtime?.currentBlockId||'')
+    const key=projectorState==='pitch_randomizing'?'creature-3':projectorState==='pitch_selected'?'creature-4':projectorState==='movie_found'?'creature-5':blockId==='onboarding'?'creature-1':blockId==='warm_up'?'creature-2':''
+    const signature=blockId+'|'+projectorState+'|'+key
     if(!key||lastCue.current===signature)return
     lastCue.current=signature
     const found=audio?.assets.find(x=>x.key===key)
     const el=cue.current
     if(!found?.url||!el)return
     el.pause();el.src=found.url;el.currentTime=0;el.volume=.72;void tryPlay(el)
-  },[data.show?.runtime.currentBlockId,projectorState,audio?.assets])
+  },[runtime?.currentBlockId,projectorState,audio?.assets])
+  useEffect(()=>{
+    const nonce=String(audio?.screen?.testNonce||'')
+    if(!nonce||lastTest.current===nonce)return
+    lastTest.current=nonce
+    const found=audio?.assets.find(x=>x.key===String(audio?.screen?.testAssetKey||'creature-3'))
+    const el=cue.current
+    if(!found?.url||!el)return
+    el.pause();el.src=found.url;el.currentTime=0;el.volume=.72;void tryPlay(el)
+  },[audio?.screen?.testNonce,audio?.screen?.testAssetKey,audio?.assets])
   const unlock=async()=>{
-    if(cue.current){cue.current.muted=true;await cue.current.play().catch(()=>{});cue.current.pause();cue.current.muted=false}
-    await tryPlay(background.current)
+    const bg=background.current
+    const fx=cue.current
+    const primeUrl=asset?.url||audio?.assets.find(x=>x.category==='calm')?.url||audio?.assets[0]?.url||''
+    const cueUrl=audio?.assets.find(x=>x.key==='creature-3')?.url||primeUrl
+    const prepared:[HTMLAudioElement,string,number][]=[]
+    if(bg&&primeUrl)prepared.push([bg,primeUrl,bg.volume])
+    if(fx&&cueUrl)prepared.push([fx,cueUrl,fx.volume])
+    try{
+      for(const [el,url] of prepared){
+        el.pause()
+        if(el.src!==url){el.src=url;el.load()}
+        el.muted=false;el.volume=0
+      }
+      const attempts=await Promise.allSettled(prepared.map(([el])=>el.play()))
+      for(const [el,,volume] of prepared){el.pause();el.currentTime=0;el.volume=volume}
+      const ok=attempts.length>0&&attempts.every(x=>x.status==='fulfilled')
+      setArmed(ok);setNeedsUnlock(!ok);lastSync.current='';setAudioTick(x=>x+1)
+      await callScreenApi('screen-audio-heartbeat',{slug:data.event.slug,audioUnlocked:ok},screenToken).catch(()=>{})
+    }catch{
+      setArmed(false);setNeedsUnlock(true)
+    }
   }
   return <>
-    <audio ref={background} onEnded={()=>{if(asset?.key)void callScreenApi('screen-audio-ended',{slug:data.event.slug,trackKey:asset.key},screenToken)}}/>
+    <audio ref={background} onEnded={()=>{setAudioTick(x=>x+1);if(asset?.key)void callScreenApi('screen-audio-ended',{slug:data.event.slug,trackKey:asset.key},screenToken)}}/>
     <audio ref={cue}/>
-    {needsUnlock&&<button className="screen-audio-unlock" onClick={()=>void unlock()}>включить звук</button>}
+    {(!armed||needsUnlock)&&<button className="screen-audio-unlock" onClick={()=>void unlock()}>включить звук на этом ноутбуке</button>}
   </>
 }
-
 
 function Screen(){const {slug}=useParams();const [search]=useSearchParams();const privileged=usePrivilegedState('screen',slug);const {data,error}=privileged;const [now,setNow]=useState(()=>Date.now());useEffect(()=>{const t=window.setInterval(()=>setNow(Date.now()),1000);return()=>window.clearInterval(t)},[]);if(!data)return <Loading error={error}/>;const animalDemo=search.get('demo')==='animals';const content=animalDemo?<ScreenCreatureDemo data={data}/>:screenContent(data);const timer=animalDemo?'':showTimerText(data,now);const status=animalDemo?'репетиция животин':data.projector&&!['idle','arrival'].includes(data.projector.state)?projectorStateLabel(data.projector.state):data.show?.runtime.currentBlock?.type==='arrival'?'сбор гостей':data.show?.runtime.runStatus!=='idle'?data.show?.runtime.currentBlock?.title:statusLabel(data.event.status);return <div className="screen-page"><ProjectorAudio data={data} screenToken={privileged.token}/><div className="screen-brand">НАСЫПАТЕЛИ В КИНО</div><div className="screen-status">{status}{timer&&<b>{timer}</b>}</div>{!animalDemo&&data.screenMessage&&<div className="screen-message">{data.screenMessage}</div>}<div className="screen-content">{content}</div><div className="screen-footer">{animalDemo?'demo · база не меняется':eventDate(data.event.startsAt)+'. НАСЫПАТЕЛИ В КИНО'}</div></div>}
 

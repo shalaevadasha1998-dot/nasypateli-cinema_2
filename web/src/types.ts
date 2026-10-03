@@ -271,6 +271,7 @@ export type EventRuntime = {
 
 export type ShowAudioAsset={key:string;title:string;category:string;mimeType:string;durationSec:number;url:string}
 export type ShowAudioState={mode:'auto'|'manual';status:'playing'|'paused'|'stopped';track_key?:string|null;playlist_index?:number;volume?:number;updated_at?:string}
+export type ShowAudioScreen={unlocked:boolean;online:boolean;lastSeenAt?:string;testNonce?:string;testAssetKey?:string}
 export type FinalVoteOption={id:string;title:string;year?:number;genre?:string;count:number}
 export type FinalVoteState={options:FinalVoteOption[];totalVotes:number;winners:FinalVoteOption[];closed:boolean;myVote?:string}
 export type ShowState = {
@@ -281,7 +282,7 @@ export type ShowState = {
   finalVote?:FinalVoteState
   onlineCount:number
   myVote?:any
-  audio?:{state:ShowAudioState;assets:ShowAudioAsset[]}
+  audio?:{state:ShowAudioState;assets:ShowAudioAsset[];screen?:ShowAudioScreen}
 }
 
 export type ScreenCreature = {

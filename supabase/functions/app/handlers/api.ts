@@ -1106,6 +1106,21 @@ export async function handleApi(req:Request){
         selectedIdea:state.selectedIdea
       })
     }
+    if(action==='screen-audio-heartbeat'){
+      const event=await eventBySlug(db,String(body.slug||'2026-10-03'))
+      const testScreenOk=await testRoomTokenMatches(event,req.headers.get('x-screen-token')||'')
+      if(!screenTokenOk&&!testScreenOk)return err('Доступ к экрану запрещён',401)
+      const now=new Date().toISOString()
+      const saved=await db.from('event_screen_status').upsert({
+        event_id:event.id,
+        audio_unlocked:body.audioUnlocked===true,
+        last_seen_at:now,
+        updated_at:now
+      },{onConflict:'event_id'})
+      if(saved.error)throw saved.error
+      return json({ok:true,at:now})
+    }
+
     if(action==='screen-audio-ended'){
       const event=await eventBySlug(db,String(body.slug||'2026-10-03'))
       const testScreenOk=await testRoomTokenMatches(event,req.headers.get('x-screen-token')||'')
@@ -1118,9 +1133,19 @@ export async function handleApi(req:Request){
       const block=blocks[Math.max(0,Math.min(blocks.length-1,Number(current.data.current_block_index||0)))]
       const playlist=(block?.audio_playlist||[]).map((x:any)=>String(x)).filter(Boolean)
       const state=current.data.audio_state||{}
-      if(state.status!=='playing'||String(state.track_key||'')!==String(body.trackKey||''))return json({ok:true,ignored:true})
+      if(state.status!=='playing')return json({ok:true,ignored:true})
+      const endedKey=String(body.trackKey||'')
+      if(state.mode==='manual'){
+        if(String(state.track_key||'')!==endedKey)return json({ok:true,ignored:true})
+        const next={...state,status:'stopped',updated_at:new Date().toISOString()}
+        const u=await db.from('event_runtime').update({audio_state:next,revision:Number(current.data.revision||0)+1,updated_at:new Date().toISOString()}).eq('event_id',event.id).eq('revision',current.data.revision)
+        if(u.error)throw u.error
+        return json({ok:true,audioState:next})
+      }
       if(!playlist.length)return json({ok:true,ignored:true})
-      const nextIndex=(Math.max(0,Number(state.playlist_index||0))+1)%playlist.length
+      const endedIndex=playlist.indexOf(endedKey)
+      if(endedIndex<0)return json({ok:true,ignored:true})
+      const nextIndex=(endedIndex+1)%playlist.length
       const next={...state,mode:'auto',status:'playing',track_key:playlist[nextIndex],playlist_index:nextIndex,volume:Number(block.audio_volume||.28),updated_at:new Date().toISOString()}
       const u=await db.from('event_runtime').update({audio_state:next,revision:Number(current.data.revision||0)+1,updated_at:new Date().toISOString()}).eq('event_id',event.id).eq('revision',current.data.revision)
       if(u.error)throw u.error
@@ -2060,7 +2085,7 @@ export async function handleApi(req:Request){
 
     if(action==='admin-audio-control'){
       const op=String(body.op||'')
-      if(!['play','pause','stop','next','prev','auto','track'].includes(op))return err('неизвестная команда музыки',422)
+      if(!['play','pause','stop','next','prev','auto','track','test'].includes(op))return err('неизвестная команда музыки',422)
       return await withEventOperation(db,event.id,'show-audio',async()=>{
         const [runtimeR,programR,assetR]=await Promise.all([
           db.from('event_runtime').select('*').eq('event_id',event.id).single(),
@@ -2073,6 +2098,17 @@ export async function handleApi(req:Request){
         const ready=new Set((assetR.data||[]).map((x:any)=>String(x.asset_key)))
         const playlist=(block?.audio_playlist||[]).map((x:any)=>String(x)).filter((x:string)=>ready.has(x))
         const prev=runtimeR.data.audio_state||audioStateForBlock(block)
+        if(op==='test'){
+          const key=String(body.trackKey||'creature-3')
+          if(!ready.has(key))return err('тестовый звук не готов',409)
+          const nonce=crypto.randomUUID()
+          const now=new Date().toISOString()
+          const s=await db.from('event_screen_status').upsert({
+            event_id:event.id,test_nonce:nonce,test_asset_key:key,updated_at:now
+          },{onConflict:'event_id'})
+          if(s.error)throw s.error
+          return json({ok:true,testNonce:nonce,show:await buildShowState(db,event)})
+        }
         let next:any={...prev,updated_at:new Date().toISOString()}
         if(op==='stop')next={...next,mode:'manual',status:'stopped',track_key:null}
         else if(op==='pause')next={...next,mode:'manual',status:'paused'}

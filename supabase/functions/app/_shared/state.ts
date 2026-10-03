@@ -92,13 +92,14 @@ function voteSummary(rows:any[]){
 }
 
 export async function buildShowState(db:any,event:any){
-  const [programR,runtimeR,presenceR,mediaR]=await Promise.all([
+  const [programR,runtimeR,presenceR,mediaR,screenR]=await Promise.all([
     db.from('event_programs').select('config,updated_at').eq('event_id',event.id).maybeSingle(),
     db.from('event_runtime').select('*').eq('event_id',event.id).maybeSingle(),
     db.from('event_presence').select('*',{count:'exact',head:true}).eq('event_id',event.id).gte('last_seen_at',new Date(Date.now()-45000).toISOString()),
-    db.from('media_assets').select('asset_key,title,category,mime_type,duration_sec,public_url').eq('status','ready').order('asset_key')
+    db.from('media_assets').select('asset_key,title,category,mime_type,duration_sec,public_url').eq('status','ready').order('asset_key'),
+    db.from('event_screen_status').select('audio_unlocked,last_seen_at,test_nonce,test_asset_key').eq('event_id',event.id).maybeSingle()
   ])
-  for(const r of [programR,runtimeR,presenceR,mediaR])if(r.error)throw r.error
+  for(const r of [programR,runtimeR,presenceR,mediaR,screenR])if(r.error)throw r.error
   const program=normalizeProgram(programR.data?.config||{})
   const raw=runtimeR.data||{}
   const blockIndex=Math.max(0,Math.min(Math.max(0,program.blocks.length-1),Number(raw.current_block_index||0)))
@@ -208,7 +209,14 @@ export async function buildShowState(db:any,event:any){
     onlineCount:Number(presenceR.count||0),
     audio:{
       state:raw.audio_state||{mode:'auto',status:'stopped',track_key:null,playlist_index:0,volume:.28},
-      assets:(mediaR.data||[]).map((x:any)=>({key:String(x.asset_key),title:String(x.title),category:String(x.category),mimeType:String(x.mime_type),durationSec:Number(x.duration_sec||0),url:String(x.public_url||'')}))
+      assets:(mediaR.data||[]).map((x:any)=>({key:String(x.asset_key),title:String(x.title),category:String(x.category),mimeType:String(x.mime_type),durationSec:Number(x.duration_sec||0),url:String(x.public_url||'')})),
+      screen:{
+        unlocked:screenR.data?.audio_unlocked===true,
+        online:!!screenR.data?.last_seen_at&&Date.now()-new Date(screenR.data.last_seen_at).getTime()<15000,
+        lastSeenAt:screenR.data?.last_seen_at||undefined,
+        testNonce:screenR.data?.test_nonce||undefined,
+        testAssetKey:screenR.data?.test_asset_key||undefined
+      }
     }
   }
 }
