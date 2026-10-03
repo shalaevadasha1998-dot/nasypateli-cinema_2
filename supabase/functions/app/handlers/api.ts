@@ -194,6 +194,53 @@ function stableThreeOptions(options:any[],correct:any,seed:string){
   return out.slice(0,3)
 }
 
+async function buildFallbackQuestionPackage(movie:any,source:any){
+  const schema={type:'object',additionalProperties:false,properties:{
+    questions:{type:'array',minItems:3,maxItems:3,items:{type:'object',additionalProperties:false,properties:{
+      position:{type:'integer',minimum:1,maximum:3},
+      prompt:{type:'string',minLength:3,maxLength:280},
+      correctAnswer:{type:'string',minLength:1,maxLength:220},
+      revealText:{type:'string',minLength:1,maxLength:500}
+    },required:['position','prompt','correctAnswer','revealText']}}
+  },required:['questions']}
+  let ai:any=null
+  try{
+    ai=await Promise.race<any>([
+      structuredResponse<any>({
+        name:'live_plot_three',
+        schema,
+        instructions:'сделай 3 коротких открытых вопроса «что будет дальше?» по реально существующему фильму. опирайся только на достоверно известный сюжет фильма и переданное описание. correctAnswer и revealText должны описывать реальное событие фильма, не выдумывай. вопросы по-русски, без вариантов ответа.',
+        input:JSON.stringify({film:{title:movie.title,originalTitle:movie.original_title,year:movie.year,description:movie?.metadata?.description||movie?.reason||''}}),
+        maxOutputTokens:950,model:'gpt-5.6-luna',reasoningEffort:'none'
+      }),
+      new Promise((_,reject)=>setTimeout(()=>reject(new Error('PLOT_QUESTION_TIMEOUT')),5000))
+    ])
+  }catch{return null}
+  const questions=(Array.isArray(ai?.questions)?ai.questions:[])
+    .sort((a:any,b:any)=>Number(a.position)-Number(b.position))
+    .slice(0,3)
+    .map((q:any,index:number)=>({
+      position:index+1,
+      prompt:String(q.prompt||'').trim(),
+      options:[],
+      correctAnswer:String(q.correctAnswer||'').trim(),
+      revealText:String(q.revealText||'').trim(),
+      revealFragment:{}
+    }))
+  if(questions.length!==3||questions.some((q:any)=>!q.prompt||!q.correctAnswer||!q.revealText))return null
+  const start=Math.max(0,Math.round(Number(source?.startSec)||0))
+  const rawEnd=source?.endSec==null?null:Math.round(Number(source.endSec))
+  const end=rawEnd&&rawEnd>start?Math.min(rawEnd,start+60):start+45
+  const fragments=[{
+    label:'первый фрагмент',
+    sourcePlatform:String(source?.sourcePlatform||((source?.videoId)?'youtube':'direct')),
+    videoId:source?.videoId?String(source.videoId):undefined,
+    sourceUrl:String(source?.sourceUrl||''),
+    startSec:start,endSec:end
+  }]
+  return {language:'plot_fallback',fragments,segments:[],questions,fallback:true}
+}
+
 async function buildTranscriptQuestionPackage(movie:any,source:any){
   if(!source?.videoId)return null
   const transcript=await youtubeCaptionCues(String(source.videoId))
@@ -2473,22 +2520,23 @@ export async function handleApi(req:Request){
                 let questionRows:any[]=[]
                 let captionLanguage:string|undefined
                 if(needsQuestions){
-                  const livePack=await Promise.race<any>([
+                  let livePack=await Promise.race<any>([
                     buildTranscriptQuestionPackage(movie,source),
                     new Promise(resolve=>setTimeout(()=>resolve(null),8000))
                   ])
+                  if(!livePack)livePack=await buildFallbackQuestionPackage(movie,source)
                   if(!livePack)continue
                   fragments=livePack.fragments
                   captionLanguage=livePack.language
                   questionRows=livePack.questions.map((q:any,index:number)=>{
-                    const segment=livePack.segments[index]
+                    const segment=Array.isArray(livePack.segments)?livePack.segments[index]:null
                     return {
                       position:index+1,prompt:String(q.prompt).trim().slice(0,500),
-                      options:q.options,correct_answer:String(q.correctAnswer).trim(),
+                      options:Array.isArray(q.options)?q.options:[],correct_answer:String(q.correctAnswer).trim(),
                       reveal_text:String(q.revealText).trim().slice(0,1000),
-                      reveal_fragment:livePack.fragments[index+1],
+                      reveal_fragment:q.revealFragment&&typeof q.revealFragment==='object'?q.revealFragment:(livePack.fragments[index+1]||{}),
                       real_outcome:String(q.revealText).trim().slice(0,1000),
-                      verification_data:{type:'youtube_captions',language:livePack.language,videoId:source.videoId,startSec:segment.start,endSec:segment.end,transcript:segment.reveal}
+                      verification_data:segment?{type:'youtube_captions',language:livePack.language,videoId:source.videoId,startSec:segment.start,endSec:segment.end,transcript:segment.reveal}:{type:'plot_fallback',language:'plot_fallback',sourceUrl:movie?.metadata?.wikidata_url||movie?.metadata?.description||'',filmTitle:movie.title}
                     }
                   })
                 }else{
