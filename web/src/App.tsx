@@ -942,7 +942,7 @@ function DirectVideoPlayer({src,title,startSec=0,endSec}:{src:string;title:strin
   useEffect(()=>{initialized.current=false},[src,start])
   const seekAndPlay=()=>{const el=ref.current;if(!el)return;if(!initialized.current){try{el.currentTime=start}catch{}initialized.current=true}void el.play().catch(()=>{})}
   const stopAtEnd=()=>{const el=ref.current;if(!el||!end)return;if(el.currentTime>=end){el.pause();try{el.currentTime=end}catch{}}}
-  return <div className="screen-video-wrap"><video ref={ref} title={title} src={src} autoPlay playsInline preload="auto" onLoadedMetadata={seekAndPlay} onCanPlay={seekAndPlay} onTimeUpdate={stopAtEnd}/></div>
+  return <div className="screen-video-wrap"><video ref={ref} title={title} src={src} autoPlay playsInline controls preload="auto" onLoadedMetadata={seekAndPlay} onCanPlay={seekAndPlay} onTimeUpdate={stopAtEnd}/></div>
 }
 
 function ProjectorMedia({media,title}:{media:any;title:string}){
