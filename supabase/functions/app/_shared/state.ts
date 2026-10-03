@@ -36,7 +36,7 @@ function normalizeProgram(config:any){
   const rewards=config?.rewards||{}
   return {
     version:Number(config?.version||1),
-    roundsTarget:Math.max(1,Math.min(20,Number(config?.rounds_target??config?.roundsTarget??7)||7)),
+    roundsTarget:Math.max(1,Math.min(20,Number(config?.rounds_target??config?.roundsTarget??4)||4)),
     rewards:{
       join:Math.max(0,Math.min(100,Number(rewards.join??1)||0)),
       vote:Math.max(0,Math.min(100,Number(rewards.vote??1)||0)),
