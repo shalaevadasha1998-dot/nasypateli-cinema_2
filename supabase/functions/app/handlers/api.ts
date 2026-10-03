@@ -6,7 +6,7 @@ import { structuredResponse, structuredWebResponse, transcribeAudio } from '../_
 import { creatureState, emitStoryTrigger, ensureCreature } from '../_shared/stories.ts'
 import { allowedGender, connectionKind, datingState, intentsCompatible } from '../_shared/dating.ts'
 import { JIPITINA, jipitinaInstructions } from '../_shared/jipitina.ts'
-import { discoverMovieSources, validateMovieTitle } from '../_shared/movies.ts'
+import { discoverMovieSources, discoverMovieSourcesFast, validateMovieTitle } from '../_shared/movies.ts'
 import { buildEventState, buildShowState, eventBySlug, nextEvent, nonexistentFilmEnabled } from '../_shared/state.ts'
 import { RELEASE_SHA } from '../_shared/release.ts'
 
@@ -68,8 +68,8 @@ async function applyMovieSourceToCandidate(db:any,event:any,movieId:string,prefe
   return preferred
 }
 
-async function discoverAndPersistMovieSources(db:any,event:any,movie:any){
-  const discovery=await discoverMovieSources(movie)
+async function discoverAndPersistMovieSources(db:any,event:any,movie:any,fast=false){
+  const discovery=fast?await discoverMovieSourcesFast(movie):await discoverMovieSources(movie)
   const existing=await db.from('movie_source_candidates').select('*').eq('event_id',event.id).eq('movie_candidate_id',movie.id)
   if(existing.error)throw existing.error
   const byKey=new Map((existing.data||[]).map((x:any)=>[
@@ -2300,12 +2300,12 @@ export async function handleApi(req:Request){
         await setProjectorState(db,event,'movie_searching',round.id,null,{pitch:{animalName:pitch.data.animal_name_snapshot,title:pitch.data.title,description:pitch.data.description},scope:'worldwide'})
 
         const liveSearchStartedAt=Date.now()
-        const liveSearchBudgetMs=24_000
+        const liveSearchBudgetMs=28_000
         const sourceTrace:any[]=[]
         const roundMode=Number(round.roundNo||0)%2===1?'review':'questions'
         const needsQuestions=roundMode==='questions'
         const candidateSchema={type:'object',additionalProperties:false,properties:{
-          candidates:{type:'array',minItems:3,maxItems:4,items:{type:'object',additionalProperties:false,properties:{
+          candidates:{type:'array',minItems:2,maxItems:3,items:{type:'object',additionalProperties:false,properties:{
             title:{type:'string'},originalTitle:{type:'string'},internationalTitle:{type:'string'},year:{type:['integer','null']},
             country:{type:'string'},language:{type:'string'},similarityScore:{type:'number',minimum:0,maximum:100},reason:{type:'string'}
           },required:['title','originalTitle','internationalTitle','year','country','language','similarityScore','reason']}}
@@ -2317,28 +2317,28 @@ export async function handleApi(req:Request){
             structuredWebResponse<any>({
               name:'worldwide_movie_match',
               schema:candidateSchema,
-              instructions:'обязательно используй web search прямо сейчас. найди в открытом интернете максимально похожие РЕАЛЬНО СУЩЕСТВУЮЩИЕ полнометражные фильмы по смыслу придуманной идеи. проверяй существование фильма по нескольким публичным источникам, а не по памяти модели. ищи без языковых и страновых ограничений. верни только 3–4 самых сильных совпадения, чтобы live-поиск был быстрым. оригинальное и международное название указывай точно. не выдумывай фильмы. сортируй прежде всего по сходству сюжета, конфликта, атмосферы и ключевой идеи.',
+              instructions:'обязательно используй web search прямо сейчас. найди в открытом интернете максимально похожие РЕАЛЬНО СУЩЕСТВУЮЩИЕ полнометражные фильмы по смыслу придуманной идеи. проверяй существование фильма по нескольким публичным источникам, а не по памяти модели. ищи без языковых и страновых ограничений. верни только 2–3 самых сильных совпадения, чтобы live-поиск был быстрым. оригинальное и международное название указывай точно. не выдумывай фильмы. сортируй прежде всего по сходству сюжета, конфликта, атмосферы и ключевой идеи.',
               input:JSON.stringify({invented:{title:pitch.data.title,description:pitch.data.description},goal:'найти реальный фильм и затем быстро найти воспроизводимый фрагмент'}),
-              maxOutputTokens:1400,model:Deno.env.get('OPENAI_FILM_MODEL')||'gpt-5.6-terra',reasoningEffort:'none',searchContextSize:'low'
+              maxOutputTokens:1000,model:Deno.env.get('OPENAI_FILM_MODEL')||'gpt-5.6-luna',reasoningEffort:'none',searchContextSize:'low'
             }),
-            new Promise((_,reject)=>setTimeout(()=>reject(new Error('LIVE_MOVIE_SEARCH_TIMEOUT')),11_000))
+            new Promise((_,reject)=>setTimeout(()=>reject(new Error('LIVE_MOVIE_SEARCH_TIMEOUT')),9_000))
           ])
         }catch(e:any){
           if(String(e?.message||e)==='LIVE_MOVIE_SEARCH_TIMEOUT')sourceTrace.push({stage:'candidate_match',error:'timeout'})
           else sourceTrace.push({stage:'candidate_match',error:String(e?.message||e).slice(0,200)})
         }
 
-        const validationJobs=(ai.candidates||[]).slice(0,4).map(async(c:any)=>{
-          const names=[c.originalTitle,c.internationalTitle,c.title].map((x:any)=>String(x||'').trim()).filter(Boolean)
+        const validationJobs=(ai.candidates||[]).slice(0,3).map(async(c:any)=>{
+          const names=[c.internationalTitle,c.originalTitle,c.title].map((x:any)=>String(x||'').trim()).filter(Boolean)
           let v:any=null
-          for(const name of [...new Set(names)].slice(0,2)){
+          const name=[...new Set(names)][0]
+          if(name){
             try{
               v=await Promise.race([
                 validateMovieTitle(name,c.year||undefined),
-                new Promise(resolve=>setTimeout(()=>resolve(null),4500))
+                new Promise(resolve=>setTimeout(()=>resolve(null),3500))
               ])
             }catch{}
-            if(v)break
           }
           if(!v?.runtimeMin||v.runtimeMin>event.max_movie_runtime_min)return null
           return {
@@ -2361,13 +2361,12 @@ export async function handleApi(req:Request){
           if(inserted.error)throw inserted.error
           const movie=inserted.data
           try{
-            const resolved=await discoverAndPersistMovieSources(db,event,movie)
+            const resolved=await discoverAndPersistMovieSources(db,event,movie,true)
             const sourceCandidates=(resolved.discovery?.candidates||[])
               .filter((x:any)=>x.verified&&x.embeddable&&x.rightsStatus!=='blocked'&&(needsQuestions?!!x.videoId:(!!x.videoId||!!x.sourceUrl)))
               .sort((x:any,y:any)=>Number(y.confidence||0)-Number(x.confidence||0))
             sourceTrace.push({movieId:movie.id,title:movie.title,sources:sourceCandidates.length,roundMode})
             for(const source of sourceCandidates.slice(0,needsQuestions?3:2)){
-              if(Date.now()-liveSearchStartedAt>liveSearchBudgetMs)break
               try{
                 let fragments:any[]=[]
                 let questionRows:any[]=[]
