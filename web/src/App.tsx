@@ -973,7 +973,8 @@ function Admin(){
     <details className="admin-support"><summary>списки и настройки · не нужны во время эфира</summary>
       <AdminParticipants data={data} reload={reload} adminToken={privileged.token}/>
       <ReviewQueueAdmin data={data} busy={busy} run={run}/>
-      <ProgramEditor data={data} busy={busy} run={run}/>
+      {!['2026-10-03','test-2026-10-03'].includes(data.event.slug)&&<ProgramEditor data={data} busy={busy} run={run}/>}
+      {['2026-10-03','test-2026-10-03'].includes(data.event.slug)&&<Card><div className="section-title">программа вечера</div><p>сбор → 2 раунда → перерыв 30 минут → 2 раунда → qr «творог» → музыка</p><p className="muted">на 3 октября порядок и число раундов зафиксированы.</p></Card>}
       <MovieCatalogAdmin data={data} busy={busy} run={run}/>
     </details>
     <details className="admin-technical"><summary>технические настройки события</summary><div className="admin-tech-grid">
