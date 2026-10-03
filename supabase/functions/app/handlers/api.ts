@@ -2302,6 +2302,8 @@ export async function handleApi(req:Request){
         const liveSearchStartedAt=Date.now()
         const liveSearchBudgetMs=24_000
         const sourceTrace:any[]=[]
+        const roundMode=Number(round.roundNo||0)%2===1?'review':'questions'
+        const needsQuestions=roundMode==='questions'
         const candidateSchema={type:'object',additionalProperties:false,properties:{
           candidates:{type:'array',minItems:3,maxItems:4,items:{type:'object',additionalProperties:false,properties:{
             title:{type:'string'},originalTitle:{type:'string'},internationalTitle:{type:'string'},year:{type:['integer','null']},
@@ -2360,33 +2362,56 @@ export async function handleApi(req:Request){
           const movie=inserted.data
           try{
             const resolved=await discoverAndPersistMovieSources(db,event,movie)
-            const sourceCandidates=(resolved.discovery?.candidates||[]).filter((x:any)=>x.videoId&&x.verified&&x.embeddable&&x.rightsStatus!=='blocked').sort((x:any,y:any)=>Number(y.confidence||0)-Number(x.confidence||0))
-            sourceTrace.push({movieId:movie.id,title:movie.title,sources:sourceCandidates.length})
-            for(const source of sourceCandidates.slice(0,2)){
+            const sourceCandidates=(resolved.discovery?.candidates||[])
+              .filter((x:any)=>x.verified&&x.embeddable&&x.rightsStatus!=='blocked'&&(needsQuestions?!!x.videoId:(!!x.videoId||!!x.sourceUrl)))
+              .sort((x:any,y:any)=>Number(y.confidence||0)-Number(x.confidence||0))
+            sourceTrace.push({movieId:movie.id,title:movie.title,sources:sourceCandidates.length,roundMode})
+            for(const source of sourceCandidates.slice(0,needsQuestions?3:2)){
               if(Date.now()-liveSearchStartedAt>liveSearchBudgetMs)break
               try{
-                const livePack=await buildTranscriptQuestionPackage(movie,source)
-                if(!livePack)continue
+                let fragments:any[]=[]
+                let questionRows:any[]=[]
+                let captionLanguage:string|undefined
+                if(needsQuestions){
+                  const livePack=await Promise.race<any>([
+                    buildTranscriptQuestionPackage(movie,source),
+                    new Promise(resolve=>setTimeout(()=>resolve(null),8000))
+                  ])
+                  if(!livePack)continue
+                  fragments=livePack.fragments
+                  captionLanguage=livePack.language
+                  questionRows=livePack.questions.map((q:any,index:number)=>{
+                    const segment=livePack.segments[index]
+                    return {
+                      position:index+1,prompt:String(q.prompt).trim().slice(0,500),
+                      options:q.options,correct_answer:String(q.correctAnswer).trim(),
+                      reveal_text:String(q.revealText).trim().slice(0,1000),
+                      reveal_fragment:livePack.fragments[index+1],
+                      real_outcome:String(q.revealText).trim().slice(0,1000),
+                      verification_data:{type:'youtube_captions',language:livePack.language,videoId:source.videoId,startSec:segment.start,endSec:segment.end,transcript:segment.reveal}
+                    }
+                  })
+                }else{
+                  const start=Math.max(0,Math.round(Number(source.startSec)||0))
+                  const rawEnd=source.endSec==null?null:Math.round(Number(source.endSec))
+                  const end=rawEnd&&rawEnd>start?Math.min(rawEnd,start+75):start+45
+                  fragments=[{
+                    label:'первый фрагмент',sourcePlatform:String(source.sourcePlatform||((source.videoId)?'youtube':'direct')),
+                    videoId:source.videoId?String(source.videoId):undefined,sourceUrl:String(source.sourceUrl||''),
+                    startSec:start,endSec:end
+                  }]
+                }
                 await applyMovieSourceToCandidate(db,event,movie.id,source)
                 const pack=await db.from('film_packages').insert({
-                  event_id:event.id,movie_candidate_id:movie.id,title_snapshot:movie.title,fragments:livePack.fragments,status:'ready',
+                  event_id:event.id,movie_candidate_id:movie.id,title_snapshot:movie.title,fragments,status:'ready',
                   origin_submission_id:pitch.data.id,
-                  match_data:{mode:'live_worldwide',captionLanguage:livePack.language,similarityScore:c.similarityScore,reason:c.reason,sourceTrace}
+                  match_data:{mode:needsQuestions?'live_worldwide_questions':'live_worldwide_review',captionLanguage,similarityScore:c.similarityScore,reason:c.reason,sourceTrace}
                 }).select('*').single()
                 if(pack.error)throw pack.error
-                const questionRows=livePack.questions.map((q:any,index:number)=>{
-                  const segment=livePack.segments[index]
-                  return {
-                    film_package_id:pack.data.id,position:index+1,prompt:String(q.prompt).trim().slice(0,500),
-                    options:q.options,correct_answer:String(q.correctAnswer).trim(),
-                    reveal_text:String(q.revealText).trim().slice(0,1000),
-                    reveal_fragment:livePack.fragments[index+1],
-                    real_outcome:String(q.revealText).trim().slice(0,1000),
-                    verification_data:{type:'youtube_captions',language:livePack.language,videoId:source.videoId,startSec:segment.start,endSec:segment.end,transcript:segment.reveal}
-                  }
-                })
-                const qs=await db.from('film_questions').insert(questionRows)
-                if(qs.error)throw qs.error
+                if(questionRows.length){
+                  const qs=await db.from('film_questions').insert(questionRows.map(q=>({film_package_id:pack.data.id,...q})))
+                  if(qs.error)throw qs.error
+                }
                 const now=new Date().toISOString()
                 const ru=await db.from('event_rounds').update({movie_candidate_id:movie.id,flow_status:'movie_found',question_target:3,question_position:0,updated_at:now}).eq('id',round.id).eq('event_id',event.id)
                 if(ru.error)throw ru.error
@@ -2396,8 +2421,8 @@ export async function handleApi(req:Request){
                   const up=await db.from('event_runtime').update({current_movie_id:movie.id,revision:Number(runtime.data.revision||0)+1,updated_at:now}).eq('event_id',event.id).eq('revision',runtime.data.revision)
                   if(up.error)throw up.error
                 }
-                const projector=await setProjectorState(db,event,'movie_found',round.id,pack.data.id,{found:true,filmTitle:movie.title,year:movie.year,reason:c.reason,fragment:livePack.fragments[0],searchMode:'live_worldwide'})
-                return json({ok:true,found:true,searchMode:'live_worldwide',movie:{id:movie.id,title:movie.title,year:movie.year,reason:c.reason},filmPackageId:pack.data.id,projector,sourceTrace})
+                const projector=await setProjectorState(db,event,'movie_found',round.id,pack.data.id,{found:true,filmTitle:movie.title,year:movie.year,reason:c.reason,fragment:fragments[0],searchMode:needsQuestions?'live_worldwide_questions':'live_worldwide_review'})
+                return json({ok:true,found:true,searchMode:needsQuestions?'live_worldwide_questions':'live_worldwide_review',movie:{id:movie.id,title:movie.title,year:movie.year,reason:c.reason},filmPackageId:pack.data.id,projector,sourceTrace})
               }catch(e:any){sourceTrace.push({movieId:movie.id,title:movie.title,source:String(source.videoId||source.sourceUrl||''),error:String(e?.message||e)})}
             }
           }catch(e:any){sourceTrace.push({movieId:movie.id,title:movie.title,error:String(e?.message||e)})}
