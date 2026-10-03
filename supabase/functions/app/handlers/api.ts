@@ -2141,23 +2141,35 @@ export async function handleApi(req:Request){
         await db.from('event_rounds').update({flow_status:'searching_movie',updated_at:new Date().toISOString()}).eq('id',round.id)
         await setProjectorState(db,event,'movie_searching',round.id,null,{pitch:{animalName:pitch.data.animal_name_snapshot,title:pitch.data.title,description:pitch.data.description},scope:'worldwide'})
 
+        const liveSearchStartedAt=Date.now()
+        const liveSearchBudgetMs=55_000
+        const sourceTrace:any[]=[]
         const candidateSchema={type:'object',additionalProperties:false,properties:{
-          candidates:{type:'array',minItems:10,maxItems:14,items:{type:'object',additionalProperties:false,properties:{
+          candidates:{type:'array',minItems:6,maxItems:8,items:{type:'object',additionalProperties:false,properties:{
             title:{type:'string'},originalTitle:{type:'string'},internationalTitle:{type:'string'},year:{type:['integer','null']},
             country:{type:'string'},language:{type:'string'},similarityScore:{type:'number',minimum:0,maximum:100},reason:{type:'string'}
           },required:['title','originalTitle','internationalTitle','year','country','language','similarityScore','reason']}}
         },required:['candidates']}
-        const ai=await structuredResponse<any>({
-          name:'worldwide_movie_match',
-          schema:candidateSchema,
-          instructions:'по названию и описанию придуманного фильма найди максимально похожие РЕАЛЬНО СУЩЕСТВУЮЩИЕ полнометражные фильмы мирового кино. ищи без языковых и страновых ограничений: европа, азия, латинская америка, ближний восток, африка, сша, ссср/россия и т.д. можно предлагать малоизвестные фильмы, если сходство сильнее. обязательно дай оригинальное название на языке фильма и международное/английское название, если есть. не выдумывай фильмы. сортируй прежде всего по сходству сюжета, конфликта, атмосферы и ключевой идеи.',
-          input:JSON.stringify({invented:{title:pitch.data.title,description:pitch.data.description}}),
-          maxOutputTokens:3600,model:Deno.env.get('OPENAI_FILM_MODEL')||'gpt-5.6-terra',reasoningEffort:'medium'
-        })
+        let ai:any={candidates:[]}
+        try{
+          ai=await Promise.race<any>([
+            structuredResponse<any>({
+              name:'worldwide_movie_match',
+              schema:candidateSchema,
+              instructions:'по названию и описанию придуманного фильма найди максимально похожие РЕАЛЬНО СУЩЕСТВУЮЩИЕ полнометражные фильмы мирового кино. ищи без языковых и страновых ограничений: европа, азия, латинская америка, ближний восток, африка, сша, ссср/россия и т.д. можно предлагать малоизвестные фильмы, если сходство сильнее. обязательно дай оригинальное название на языке фильма и международное/английское название, если есть. не выдумывай фильмы. сортируй прежде всего по сходству сюжета, конфликта, атмосферы и ключевой идеи.',
+              input:JSON.stringify({invented:{title:pitch.data.title,description:pitch.data.description}}),
+              maxOutputTokens:2200,model:Deno.env.get('OPENAI_FILM_MODEL')||'gpt-5.6-terra',reasoningEffort:'low'
+            }),
+            new Promise((_,reject)=>setTimeout(()=>reject(new Error('LIVE_MOVIE_SEARCH_TIMEOUT')),28_000))
+          ])
+        }catch(e:any){
+          if(String(e?.message||e)==='LIVE_MOVIE_SEARCH_TIMEOUT')sourceTrace.push({stage:'candidate_match',error:'timeout'})
+          else throw e
+        }
 
         const validated:any[]=[]
         for(const c of ai.candidates||[]){
-          if(validated.length>=10)break
+          if(validated.length>=5||Date.now()-liveSearchStartedAt>liveSearchBudgetMs)break
           const names=[c.originalTitle,c.internationalTitle,c.title].map((x:any)=>String(x||'').trim()).filter(Boolean)
           let v:any=null
           for(const name of [...new Set(names)]){
@@ -2173,8 +2185,8 @@ export async function handleApi(req:Request){
         }
         validated.sort((x:any,y:any)=>Number(y.similarityScore||0)-Number(x.similarityScore||0))
 
-        const sourceTrace:any[]=[]
-        for(const c of validated.slice(0,8)){
+        for(const c of validated.slice(0,4)){
+          if(Date.now()-liveSearchStartedAt>liveSearchBudgetMs)break
           const inserted=await db.from('movie_candidates').insert({
             event_id:event.id,provider:'wikidata',provider_id:c.wikidataId,title:c.title,original_title:c.originalTitle||c.title,
             year:c.year||null,runtime_min:c.runtimeMin||null,validated:true,similarity_score:c.similarityScore,
@@ -2187,7 +2199,8 @@ export async function handleApi(req:Request){
             const resolved=await discoverAndPersistMovieSources(db,event,movie)
             const sourceCandidates=(resolved.discovery?.candidates||[]).filter((x:any)=>x.videoId&&x.verified&&x.embeddable&&x.rightsStatus!=='blocked').sort((x:any,y:any)=>Number(y.confidence||0)-Number(x.confidence||0))
             sourceTrace.push({movieId:movie.id,title:movie.title,sources:sourceCandidates.length})
-            for(const source of sourceCandidates.slice(0,5)){
+            for(const source of sourceCandidates.slice(0,3)){
+              if(Date.now()-liveSearchStartedAt>liveSearchBudgetMs)break
               try{
                 const livePack=await buildTranscriptQuestionPackage(movie,source)
                 if(!livePack)continue
