@@ -40,7 +40,7 @@ async function requestApi<T=unknown>(action:string,payload:Record<string,unknown
     const res=await fetch(`${supabaseUrl}/functions/v1/${fn}`,{
       method:'POST',
       headers:{'content-type':'application/json','x-telegram-init-data':telegramInitData(),'x-client-build':buildSha,...(testRoomToken()?{'x-test-room-token':testRoomToken()}:{}),...extraHeaders},
-      body:JSON.stringify({action,...payload}),
+      body:JSON.stringify({action,...payload,...(typeof window!=='undefined'&&/^#\/rehearsal\/test-/i.test(window.location.hash||'')&&testRoomToken()?{testProfile:true}:{})}),
       signal:controller.signal
     })
     const data=await res.json().catch(()=>({error:'сервер вернул непонятный ответ'}))
