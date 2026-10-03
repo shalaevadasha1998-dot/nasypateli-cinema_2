@@ -1148,12 +1148,23 @@ async function publicScreenAnimalId(eventId:string,userId:string){
   return 'animal-'+Array.from(digest.slice(0,8)).map(x=>x.toString(16).padStart(2,'0')).join('')
 }
 
+let dataApiCircuitOpenUntil=0
+function dataApiUnavailable(error:any){
+  const code=String(error?.code||'')
+  const message=String(error?.message||error||'')
+  return code==='PGRST002'||code==='PGRST003'||/schema cache|statement timeout|service unavailable/i.test(message)
+}
+
 export async function handleApi(req:Request){
   if(req.method==='OPTIONS')return new Response('ok',{headers:cors})
   if(req.method==='GET')return json({ok:true,version:'0.9.0',release:RELEASE_SHA,service:'nasypateli-cinema'})
   if(req.method!=='POST')return err('Нужен POST-запрос',405)
   try{
-    const body=await req.json();const action=String(body.action||'');const db=adminDb()
+    const body=await req.json();const action=String(body.action||'')
+    if(action!=='health'&&Date.now()<dataApiCircuitOpenUntil){
+      return new Response(JSON.stringify({error:'сервер восстанавливается. попробуйте ещё раз через несколько секунд'}),{status:503,headers:{...cors,'content-type':'application/json','retry-after':'10'}})
+    }
+    const db=adminDb()
     const adminTokenOk=tokenMatches(req,'x-admin-token','ADMIN_ACCESS_TOKEN');const screenTokenOk=tokenMatches(req,'x-screen-token','SCREEN_ACCESS_TOKEN');const cronTokenOk=tokenMatches(req,'x-cron-token','CRON_ACCESS_TOKEN')
     const testRoomHeader=req.headers.get('x-test-room-token')||''
     if(action==='health')return json(await runtimeHealth(db))
@@ -3974,5 +3985,14 @@ export async function handleApi(req:Request){
       const u=await db.from('users').select('display_name,telegram_username').eq('id',chosen).single();if(u.error)throw u.error;await db.from('events').update({winner_user_id:chosen}).eq('id',event.id);const score=await db.from('event_outputs').select('payload').eq('event_id',event.id).eq('output_key','score_summary').single();if(score.error)throw score.error;const winner={userId:chosen,name:u.data.display_name||u.data.telegram_username||'участник'};await db.from('event_outputs').upsert({event_id:event.id,output_key:'score_summary',payload:{...(score.data.payload as any),tie:false,tieResolved:true,winner},approved:true,updated_at:new Date().toISOString()});await refreshLeaderboard(db,allowed);return json({ok:true,winner})
     }
     return err(`Неизвестное действие: ${action}`,404)
-  }catch(e:any){if(e?.message==='EVENT_NOT_FOUND')return err('Событие не найдено',404);console.error(e);if(e?.message==='EVENT_OPERATION_BUSY')return err('Это действие уже выполняется в другой вкладке. Дождитесь результата и обновите пульт.',409);return err('Что-то пошло не так. Попробуйте ещё раз.',500)}
+  }catch(e:any){
+    if(e?.message==='EVENT_NOT_FOUND')return err('Событие не найдено',404)
+    console.error(e)
+    if(e?.message==='EVENT_OPERATION_BUSY')return err('Это действие уже выполняется в другой вкладке. Дождитесь результата и обновите пульт.',409)
+    if(dataApiUnavailable(e)){
+      dataApiCircuitOpenUntil=Date.now()+10000
+      return new Response(JSON.stringify({error:'сервер восстанавливается. попробуйте ещё раз через несколько секунд'}),{status:503,headers:{...cors,'content-type':'application/json','retry-after':'10'}})
+    }
+    return err('Что-то пошло не так. Попробуйте ещё раз.',500)
+  }
 }
