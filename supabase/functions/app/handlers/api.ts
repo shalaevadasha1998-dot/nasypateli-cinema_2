@@ -1160,12 +1160,16 @@ export async function handleApi(req:Request){
 
     if(action==='screen-bootstrap'){
       const slug=String(body.slug||'2026-10-03')
+      const suppliedScreenToken=String(req.headers.get('x-screen-token')||'').trim()
+      // Боевой экран без ключа отсекаем ДО тяжёлого live-state RPC.
+      // Иначе старые/неавторизованные вкладки могут забивать базу polling-запросами.
+      if(!screenTokenOk&&!suppliedScreenToken&&!slug.startsWith('test-'))return err('Доступ к экрану запрещён',401)
       const live=await db.rpc('app_screen_live_state',{p_slug:slug})
       if(live.error)throw live.error
       const x:any=live.data
       if(!x?.event?.id)return err('Событие не найдено',404)
       const event:any={...x.event,settings:x.event.settings||{}}
-      const testScreenOk=await testRoomTokenMatches(event,req.headers.get('x-screen-token')||'')
+      const testScreenOk=await testRoomTokenMatches(event,suppliedScreenToken)
       const openTestScreen=event?.settings?.test_room===true
       if(!screenTokenOk&&!testScreenOk&&!openTestScreen)return err('Доступ к экрану запрещён',401)
       await maybeAutoAdvanceShow(db,event)
