@@ -955,18 +955,18 @@ function RoundFilmFlowAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(ac
   let canNext=true
   if(flow==='round_intro'){title='объясняем механику';detail='5 минут на объяснение. после этого сбор названий включится сам';nextLabel='сбор включится автоматически';canNext=false}
   else if(flow==='collecting_films'){title='гости придумывают фильмы';detail=`${round.pitchCount||0} идей уже отправлено`;canNext=pitches.length>0}
-  else if(flow==='films_locked'){title=`идея ${Math.min(previewIndex+1,Math.max(previewTotal,1))}/${Math.max(previewTotal,1)}`;detail='карточка сейчас на большом экране';nextLabel=previewIndex<previewTotal-1?'дальше':'дальше → рандом'}
+  else if(flow==='films_locked'){title='идеи собраны';detail='автоматика запускает рандом и покажет одну выбранную идею';nextLabel='форсировать рандом'}
   else if(flow==='randomizing_submission'){title='рандом выбирает идею';detail='смотри на большой экран';canNext=false;nextLabel='выбираем…'}
   else if(flow==='submission_selected'||flow==='searching_movie'){title='ищем реальный фильм';detail='берём проверенный воспроизводимый фрагмент';nextLabel='дальше → найти фильм'}
   else if(flow==='movie_found'){title=round.movie?.title||'фильм найден';detail=pack?'фрагмент готов':'для фильма нет готового фрагмента';nextLabel='дальше → фрагмент';canNext=!!pack}
-  else if(flow==='playing_clip'){title='фрагмент идёт';detail=mode==='review'?'после него все пишут одно слово':'после него все отвечают своими словами';nextLabel=mode==='review'?'дальше → одно слово':'дальше → вопрос 1/3';canNext=!!pack}
+  else if(flow==='playing_clip'){title='фрагмент идёт';detail=mode==='review'?'после просмотра назначаем, кто досмотрит фильм, затем 5 минут объяснения':'после просмотра автоматически откроется вопрос 1/3';nextLabel=mode==='review'?'форсировать назначение':'форсировать вопрос 1/3';canNext=!!pack}
   else if(flow==='one_word_collecting'){title='одно слово';detail='слова появляются на большом экране вживую';nextLabel='дальше → зафиксировать';canNext=!!pack}
-  else if(flow==='one_word_results'){title='рецензия зала готова';detail='теперь выбираем, кто досмотрит фильм';nextLabel='дальше → рандом';canNext=!!pack}
+  else if(flow==='one_word_results'){title='рецензия зала готова';detail='раунд сейчас закроется автоматически';nextLabel='форсировать конец раунда';canNext=true}
   else if(flow==='question_open'){title=`вопрос ${position}/${target}`;detail=currentQuestion?.prompt||'гости отвечают своими словами';nextLabel='дальше → самый близкий ответ';canNext=!!pack}
   else if(flow==='question_results'){title='ближайший ответ выбран';detail='животина сравнила открытые ответы с реальным продолжением';nextLabel='дальше → что было на самом деле';canNext=!!pack}
-  else if(flow==='question_reveal'){title='показано продолжение';detail=position<target?`следующий вопрос ${position+1}/${target}`:'теперь выбираем, кто досмотрит фильм';nextLabel=position<target?`дальше → вопрос ${position+1}/${target}`:'дальше → рандом';canNext=!!pack}
-  else if(flow==='assignment_randomizing'){title='рандом выбирает животину';detail='выбор фиксируется на сервере один раз';canNext=false;nextLabel='выбираем…'}
-  else if(flow==='assignment_selected'){title='фильм назначен';detail='раунд можно закрывать';nextLabel='дальше → закончить раунд'}
+  else if(flow==='question_reveal'){title='показано продолжение';detail=position<target?`следующий вопрос ${position+1}/${target}`:'gpt считает самого провидца по трём ответам';nextLabel=position<target?`форсировать вопрос ${position+1}/${target}`:'форсировать выбор провидца';canNext=!!pack}
+  else if(flow==='assignment_randomizing'){title=mode==='questions'?'считаем самого провидца':'выбираем животину';detail=mode==='questions'?'победит тот, чей ответ gpt чаще признавал самым близким':'выбор фиксируется на сервере один раз';canNext=false;nextLabel='считаем…'}
+  else if(flow==='assignment_selected'){title=mode==='questions'?'самый провидец найден':'фильм назначен';detail=mode==='review'?'5 минут объясняем задание, затем рецензия откроется сама':'5 минут показываем победителя, затем раунд закроется сам';nextLabel=mode==='review'?'форсировать рецензию':'форсировать конец раунда'}
   else {title='раунд идёт';detail='следующий шаг появится автоматически';canNext=false}
 
   return <Card className="round-film-flow-admin">
