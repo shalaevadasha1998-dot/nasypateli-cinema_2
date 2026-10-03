@@ -2226,6 +2226,7 @@ export async function handleApi(req:Request){
         if(!list.length)return err('других идей в этом раунде нет',409)
         await db.from('event_rounds').update({flow_status:'randomizing_submission',updated_at:new Date().toISOString()}).eq('id',round.id)
         await setProjectorState(db,event,'pitch_randomizing',round.id,null,{count:list.length})
+        await new Promise(resolve=>setTimeout(resolve,1200))
         const {index,randomBytesHex}=secureIndex(list.length)
         const chosen:any=list[index]
         const saved=await db.from('event_rounds').update({selected_submission_id:chosen.id,flow_status:'submission_selected',updated_at:new Date().toISOString()}).eq('id',round.id).eq('event_id',event.id)
