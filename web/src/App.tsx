@@ -26,8 +26,36 @@ function useStateData(enabled=true,eventSlug=''){
     if(eventSlug)payload.slug=eventSlug
     return enabled?callApi<DemoState>('bootstrap',payload).then(d=>{setData(d);setError('');return d}).catch(e=>{setError(e.message);return undefined}):Promise.resolve(undefined)
   }
-  const showLive=['running','paused'].includes(data?.show?.runtime.runStatus||'')
-  useEffect(()=>{if(!enabled)return;initTelegram();reload();const h=()=>reload();window.addEventListener('nasypateli-demo-change',h);window.addEventListener('storage',h);const timer=demoMode?undefined:window.setInterval(()=>{if(document.visibilityState==='visible')reload()},showLive?1500:30000);return()=>{window.removeEventListener('nasypateli-demo-change',h);window.removeEventListener('storage',h);if(timer)window.clearInterval(timer)}},[enabled,showLive,eventSlug])
+  useEffect(()=>{
+    if(!enabled)return
+    initTelegram()
+    void reload()
+    const h=()=>void reload(true)
+    window.addEventListener('nasypateli-demo-change',h)
+    window.addEventListener('storage',h)
+    const timer=demoMode?undefined:window.setInterval(()=>{if(document.visibilityState==='visible')void reload(true)},30000)
+    return()=>{window.removeEventListener('nasypateli-demo-change',h);window.removeEventListener('storage',h);if(timer)window.clearInterval(timer)}
+  },[enabled,eventSlug])
+  useEffect(()=>{
+    if(!enabled||demoMode||!data||data.registration!=='attended')return
+    const slug=eventSlug||data.event.slug
+    if(!slug)return
+    let dead=false
+    const poll=()=>{if(document.visibilityState!=='visible')return;void callApi<any>('live-refresh',{slug}).then(x=>{
+      if(dead)return
+      setData(prev=>{
+        if(!prev)return prev
+        const program=prev.show?.program
+        const block=program?.blocks.find(b=>b.id===x.runtime?.currentBlockId)||program?.blocks[x.runtime?.currentBlockIndex||0]
+        const runtime=prev.show?{...prev.show.runtime,...(x.runtime||{}),currentBlock:block}:undefined
+        return {...prev,event:{...prev.event,status:x.eventStatus||prev.event.status},filmLive:x.filmLive,screenMessage:x.screenMessage??prev.screenMessage,show:prev.show&&runtime?{...prev.show,runtime}:prev.show}
+      })
+      setError('')
+    }).catch(e=>{if(!dead)setError(String(e?.message||e))})}
+    poll()
+    const timer=window.setInterval(poll,2000)
+    return()=>{dead=true;window.clearInterval(timer)}
+  },[enabled,eventSlug,data?.registration,data?.event.slug])
   return {data,error,reload}
 }
 
@@ -38,7 +66,7 @@ function usePrivilegedState(kind:'admin'|'screen',slug:string|undefined){
   const tokenlessTestScreen=kind==='screen'&&String(slug||'').startsWith('test-')
   useEffect(()=>{if(!queryToken)return;sessionStorage.setItem(storageKey,queryToken);const next=new URLSearchParams(search);next.delete('token');setSearch(next,{replace:true})},[queryToken,storageKey])
   const reload=()=>{if(!slug){setError('не указано событие');return Promise.resolve()}if(kind==='screen'&&!token&&!demoMode&&!tokenlessTestScreen){setError('нужен закрытый ключ экрана');return Promise.resolve()}const action=kind==='admin'?'admin-bootstrap':'screen-bootstrap';const fn=kind==='admin'?callAdminApi:callScreenApi;return fn<DemoState>(action,{slug},token).then(d=>{setData(d);setError('')}).catch(e=>setError(e.message))}
-  useEffect(()=>{reload();const timer=window.setInterval(reload,kind==='screen'?1000:1500);return()=>window.clearInterval(timer)},[kind,slug,token])
+  useEffect(()=>{reload();const timer=window.setInterval(reload,kind==='screen'?1800:1500);return()=>window.clearInterval(timer)},[kind,slug,token])
   return {data,error,reload,token}
 }
 
