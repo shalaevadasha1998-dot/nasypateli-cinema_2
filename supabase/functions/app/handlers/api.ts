@@ -2816,10 +2816,21 @@ export async function handleApi(req:Request){
     if(action==='admin-program-save'){
       let blocks=sanitizeProgramBlocks(body.blocks)
       if(!blocks||blocks.length<1)return err('добавьте хотя бы один блок программы',422)
-      if(['2026-10-03','test-2026-10-03'].includes(String(event.slug||''))){
-        blocks=blocks.map((block:any)=>({...block,auto_advance:false}))
+      const fixedShow=['2026-10-03','test-2026-10-03'].includes(String(event.slug||''))
+      if(fixedShow){
+        const expected=['arrival','cinema_rounds','break','cinema_rounds','final_qr','music_outro']
+        const actual=blocks.map((block:any)=>String(block.type))
+        if(actual.length!==expected.length||actual.some((type:string,index:number)=>type!==expected[index])){
+          return err('для вечера 3 октября программа зафиксирована: сбор → 2 раунда → перерыв → 2 раунда → творог → музыка',422)
+        }
+        blocks=blocks.map((block:any,index:number)=>({
+          ...block,
+          auto_advance:false,
+          ...(index===1||index===3?{rounds_target:2}:{}),
+          ...(index===2?{duration_min:30}:{})
+        }))
       }
-      const roundsTarget=Math.max(1,Math.min(20,Math.round(Number(body.roundsTarget||7)||7)))
+      const roundsTarget=fixedShow?4:Math.max(1,Math.min(20,Math.round(Number(body.roundsTarget||4)||4)))
       const rewardInput=body.rewards||{}
       const rewards={
         join:Math.max(0,Math.min(100,Math.round(Number(rewardInput.join??1)||0))),
