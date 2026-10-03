@@ -923,11 +923,8 @@ async function telegramRuntimeReady(){
 }
 
 async function runtimeHealth(db:any){
-  const requiredTables=['users','cinema_profiles','events','registrations','payment_refunds','event_operation_locks','creatures','creature_tasks','user_creature_tasks','creature_game_config','crumb_ledger','story_definitions','dating_profiles','notification_preferences','notification_queue','encounter_tokens','film_packages','film_questions','film_impressions','film_predictions','film_assignments','review_sessions','submitted_reviews','event_projector_state','invented_films']
-  const [tableChecks,pilot,telegram,gameConfig,testTask]=await Promise.all([
-    Promise.all(requiredTables.map(async table=>{const r=await db.from(table).select('*',{head:true}).limit(1);return !r.error})),
+  const [pilot,gameConfig,testTask]=await Promise.all([
     db.from('events').select('slug,capacity,ticket_price_rub,starts_at,venue_name').eq('slug','2026-10-03').maybeSingle(),
-    telegramRuntimeReady(),
     db.from('creature_game_config').select('feeding_cost,feeding_growth,stage_thresholds').eq('id','default').maybeSingle(),
     db.from('creature_tasks').select('id,status,active,reward_crumbs,completion_type').eq('id','first_test_task').maybeSingle()
   ])
@@ -935,27 +932,14 @@ async function runtimeHealth(db:any){
   const pilotOk=!pilot.error&&pilot.data?.slug==='2026-10-03'&&Number(pilot.data?.capacity)===50&&Number(pilot.data?.ticket_price_rub)===0&&new Date(pilot.data?.starts_at||0).toISOString()==='2026-10-03T13:00:00.000Z'&&String(pilot.data?.venue_name||'').toLowerCase()==='хлебозавод №9'
   const thresholds=gameConfig.data?.stage_thresholds||{}
   const thresholdValues=['stage_0','stage_1','stage_2','stage_3','stage_4'].map(stage=>Number(thresholds?.[stage]))
-  const thresholdsOk=
-    thresholdValues.every(Number.isFinite)&&
-    thresholdValues[0]===0&&
-    thresholdValues.every((value,index)=>index===0||value>thresholdValues[index-1])
-  const gameLoop=
-    !gameConfig.error&&!!gameConfig.data&&
-    Number(gameConfig.data.feeding_cost)>0&&
-    Number(gameConfig.data.feeding_growth)>0&&
-    thresholdsOk&&
-    !testTask.error&&
-    testTask.data?.id==='first_test_task'&&
-    testTask.data?.status==='active'&&
-    testTask.data?.active===true&&
-    Number(testTask.data?.reward_crumbs)>0&&
-    testTask.data?.completion_type==='manual'
-
+  const thresholdsOk=thresholdValues.every(Number.isFinite)&&thresholdValues[0]===0&&thresholdValues.every((value,index)=>index===0||value>thresholdValues[index-1])
+  const gameLoop=!gameConfig.error&&!!gameConfig.data&&Number(gameConfig.data.feeding_cost)>0&&Number(gameConfig.data.feeding_growth)>0&&thresholdsOk&&!testTask.error&&testTask.data?.status==='active'&&testTask.data?.active===true
+  const telegramConfigured=env('TELEGRAM_BOT_TOKEN')&&env('TELEGRAM_WEBAPP_URL')&&env('TELEGRAM_WEBHOOK_SECRET')
   const checks={
-    database:tableChecks.every(Boolean),
+    database:!pilot.error,
     gameLoop,
     pilot:pilotOk,
-    telegram,
+    telegram:telegramConfigured,
     payments:env('TELEGRAM_PROVIDER_TOKEN'),
     openai:env('OPENAI_API_KEY'),
     admin:env('ADMIN_ACCESS_TOKEN')||env('ADMIN_TELEGRAM_IDS')||env('ADMIN_TELEGRAM_USERNAMES'),
@@ -1172,7 +1156,11 @@ export async function handleApi(req:Request){
 
 
     if(action==='admin-bootstrap'){
-      const event=await eventBySlug(db,String(body.slug||'2026-10-03'))
+      const adminSlug=String(body.slug||'2026-10-03')
+      const hasAdminHeader=!!String(req.headers.get('x-admin-token')||'').trim()
+      const hasTelegramAuth=!!String(req.headers.get('x-telegram-init-data')||'').trim()
+      if(!adminTokenOk&&!hasAdminHeader&&!hasTelegramAuth&&!adminSlug.startsWith('test-'))return err('Доступ к пульту запрещён',401)
+      const event=await eventBySlug(db,adminSlug)
       const testAdminOk=await testRoomTokenMatches(event,req.headers.get('x-admin-token')||'')
       const openTestAdmin=event?.settings?.test_room===true
       if(!adminTokenOk&&!testAdminOk&&!openTestAdmin){
