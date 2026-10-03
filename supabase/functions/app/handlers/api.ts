@@ -2710,17 +2710,17 @@ export async function handleApi(req:Request){
       add('telegram','telegram',telegram?'pass':'fail',telegram?'бот и связь с приложением работают':'бот или связь с приложением не прошли проверку')
 
       const blocks=Array.isArray(programR.data?.config?.blocks)?programR.data.config.blocks.filter((x:any)=>x?.enabled!==false):[]
-      const requiredTypes=['arrival','onboarding','warm_up','cinema_rounds','final_vote','finale']
+      const requiredTypes=['arrival','cinema_rounds','break','final_qr','music_outro']
       const missingTypes=requiredTypes.filter(type=>!blocks.some((x:any)=>String(x?.type)===type))
       const duration=blocks.reduce((sum:number,x:any)=>sum+Math.max(0,Number(x?.duration_min||0)),0)
       add('program','программа вечера',blocks.length&&missingTypes.length===0?'pass':'fail',
         blocks.length?(`${blocks.length} блоков · ${duration} мин${missingTypes.length?' · нет: '+missingTypes.join(', '):''}`):'программа пустая')
       const timedBlocks=blocks.filter((x:any)=>Math.max(0,Number(x?.duration_min||0))>0)
       const manualTimed=timedBlocks.filter((x:any)=>x.auto_advance!==true)
-      add('exact_timing','точные тайминги',manualTimed.length?'fail':'pass',
+      add('exact_timing','тайминги','pass',
         manualTimed.length
-          ?`без авто-перехода: ${manualTimed.map((x:any)=>x.title||x.id).join(', ')}`
-          :`${duration} мин · каждый таймированный блок завершится автоматически по своей минуте`)
+          ?`${duration} мин по плану · переходы вручную кнопкой «дальше»`
+          :`${duration} мин · автоматические переходы включены`)
       const liveBackground=blocks.filter((x:any)=>String(x?.type)==='music_live'&&(Array.isArray(x?.audio_playlist)?x.audio_playlist:[]).length>0)
       add('live_music_audio','звук live-выступления',liveBackground.length?'fail':'pass',
         liveBackground.length?'на live-блоке назначена фоновая запись · её нужно убрать':'фоновая запись отключена · остаётся только живое выступление')
@@ -2779,11 +2779,7 @@ export async function handleApi(req:Request){
       let blocks=sanitizeProgramBlocks(body.blocks)
       if(!blocks||blocks.length<1)return err('добавьте хотя бы один блок программы',422)
       if(['2026-10-03','test-2026-10-03'].includes(String(event.slug||''))){
-        blocks=blocks.map((block:any)=>{
-          const timed=Number(block.duration_min||0)>0
-          if(block.type==='music_live')return {...block,auto_advance:timed,audio_playlist:[],audio_volume:0}
-          return timed?{...block,auto_advance:true}:block
-        })
+        blocks=blocks.map((block:any)=>({...block,auto_advance:false}))
       }
       const roundsTarget=Math.max(1,Math.min(20,Math.round(Number(body.roundsTarget||7)||7)))
       const rewardInput=body.rewards||{}
