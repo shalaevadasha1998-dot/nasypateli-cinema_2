@@ -2300,10 +2300,72 @@ export async function handleApi(req:Request){
         await setProjectorState(db,event,'movie_searching',round.id,null,{pitch:{animalName:pitch.data.animal_name_snapshot,title:pitch.data.title,description:pitch.data.description},scope:'worldwide'})
 
         const liveSearchStartedAt=Date.now()
-        const liveSearchBudgetMs=28_000
         const sourceTrace:any[]=[]
         const roundMode=Number(round.roundNo||0)%2===1?'review':'questions'
         const needsQuestions=roundMode==='questions'
+
+        // Повторный live-поиск сначала использует уже проверенный интернет-кандидат
+        // именно этого питча. Это делает retry мгновенным и не отправляет нас
+        // второй раз в OpenAI/Wikidata/YouTube без необходимости.
+        if(!needsQuestions&&body.preparedOnly!==true){
+          const cached=await db.from('movie_candidates')
+            .select('*')
+            .eq('event_id',event.id)
+            .contains('metadata',{origin_submission_id:String(pitch.data.id)})
+            .eq('validated',true)
+            .order('similarity_score',{ascending:false})
+            .limit(5)
+          if(cached.error)throw cached.error
+          for(const movie of cached.data||[]){
+            const source=await resolvedMovieSource(db,String(movie.id))
+            if(!source||!source.verified||!source.embeddable||source.rightsStatus==='blocked')continue
+            const start=Math.max(0,Math.round(Number(source.startSec)||0))
+            const rawEnd=source.endSec==null?null:Math.round(Number(source.endSec))
+            const end=rawEnd&&rawEnd>start?Math.min(rawEnd,start+75):start+45
+            const fragments=[{
+              label:'первый фрагмент',
+              sourcePlatform:String(source.sourcePlatform||((source.videoId)?'youtube':'direct')),
+              videoId:source.videoId?String(source.videoId):undefined,
+              sourceUrl:String(source.sourceUrl||''),
+              startSec:start,endSec:end
+            }]
+            const oldPack=await db.from('film_packages').select('*').eq('event_id',event.id).eq('movie_candidate_id',movie.id).maybeSingle()
+            if(oldPack.error)throw oldPack.error
+            let pack:any=oldPack.data
+            if(pack){
+              const up=await db.from('film_packages').update({
+                fragments,status:'ready',origin_submission_id:pitch.data.id,
+                match_data:{mode:'live_cached_review',similarityScore:Number(movie.similarity_score||0),reason:movie.reason||'',elapsedMs:Date.now()-liveSearchStartedAt}
+              }).eq('id',pack.id).select('*').single()
+              if(up.error)throw up.error
+              pack=up.data
+              const clearQuestions=await db.from('film_questions').delete().eq('film_package_id',pack.id)
+              if(clearQuestions.error)throw clearQuestions.error
+            }else{
+              const ins=await db.from('film_packages').insert({
+                event_id:event.id,movie_candidate_id:movie.id,title_snapshot:movie.title,fragments,status:'ready',
+                origin_submission_id:pitch.data.id,
+                match_data:{mode:'live_cached_review',similarityScore:Number(movie.similarity_score||0),reason:movie.reason||'',elapsedMs:Date.now()-liveSearchStartedAt}
+              }).select('*').single()
+              if(ins.error)throw ins.error
+              pack=ins.data
+            }
+            await applyMovieSourceToCandidate(db,event,movie.id,source)
+            const now=new Date().toISOString()
+            const ru=await db.from('event_rounds').update({movie_candidate_id:movie.id,flow_status:'movie_found',question_target:3,question_position:0,updated_at:now}).eq('id',round.id).eq('event_id',event.id)
+            if(ru.error)throw ru.error
+            const runtime=await db.from('event_runtime').select('revision').eq('event_id',event.id).maybeSingle()
+            if(runtime.error)throw runtime.error
+            if(runtime.data){
+              const up=await db.from('event_runtime').update({current_movie_id:movie.id,revision:Number(runtime.data.revision||0)+1,updated_at:now}).eq('event_id',event.id).eq('revision',runtime.data.revision)
+              if(up.error)throw up.error
+            }
+            sourceTrace.push({stage:'cache',movieId:movie.id,title:movie.title,source:String(source.videoId||source.sourceUrl||''),elapsedMs:Date.now()-liveSearchStartedAt})
+            const projector=await setProjectorState(db,event,'movie_found',round.id,pack.id,{found:true,filmTitle:movie.title,year:movie.year,reason:movie.reason||'',fragment:fragments[0],searchMode:'live_cached_review'})
+            return json({ok:true,found:true,searchMode:'live_cached_review',movie:{id:movie.id,title:movie.title,year:movie.year,reason:movie.reason||''},filmPackageId:pack.id,projector,sourceTrace,elapsedMs:Date.now()-liveSearchStartedAt})
+          }
+        }
+
         const candidateSchema={type:'object',additionalProperties:false,properties:{
           candidates:{type:'array',minItems:2,maxItems:3,items:{type:'object',additionalProperties:false,properties:{
             title:{type:'string'},originalTitle:{type:'string'},internationalTitle:{type:'string'},year:{type:['integer','null']},
@@ -2313,19 +2375,29 @@ export async function handleApi(req:Request){
         let ai:any={candidates:[]}
         try{
           if(body.preparedOnly===true)throw new Error('PREPARED_ONLY')
-          ai=await Promise.race<any>([
+          const input=JSON.stringify({invented:{title:pitch.data.title,description:pitch.data.description},goal:'найти реальный существующий фильм и затем проверить его по интернет-источникам'})
+          const fastCandidate=Promise.race<any>([
+            structuredResponse<any>({
+              name:'fast_movie_match',
+              schema:candidateSchema,
+              instructions:'предложи 2–3 наиболее похожих реально существующих полнометражных фильма. не выдумывай названия. точность названия и года важнее длинного объяснения. результат дальше обязательно проверяется через wikidata и youtube.',
+              input,maxOutputTokens:700,model:'gpt-5.6-luna',reasoningEffort:'none'
+            }),
+            new Promise((_,reject)=>setTimeout(()=>reject(new Error('FAST_MOVIE_MATCH_TIMEOUT')),4500))
+          ])
+          const webCandidate=Promise.race<any>([
             structuredWebResponse<any>({
               name:'worldwide_movie_match',
               schema:candidateSchema,
-              instructions:'обязательно используй web search прямо сейчас. найди в открытом интернете максимально похожие РЕАЛЬНО СУЩЕСТВУЮЩИЕ полнометражные фильмы по смыслу придуманной идеи. проверяй существование фильма по нескольким публичным источникам, а не по памяти модели. ищи без языковых и страновых ограничений. верни только 2–3 самых сильных совпадения, чтобы live-поиск был быстрым. оригинальное и международное название указывай точно. не выдумывай фильмы. сортируй прежде всего по сходству сюжета, конфликта, атмосферы и ключевой идеи.',
-              input:JSON.stringify({invented:{title:pitch.data.title,description:pitch.data.description},goal:'найти реальный фильм и затем быстро найти воспроизводимый фрагмент'}),
-              maxOutputTokens:1000,model:Deno.env.get('OPENAI_FILM_MODEL')||'gpt-5.6-luna',reasoningEffort:'none',searchContextSize:'low'
+              instructions:'используй web search. найди в открытом интернете 2–3 максимально похожих РЕАЛЬНО СУЩЕСТВУЮЩИХ полнометражных фильма. проверяй существование фильма по публичным источникам, не выдумывай. оригинальное и международное название указывай точно.',
+              input,maxOutputTokens:800,model:Deno.env.get('OPENAI_FILM_MODEL')||'gpt-5.6-luna',reasoningEffort:'none',searchContextSize:'low'
             }),
-            new Promise((_,reject)=>setTimeout(()=>reject(new Error('LIVE_MOVIE_SEARCH_TIMEOUT')),9_000))
+            new Promise((_,reject)=>setTimeout(()=>reject(new Error('WEB_MOVIE_MATCH_TIMEOUT')),8500))
           ])
+          ai=await Promise.any([fastCandidate,webCandidate])
+          sourceTrace.push({stage:'candidate_match',mode:'first_success',elapsedMs:Date.now()-liveSearchStartedAt})
         }catch(e:any){
-          if(String(e?.message||e)==='LIVE_MOVIE_SEARCH_TIMEOUT')sourceTrace.push({stage:'candidate_match',error:'timeout'})
-          else sourceTrace.push({stage:'candidate_match',error:String(e?.message||e).slice(0,200)})
+          sourceTrace.push({stage:'candidate_match',error:String(e?.message||e).slice(0,200),elapsedMs:Date.now()-liveSearchStartedAt})
         }
 
         const validationJobs=(ai.candidates||[]).slice(0,3).map(async(c:any)=>{
@@ -2351,7 +2423,6 @@ export async function handleApi(req:Request){
         validated.sort((x:any,y:any)=>Number(y.similarityScore||0)-Number(x.similarityScore||0))
 
         for(const c of validated.slice(0,2)){
-          if(Date.now()-liveSearchStartedAt>liveSearchBudgetMs)break
           const inserted=await db.from('movie_candidates').insert({
             event_id:event.id,provider:'wikidata',provider_id:c.wikidataId,title:c.title,original_title:c.originalTitle||c.title,
             year:c.year||null,runtime_min:c.runtimeMin||null,validated:true,similarity_score:c.similarityScore,
@@ -2421,7 +2492,7 @@ export async function handleApi(req:Request){
                   if(up.error)throw up.error
                 }
                 const projector=await setProjectorState(db,event,'movie_found',round.id,pack.data.id,{found:true,filmTitle:movie.title,year:movie.year,reason:c.reason,fragment:fragments[0],searchMode:needsQuestions?'live_worldwide_questions':'live_worldwide_review'})
-                return json({ok:true,found:true,searchMode:needsQuestions?'live_worldwide_questions':'live_worldwide_review',movie:{id:movie.id,title:movie.title,year:movie.year,reason:c.reason},filmPackageId:pack.data.id,projector,sourceTrace})
+                return json({ok:true,found:true,searchMode:needsQuestions?'live_worldwide_questions':'live_worldwide_review',movie:{id:movie.id,title:movie.title,year:movie.year,reason:c.reason},filmPackageId:pack.data.id,projector,sourceTrace,elapsedMs:Date.now()-liveSearchStartedAt})
               }catch(e:any){sourceTrace.push({movieId:movie.id,title:movie.title,source:String(source.videoId||source.sourceUrl||''),error:String(e?.message||e)})}
             }
           }catch(e:any){sourceTrace.push({movieId:movie.id,title:movie.title,error:String(e?.message||e)})}
@@ -2430,7 +2501,7 @@ export async function handleApi(req:Request){
         if(body.preparedOnly!==true){
           const projector=await setProjectorState(db,event,'movie_searching',round.id,null,{
             pitch:{animalName:pitch.data.animal_name_snapshot,title:pitch.data.title,description:pitch.data.description},
-            scope:'internet',message:'не нашли проверяемый фрагмент за 24 секунды · нажми ещё раз'
+            scope:'internet',message:'не нашли проверяемый фрагмент · нажми ещё раз'
           })
           return json({ok:true,found:false,retry:true,searchMode:'live_internet_retry',sourceTrace,projector})
         }
