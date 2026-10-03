@@ -28,9 +28,7 @@ function requestTimeoutMs(action:string){
   if(action==='audio-transcribe')return 30000
   if(action==='jipitina-chat')return 25000
   if(action.startsWith('ai-')||action==='admin-research-summary')return 60000
-  if(action==='admin-bootstrap')return 30000
-  if(action==='screen-bootstrap')return 15000
-  if(action==='bootstrap')return 15000
+  if(action==='bootstrap'||action.endsWith('-bootstrap'))return 10000
   return 15000
 }
 

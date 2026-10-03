@@ -9,7 +9,6 @@ import { JIPITINA, jipitinaInstructions } from '../_shared/jipitina.ts'
 import { discoverMovieSources, discoverMovieSourcesFast, validateMovieTitle } from '../_shared/movies.ts'
 import { buildEventState, buildShowState, eventBySlug, nextEvent, nonexistentFilmEnabled } from '../_shared/state.ts'
 import { RELEASE_SHA } from '../_shared/release.ts'
-import { loadAdminSnapshot } from '../_shared/adminSnapshot.ts'
 
 const manualTransitions:Record<string,string>={
   DRAFT:'SALES_OPEN',SALES_OPEN:'CHECKIN',CHECKIN:'IDEAS_OPEN',IDEAS_OPEN:'IDEAS_LOCKED',
@@ -379,13 +378,13 @@ function audioStateForBlock(block:any,now=new Date().toISOString()){
 
 const ROUND_MECHANIC_MS=5*60_000
 
-async function maybeAutoOpenRoundPitches(db:any,event:any,reads:any=db){
+async function maybeAutoOpenRoundPitches(db:any,event:any){
   try{
-    const runtime=await reads.from('event_runtime').select('run_status,current_round_id').eq('event_id',event.id).maybeSingle()
+    const runtime=await db.from('event_runtime').select('run_status,current_round_id').eq('event_id',event.id).maybeSingle()
     if(runtime.error)throw runtime.error
     const roundId=String(runtime.data?.current_round_id||'')
     if(String(runtime.data?.run_status)!=='running'||!isUuid(roundId))return false
-    const round=await reads.from('event_rounds').select('id,round_no,status,flow_status,started_at').eq('id',roundId).eq('event_id',event.id).maybeSingle()
+    const round=await db.from('event_rounds').select('id,round_no,status,flow_status,started_at').eq('id',roundId).eq('event_id',event.id).maybeSingle()
     if(round.error)throw round.error
     const row:any=round.data
     if(!row||row.status!=='active'||String(row.flow_status)!=='round_intro'||!row.started_at)return false
@@ -418,24 +417,24 @@ async function maybeAutoOpenRoundPitches(db:any,event:any,reads:any=db){
   }
 }
 
-async function maybeAutoAdvanceShow(db:any,event:any,reads:any=db){
+async function maybeAutoAdvanceShow(db:any,event:any){
   try{
-    const roundAdvanced=await maybeAutoOpenRoundPitches(db,event,reads)
+    await maybeAutoOpenRoundPitches(db,event)
     const [programR,runtimeR]=await Promise.all([
-      reads.from('event_programs').select('config').eq('event_id',event.id).maybeSingle(),
-      reads.from('event_runtime').select('*').eq('event_id',event.id).maybeSingle()
+      db.from('event_programs').select('config').eq('event_id',event.id).maybeSingle(),
+      db.from('event_runtime').select('*').eq('event_id',event.id).maybeSingle()
     ])
     if(programR.error)throw programR.error
     if(runtimeR.error)throw runtimeR.error
     const from=runtimeR.data
-    if(!from||String(from.run_status)!=='running'||!from.block_started_at)return roundAdvanced
+    if(!from||String(from.run_status)!=='running'||!from.block_started_at)return false
     const blocks=sanitizeProgramBlocks(programR.data?.config?.blocks)||[]
     const idx=Math.max(0,Math.min(blocks.length-1,Number(from.current_block_index||0)))
     const block=blocks[idx]
-    if(!block||block.auto_advance!==true||Number(block.duration_min||0)<=0)return roundAdvanced
+    if(!block||block.auto_advance!==true||Number(block.duration_min||0)<=0)return false
     const dueAt=new Date(from.block_started_at).getTime()+Number(block.duration_min)*60_000
-    if(Date.now()<dueAt)return roundAdvanced
-    const blockAdvanced=await withEventOperation(db,event.id,'show-auto-advance',async()=>{
+    if(Date.now()<dueAt)return false
+    return await withEventOperation(db,event.id,'show-auto-advance',async()=>{
       const fresh=await db.from('event_runtime').select('*').eq('event_id',event.id).single()
       if(fresh.error)throw fresh.error
       const cur=fresh.data
@@ -477,7 +476,6 @@ async function maybeAutoAdvanceShow(db:any,event:any,reads:any=db){
       if(log.error)console.error('auto advance log failed',log.error)
       return true
     })
-    return blockAdvanced||roundAdvanced
   }catch(e:any){
     if(e?.message==='EVENT_OPERATION_BUSY')return false
     console.error('auto advance failed',e)
@@ -1162,16 +1160,12 @@ export async function handleApi(req:Request){
 
     if(action==='screen-bootstrap'){
       const slug=String(body.slug||'2026-10-03')
-      const suppliedScreenToken=String(req.headers.get('x-screen-token')||'').trim()
-      // Боевой экран без ключа отсекаем ДО тяжёлого live-state RPC.
-      // Иначе старые/неавторизованные вкладки могут забивать базу polling-запросами.
-      if(!screenTokenOk&&!suppliedScreenToken&&!slug.startsWith('test-'))return err('Доступ к экрану запрещён',401)
       const live=await db.rpc('app_screen_live_state',{p_slug:slug})
       if(live.error)throw live.error
       const x:any=live.data
       if(!x?.event?.id)return err('Событие не найдено',404)
       const event:any={...x.event,settings:x.event.settings||{}}
-      const testScreenOk=await testRoomTokenMatches(event,suppliedScreenToken)
+      const testScreenOk=await testRoomTokenMatches(event,req.headers.get('x-screen-token')||'')
       const openTestScreen=event?.settings?.test_room===true
       if(!screenTokenOk&&!testScreenOk&&!openTestScreen)return err('Доступ к экрану запрещён',401)
       await maybeAutoAdvanceShow(db,event)
@@ -1311,14 +1305,13 @@ export async function handleApi(req:Request){
           await mustAdmin(db,adminUser,adminTg)
         }catch{return err('Доступ к пульту запрещён',401)}
       }
-      let reads=await loadAdminSnapshot(db,event.id)
-      if(await maybeAutoAdvanceShow(db,event,reads))reads=await loadAdminSnapshot(db,event.id)
+      await maybeAutoAdvanceShow(db,event)
       const [state,adminParticipants,movieCatalog,showLog,movieSources]=await Promise.all([
-        buildEventState(reads,event,{includeActuals:true,includePrivateOutputs:true}),
-        adminParticipantRows(reads,event.id),
-        reads.from('movie_candidates').select('*').eq('event_id',event.id).order('title'),
-        reads.from('event_runtime_log').select('id,action,created_at').eq('event_id',event.id).order('created_at',{ascending:false}).limit(20),
-        reads.from('movie_source_candidates').select('*').eq('event_id',event.id).order('discovered_at',{ascending:false})
+        buildEventState(db,event,{includeActuals:true,includePrivateOutputs:true}),
+        adminParticipantRows(db,event.id),
+        db.from('movie_candidates').select('*').eq('event_id',event.id).order('title'),
+        db.from('event_runtime_log').select('id,action,created_at').eq('event_id',event.id).order('created_at',{ascending:false}).limit(20),
+        db.from('movie_source_candidates').select('*').eq('event_id',event.id).order('discovered_at',{ascending:false})
       ])
       if(movieCatalog.error)throw movieCatalog.error
       if(showLog.error)throw showLog.error
@@ -1329,13 +1322,13 @@ export async function handleApi(req:Request){
         sourceByMovie.set(key,[...(sourceByMovie.get(key)||[]),s])
       }
       const [filmPackages,reviewQueue,projector]=await Promise.all([
-        filmAdminPackages(reads,event.id),
-        filmAdminReviews(reads,event.id),
-        projectorPublicState(reads,event)
+        filmAdminPackages(db,event.id),
+        filmAdminReviews(db,event.id),
+        projectorPublicState(db,event)
       ])
       const currentRoundId=state.show?.currentRound?.id
       const pitchRows=currentRoundId
-        ? await reads.from('invented_films').select('id,user_id,animal_name_snapshot,title,description,created_at,updated_at').eq('event_id',event.id).eq('round_id',currentRoundId).order('created_at')
+        ? await db.from('invented_films').select('id,user_id,animal_name_snapshot,title,description,created_at,updated_at').eq('event_id',event.id).eq('round_id',currentRoundId).order('created_at')
         : {data:[],error:null} as any
       if(pitchRows.error)throw pitchRows.error
       const inventedFilms=(pitchRows.data||[]).map((x:any)=>({

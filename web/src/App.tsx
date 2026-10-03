@@ -42,8 +42,8 @@ function useStateData(enabled=true,eventSlug=''){
     if(!slug)return
     const testRoom=slug.startsWith('test-')
     if(data.registration!=='attended'&&!testRoom)return
-    let dead=false,inFlight=false,failures=0,retryAt=0
-    const poll=()=>{if(dead||inFlight||document.visibilityState!=='visible'||Date.now()<retryAt)return;inFlight=true;void callApi<any>('live-refresh',{slug}).then(x=>{
+    let dead=false
+    const poll=()=>{if(document.visibilityState!=='visible')return;void callApi<any>('live-refresh',{slug}).then(x=>{
       if(dead)return
       setData(prev=>{
         if(!prev)return prev
@@ -53,8 +53,7 @@ function useStateData(enabled=true,eventSlug=''){
         return {...prev,event:{...prev.event,status:x.eventStatus||prev.event.status},filmLive:x.filmLive,screenMessage:x.screenMessage??prev.screenMessage,show:prev.show&&runtime?{...prev.show,runtime}:prev.show}
       })
       setError('')
-      failures=0;retryAt=0
-    }).catch(e=>{if(!dead)setError(String(e?.message||e));failures++;retryAt=Date.now()+Math.min(60000,5000*2**Math.min(failures,4))}).finally(()=>{inFlight=false})}
+    }).catch(e=>{if(!dead)setError(String(e?.message||e))})}
     poll()
     const timer=window.setInterval(poll,testRoom?1000:2000)
     return()=>{dead=true;window.clearInterval(timer)}
@@ -64,39 +63,12 @@ function useStateData(enabled=true,eventSlug=''){
 
 function usePrivilegedState(kind:'admin'|'screen',slug:string|undefined){
   const [search,setSearch]=useSearchParams();const [data,setData]=useState<DemoState|null>(null);const [error,setError]=useState('')
-  const inFlight=useRef(false)
-  const retryAt=useRef(0)
-  const failures=useRef(0)
-  const storageKey=`nasypateli-${kind}-token`
-  const roomToken=kind==='admin'?(search.get('room')||''):''
-  const queryToken=search.get('token')||roomToken
+  const storageKey=`nasypateli-${kind}-token`;const queryToken=search.get('token')||''
   const token=queryToken||(typeof sessionStorage!=='undefined'?sessionStorage.getItem(storageKey)||'':'')
   const tokenlessTestScreen=kind==='screen'&&String(slug||'').startsWith('test-')
-  useEffect(()=>{
-    if(!queryToken)return
-    sessionStorage.setItem(storageKey,queryToken)
-    const next=new URLSearchParams(search)
-    next.delete('token')
-    if(kind==='admin')next.delete('room')
-    setSearch(next,{replace:true})
-  },[queryToken,storageKey,kind])
-  const reload=(automatic=false)=>{
-    if(inFlight.current||(automatic&&(document.visibilityState!=='visible'||Date.now()<retryAt.current)))return Promise.resolve()
-    if(!slug){setError('не указано событие');return Promise.resolve()}
-    if(kind==='screen'&&!token&&!demoMode&&!tokenlessTestScreen){setError('нужен закрытый ключ экрана');return Promise.resolve()}
-    const action=kind==='admin'?'admin-bootstrap':'screen-bootstrap'
-    const fn=kind==='admin'?callAdminApi:callScreenApi
-    inFlight.current=true
-    return fn<DemoState>(action,{slug},token)
-      .then(d=>{setData(d);setError('');failures.current=0;retryAt.current=0})
-      .catch(e=>{setError(e.message);failures.current++;retryAt.current=Date.now()+Math.min(60000,5000*2**Math.min(failures.current,4))})
-      .finally(()=>{inFlight.current=false})
-  }
-  useEffect(()=>{
-    void reload()
-    const timer=window.setInterval(()=>{void reload(true)},kind==='screen'?1800:5000)
-    return()=>window.clearInterval(timer)
-  },[kind,slug,token])
+  useEffect(()=>{if(!queryToken)return;sessionStorage.setItem(storageKey,queryToken);const next=new URLSearchParams(search);next.delete('token');setSearch(next,{replace:true})},[queryToken,storageKey])
+  const reload=()=>{if(!slug){setError('не указано событие');return Promise.resolve()}if(kind==='screen'&&!token&&!demoMode&&!tokenlessTestScreen){setError('нужен закрытый ключ экрана');return Promise.resolve()}const action=kind==='admin'?'admin-bootstrap':'screen-bootstrap';const fn=kind==='admin'?callAdminApi:callScreenApi;return fn<DemoState>(action,{slug},token).then(d=>{setData(d);setError('')}).catch(e=>setError(e.message))}
+  useEffect(()=>{reload();const timer=window.setInterval(reload,kind==='screen'?1800:1500);return()=>window.clearInterval(timer)},[kind,slug,token])
   return {data,error,reload,token}
 }
 
