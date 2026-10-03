@@ -147,6 +147,7 @@ export async function buildShowState(db:any,event:any){
         resultsVisible:rr.results_visible===true,
         videoState:rr.video_state||{status:'idle'},
         startedAt:rr.started_at||undefined,
+        updatedAt:rr.updated_at||undefined,
         closedAt:rr.closed_at||undefined
       }
       if(rr.results_visible===true)results=voteSummary(votesR.data||[])
