@@ -3172,6 +3172,7 @@ export async function handleApi(req:Request){
           revision:Number(from.revision||0)+1,updated_at:now
         }
         if(resetRound)Object.assign(patch,{current_round_id:null,current_movie_id:null,current_question:null,vote_state:'closed',results_visible:false,video_state:{status:'idle'},audio_state:audioStateForBlock(blocks[idx],now)})
+        if(op==='end_event')patch.audio_state={...(patch.audio_state||from.audio_state||audioStateForBlock(blocks[idx],now)),status:'stopped',track_key:null,playlist_index:0,updated_at:now}
         if(op==='pause')patch.audio_state={...(from.audio_state||audioStateForBlock(blocks[idx],now)),status:'paused',updated_at:now}
         if(op==='resume')patch.audio_state={...(from.audio_state||audioStateForBlock(blocks[idx],now)),status:(from.audio_state?.track_key?'playing':'stopped'),updated_at:now}
         const updated=await db.from('event_runtime').update(patch).eq('event_id',event.id).eq('revision',from.revision).select('*').maybeSingle()
