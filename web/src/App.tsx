@@ -37,9 +37,11 @@ function useStateData(enabled=true,eventSlug=''){
     return()=>{window.removeEventListener('nasypateli-demo-change',h);window.removeEventListener('storage',h);if(timer)window.clearInterval(timer)}
   },[enabled,eventSlug])
   useEffect(()=>{
-    if(!enabled||demoMode||!data||data.registration!=='attended')return
+    if(!enabled||demoMode||!data)return
     const slug=eventSlug||data.event.slug
     if(!slug)return
+    const testRoom=slug.startsWith('test-')
+    if(data.registration!=='attended'&&!testRoom)return
     let dead=false
     const poll=()=>{if(document.visibilityState!=='visible')return;void callApi<any>('live-refresh',{slug}).then(x=>{
       if(dead)return
@@ -53,7 +55,7 @@ function useStateData(enabled=true,eventSlug=''){
       setError('')
     }).catch(e=>{if(!dead)setError(String(e?.message||e))})}
     poll()
-    const timer=window.setInterval(poll,2000)
+    const timer=window.setInterval(poll,testRoom?1000:2000)
     return()=>{dead=true;window.clearInterval(timer)}
   },[enabled,eventSlug,data?.registration,data?.event.slug])
   return {data,error,reload}
@@ -352,15 +354,9 @@ function RehearsalPage(){
   if(!data)return <Loading error={error}/>
   if(slug!==data.event.slug)return <div className="page"><Empty>такой тестовой комнаты нет</Empty></div>
   return <div className="page home-page rehearsal-page">
-    <section className="rehearsal-head">
-      <div className="eyebrow">репетиция · данные изолированы</div>
-      <h2>{data.show?.runtime.currentBlock?.title||'мероприятие'}</h2>
-      <p className="muted">ты вошла своим настоящим telegram-аккаунтом. здесь отображается ровно то, что участник увидит во время живого раунда.</p>
-    </section>
     {data.show?.runtime.currentBlock?.type==='cinema_rounds'
       ?<FilmLiveParticipant data={data} reload={reload}/>
-      :<ParticipantShow data={data} reload={reload}/>} 
-    {!data.filmLive&&<Card><div className="section-title">сейчас на телефоне нет задания</div><p className="muted">когда ведущий запустит кинораунд, форма названия и описания появится здесь автоматически.</p></Card>}
+      :<ParticipantShow data={data} reload={reload}/>}
   </div>
 }
 
@@ -1236,6 +1232,7 @@ function ProjectorAudio({data,screenToken}:{data:DemoState;screenToken:string}){
   const [armed,setArmed]=useState(false)
   const [needsUnlock,setNeedsUnlock]=useState(false)
   const [audioTick,setAudioTick]=useState(0)
+  const [cuePlaying,setCuePlaying]=useState(false)
   const audio=data.show?.audio
   const state=audio?.state
   const runtime=data.show?.runtime
@@ -1282,7 +1279,7 @@ function ProjectorAudio({data,screenToken}:{data:DemoState;screenToken:string}){
     const el=background.current
     if(!el||unlocking.current)return
     const wanted=asset?.url||''
-    const suppress=!armed||!wanted||runtime?.runStatus!=='running'||state?.status!=='playing'||filmActive||livePerformance||(blockCutoffAt>0&&Date.now()>=blockCutoffAt)
+    const suppress=!armed||!wanted||runtime?.runStatus!=='running'||state?.status!=='playing'||filmActive||cuePlaying||livePerformance||(blockCutoffAt>0&&Date.now()>=blockCutoffAt)
     if(suppress){
       el.pause()
       if(filmActive||livePerformance)lastSync.current=''
@@ -1306,7 +1303,7 @@ function ProjectorAudio({data,screenToken}:{data:DemoState;screenToken:string}){
         return()=>el.removeEventListener('loadedmetadata',onMeta)
       }
     }else if(el.paused&&armed)void tryPlay(el)
-  },[asset?.url,asset?.key,state?.status,state?.mode,state?.volume,state?.updated_at,filmActive,livePerformance,blockCutoffAt,runtime?.currentBlockId,runtime?.blockStartedAt,desiredOffset,audioTick,armed])
+  },[asset?.url,asset?.key,state?.status,state?.mode,state?.volume,state?.updated_at,filmActive,cuePlaying,livePerformance,blockCutoffAt,runtime?.currentBlockId,runtime?.blockStartedAt,desiredOffset,audioTick,armed])
   useEffect(()=>{
     const el=background.current
     if(el)el.volume=Math.max(0,Math.min(1,Number(state?.volume??.28)))
@@ -1328,7 +1325,7 @@ function ProjectorAudio({data,screenToken}:{data:DemoState;screenToken:string}){
     const found=audio?.assets.find(x=>x.key===key)
     const el=cue.current
     if(!found?.url||!el)return
-    el.pause();el.src=found.url;el.currentTime=0;el.volume=.72;void tryPlay(el)
+    el.pause();el.src=found.url;el.currentTime=0;el.volume=.72;setCuePlaying(true);void tryPlay(el)
   },[runtime?.currentBlockId,projectorState,audio?.assets,armed])
   useEffect(()=>{
     const nonce=String(audio?.screen?.testNonce||'')
@@ -1337,7 +1334,7 @@ function ProjectorAudio({data,screenToken}:{data:DemoState;screenToken:string}){
     const found=audio?.assets.find(x=>x.key===String(audio?.screen?.testAssetKey||'creature-3'))
     const el=cue.current
     if(!found?.url||!el)return
-    el.pause();el.src=found.url;el.currentTime=0;el.volume=.72;void tryPlay(el)
+    el.pause();el.src=found.url;el.currentTime=0;el.volume=.72;setCuePlaying(true);void tryPlay(el)
   },[audio?.screen?.testNonce,audio?.screen?.testAssetKey,audio?.assets,armed])
   const unlock=async()=>{
     if(unlocking.current)return
@@ -1350,18 +1347,25 @@ function ProjectorAudio({data,screenToken}:{data:DemoState;screenToken:string}){
       // Проверка звука должна звучать ровно из одного audio-элемента.
       // Фоновый плеер остаётся остановленным до подтверждения lease.
       bg.pause();bg.removeAttribute('src');bg.load()
-      fx.pause();fx.src=cueAsset.url;fx.muted=false;fx.volume=.65;fx.load()
-      const play=fx.play()
-      await Promise.race([play,new Promise((_,reject)=>{timeout=window.setTimeout(()=>reject(new Error('звук не загрузился за 8 секунд. проверь соединение и повтори')),8000)})])
+      // Сначала тихо разблокируем media внутри пользовательского клика.
+      // Слышно станет только после того, как сервер отдаст этому экрану audio lease.
+      fx.pause();fx.src=cueAsset.url;fx.muted=true;fx.volume=.65;fx.load()
+      const primed=fx.play()
+      await Promise.race([primed,new Promise((_,reject)=>{timeout=window.setTimeout(()=>reject(new Error('звук не загрузился за 8 секунд. проверь соединение и повтори')),8000)})])
       const lease=await pingAudio(true)
       if(!lease.owner)throw new Error('звук уже включён на другом экране. закрой его и повтори через 20 секунд')
+      fx.pause()
+      try{fx.currentTime=0}catch{}
+      fx.muted=false
+      setCuePlaying(true)
+      await fx.play()
       // Preserve the audible cue while bootstraps continue polling.
       await new Promise(resolve=>window.setTimeout(resolve,1200))
-      fx.pause();bg.pause();bg.volume=Math.max(0,Math.min(1,Number(state?.volume??.28)));lastSync.current=''
+      fx.pause();setCuePlaying(false);bg.pause();bg.volume=Math.max(0,Math.min(1,Number(state?.volume??.28)));lastSync.current=''
       setArmed(true);setNeedsUnlock(false)
     }catch(e:any){
-      bg?.pause();fx?.pause();if(bg)bg.muted=false
-      setArmed(false);setNeedsUnlock(true);setAudioError(e?.message||'не удалось включить звук. нажми ещё раз')
+      bg?.pause();fx?.pause();if(fx)fx.muted=false;if(bg)bg.muted=false
+      setCuePlaying(false);setArmed(false);setNeedsUnlock(true);setAudioError(e?.message||'не удалось включить звук. нажми ещё раз')
     }finally{
       if(timeout)window.clearTimeout(timeout)
       unlocking.current=false;setUnlockBusy(false);setAudioTick(x=>x+1)
@@ -1369,7 +1373,7 @@ function ProjectorAudio({data,screenToken}:{data:DemoState;screenToken:string}){
   }
   return <>
     <audio ref={background} onEnded={()=>{setAudioTick(x=>x+1);if(asset?.key)void callScreenApi('screen-audio-ended',{slug:data.event.slug,trackKey:asset.key,sessionId:sessionId.current},screenToken).catch(()=>{})}}/>
-    <audio ref={cue}/>
+    <audio ref={cue} onEnded={()=>{setCuePlaying(false);setAudioTick(x=>x+1)}}/>
     {(!armed||needsUnlock)&&<div className="screen-audio-unlock"><button disabled={unlockBusy} onClick={()=>void unlock()}>{unlockBusy?'проверяем звук…':'включить звук и проверить'}</button>{audioError&&<p role="alert">{audioError}</p>}</div>}
   </>
 }
