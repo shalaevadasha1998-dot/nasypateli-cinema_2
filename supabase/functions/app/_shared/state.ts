@@ -106,6 +106,12 @@ export async function buildShowState(db:any,event:any){
   const block=program.blocks.find((x:any)=>x.id===raw.current_block_id)||program.blocks[blockIndex]||undefined
   let round:any=undefined
   let results:any[]=[]
+  let currentBlockRoundCount=0
+  if(block?.type==='cinema_rounds'){
+    const blockRounds=await db.from('event_rounds').select('*',{count:'exact',head:true}).eq('event_id',event.id).eq('block_id',String(block.id))
+    if(blockRounds.error)throw blockRounds.error
+    currentBlockRoundCount=Number(blockRounds.count||0)
+  }
   if(raw.current_round_id){
     const [roundR,votesR]=await Promise.all([
       db.from('event_rounds').select('*,movie_candidates(*)').eq('id',raw.current_round_id).eq('event_id',event.id).maybeSingle(),
@@ -191,6 +197,7 @@ export async function buildShowState(db:any,event:any){
       currentBlockIndex:block?.index??blockIndex,
       currentBlock:block,
       currentRound:Number(raw.current_round||0),
+      currentBlockRoundCount,
       currentRoundId:raw.current_round_id||undefined,
       currentMovie:movie,
       currentQuestion:raw.current_question||round?.question||undefined,
