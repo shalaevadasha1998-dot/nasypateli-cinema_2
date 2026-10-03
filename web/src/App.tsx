@@ -796,7 +796,7 @@ function RoundFilmFlowAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(ac
     try{
       const selected=await run('admin-round-pitch-draw')
       if(!selected)return
-      await run('admin-round-find-movie',{preparedOnly:true})
+      await run('admin-round-find-movie')
     }finally{setStepping(false)}
   }
   const assign=async()=>{
@@ -815,7 +815,7 @@ function RoundFilmFlowAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(ac
       if(previewIndex<previewTotal-1){await run('admin-round-pitch-preview',{index:previewIndex+1});return}
       await chooseAndSearch();return
     }
-    if(flow==='submission_selected'||flow==='searching_movie'){await run('admin-round-find-movie',{preparedOnly:true});return}
+    if(flow==='submission_selected'||flow==='searching_movie'){await run('admin-round-find-movie');return}
     if(flow==='movie_found'){if(pack)await project('film_intro');return}
     if(flow==='playing_clip'){if(pack)await project(mode==='review'?'one_word_open':'question_open',mode==='review'?{}:{position:1});return}
     if(flow==='one_word_collecting'){if(pack)await project('one_word_results');return}
