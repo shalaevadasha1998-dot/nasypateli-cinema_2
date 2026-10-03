@@ -1162,8 +1162,41 @@ export async function handleApi(req:Request){
       const slug=String(body.slug||'2026-10-03')
       if(!screenTokenOk&&!slug.startsWith('test-'))return err('Доступ к экрану запрещён',401)
       const live=await db.rpc('app_screen_live_state',{p_slug:slug})
-      if(live.error)throw live.error
-      const x:any=live.data
+      let x:any=live.data
+      if(live.error){
+        // Runtime compatibility fallback: production can briefly lag behind code while
+        // the live-state RPC migration is still being applied. Keep screen auth/bootstrap
+        // available using the existing tables instead of turning that drift into HTTP 500.
+        console.warn('app_screen_live_state unavailable; using table fallback',String(live.error.message||live.error))
+        const ev=await db.from('events').select('*').eq('slug',slug).maybeSingle()
+        if(ev.error)throw ev.error
+        if(!ev.data)return err('Событие не найдено',404)
+        const eventId=ev.data.id
+        const [program,runtime,projector,media,screen,registrations]=await Promise.all([
+          db.from('event_programs').select('config').eq('event_id',eventId).maybeSingle(),
+          db.from('event_runtime').select('*').eq('event_id',eventId).maybeSingle(),
+          db.from('event_projector_state').select('*').eq('event_id',eventId).maybeSingle(),
+          db.from('media_assets').select('asset_key,title,category,mime_type,duration_sec,public_url').eq('status','ready').order('asset_key'),
+          db.from('event_screen_status').select('*').eq('event_id',eventId).maybeSingle(),
+          db.from('registrations').select('user_id,created_at').eq('event_id',eventId).eq('status','attended').order('created_at')
+        ])
+        for(const [label,r] of [['program',program],['runtime',runtime],['projector',projector],['media',media],['screen',screen],['registrations',registrations]] as const){
+          if(r.error)console.warn('screen bootstrap fallback query failed',label,String(r.error.message||r.error))
+        }
+        const userIds=(registrations.error?[]:(registrations.data||[])).map((r:any)=>r.user_id).filter(Boolean)
+        const creatures=userIds.length?await db.from('creatures').select('user_id,name,stage,crumbs,growth_progress,settings').in('user_id',userIds):{data:[],error:null}
+        if(creatures.error)console.warn('screen bootstrap fallback query failed','creatures',String(creatures.error.message||creatures.error))
+        const creatureByUser=new Map((creatures.data||[]).map((cr:any)=>[String(cr.user_id),cr]))
+        x={
+          event:ev.data,
+          program_config:program.error?{}:(program.data?.config||{}),
+          runtime:runtime.error?{}:(runtime.data||{}),
+          projector:projector.error?{}:(projector.data||{}),
+          media:media.error?[]:(media.data||[]),
+          screen:screen.error?{}:(screen.data||{}),
+          creatures:(registrations.error?[]:(registrations.data||[])).map((r:any)=>creatureByUser.get(String(r.user_id))).filter(Boolean)
+        }
+      }
       if(!x?.event?.id)return err('Событие не найдено',404)
       const event:any={...x.event,settings:x.event.settings||{}}
       const testScreenOk=await testRoomTokenMatches(event,req.headers.get('x-screen-token')||'')
