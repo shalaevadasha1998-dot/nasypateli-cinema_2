@@ -1181,7 +1181,7 @@ function screenContent(d:DemoState){
     if(block?.type==='final_qr')return <div className="screen-final-qr"><div><div className="eyebrow">итог вечера</div><h1>вступить в «творог»</h1><p>наведи камеру</p></div><div className="screen-final-qr-code"><img src={import.meta.env.BASE_URL+'assets/tvorog-qr.svg'} alt="qr-код группы творог"/></div></div>
     if(block?.type==='music_outro')return <><div className="eyebrow">после</div><h1>музыка</h1></>
     if(block?.type==='cinema_rounds')return <><div className="eyebrow">кино</div><h1>{block.title}</h1></>
-    if(block?.type==='post_event'||show.runtime.runStatus==='finished')return <><h1>всё</h1><p>спасибо за вечер</p></>
+    if(block?.type==='post_event')return <><h1>всё</h1><p>спасибо за вечер</p></>
     return <><h1>{block?.title||'шоу идёт'}</h1></>
   }
   const state=d.event.status
