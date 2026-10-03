@@ -1,6 +1,7 @@
 const endpoint='https://api.openai.com/v1/responses'
 
 type BaseArgs={instructions:string;input:string;maxOutputTokens?:number;model?:string;reasoningEffort?:'none'|'minimal'|'low'|'medium'|'high'|'xhigh'}
+type WebArgs={searchContextSize?:'low'|'medium'|'high'}
 
 function apiKey(){const key=Deno.env.get('OPENAI_API_KEY');if(!key)throw new Error('OPENAI_API_KEY is missing');return key}
 function modelFor(args:{model?:string}){return args.model||Deno.env.get('OPENAI_MODEL')||'gpt-5.6-luna'}
@@ -14,6 +15,19 @@ async function run(body:Record<string,unknown>){
 
 export async function structuredResponse<T>(args:BaseArgs&{name:string;schema:Record<string,unknown>}):Promise<T>{
   const body={model:modelFor(args),instructions:args.instructions,input:args.input,max_output_tokens:args.maxOutputTokens||1200,reasoning:{effort:args.reasoningEffort||'none'},text:{format:{type:'json_schema',name:args.name,strict:true,schema:args.schema}}}
+  const {text}=await run(body);return JSON.parse(text) as T
+}
+
+export async function structuredWebResponse<T>(args:BaseArgs&WebArgs&{name:string;schema:Record<string,unknown>}):Promise<T>{
+  const body={
+    model:modelFor(args),
+    instructions:args.instructions,
+    input:args.input,
+    max_output_tokens:args.maxOutputTokens||1200,
+    reasoning:{effort:args.reasoningEffort||'none'},
+    tools:[{type:'web_search',search_context_size:args.searchContextSize||'low'}],
+    text:{format:{type:'json_schema',name:args.name,strict:true,schema:args.schema}}
+  }
   const {text}=await run(body);return JSON.parse(text) as T
 }
 
