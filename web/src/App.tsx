@@ -117,34 +117,40 @@ function FilmLiveParticipant({data,reload}:{data:DemoState;reload:(fresh?:boolea
   const live=data.filmLive
   const [title,setTitle]=useState(live?.myPitch?.title||'')
   const [description,setDescription]=useState(live?.myPitch?.description||'')
+  const [word,setWord]=useState('')
+  const [answerDraft,setAnswerDraft]=useState('')
   const [busy,setBusy]=useState(false)
   const [message,setMessage]=useState('')
   useEffect(()=>{setTitle(live?.myPitch?.title||'');setDescription(live?.myPitch?.description||'')},[live?.myPitch?.id,live?.myPitch?.updatedAt,live?.revision])
+  useEffect(()=>{setAnswerDraft(answerText((live?.myAnswers||[]).find(x=>x.question_id===String(live?.payload?.questionId||''))?.answer));setMessage('')},[live?.payload?.questionId])
   if(!live||!data.show||data.registration!=='attended')return null
   const state=live.state
   const target=Math.max(1,Math.min(5,Number(live.questionTarget||3)))
   const questionId=String(live.payload?.questionId||'')
   const mine=(live.myAnswers||[]).find(x=>x.question_id===questionId)
-  const submitPitch=async()=>{try{setBusy(true);setMessage('');await callApi('invented-film-submit',{slug:data.event.slug,title,description});setMessage('животина забрала твой фильм. до закрытия можно поправить');await reload(true)}catch(e:any){setMessage(e.message||'не получилось отправить фильм')}finally{setBusy(false)}}
-  const predict=async(answer:any)=>{try{setBusy(true);setMessage('');await callApi('film-prediction',{slug:data.event.slug,questionId,answer});setMessage('ответ принят');await reload(true)}catch(e:any){setMessage(e.message||'не получилось отправить ответ')}finally{setBusy(false)}}
-  if(state==='pitch_collecting')return <section className="participant-show film-live pitch-live"><div className="eyebrow">придумай фильм</div><h2>фильм, которого не существует</h2><Field label="название фильма"><input maxLength={120} value={title} placeholder="например, человек, который забыл луну" onChange={e=>{setTitle(e.target.value);setMessage('')}}/></Field><Field label="короткое описание"><textarea maxLength={800} rows={4} value={description} placeholder="что происходит, кто герой и в чём странность" onChange={e=>{setDescription(e.target.value);setMessage('')}}/></Field><Button disabled={busy||title.trim().length<2||description.trim().length<8} onClick={submitPitch}>{busy?'отправляем…':live.myPitch?'обновить фильм':'отдать животине'}</Button>{message&&<div className={message.startsWith('животина забрала')?'success':'form-error'}>{message}</div>}</section>
-  if(state==='pitch_locked')return <section className="participant-show film-live"><div className="eyebrow">сбор закрыт</div><h2>животина забрала фильмы</h2><p>{live.myPitch?'твой фильм внутри рандома.':'в этот раз ты не успел отправить идею.'}</p></section>
-  if(state==='pitch_randomizing')return <section className="participant-show film-live"><div className="eyebrow">рандом</div><h2>чью идею утащит животина?</h2><p>смотрите на большой экран</p></section>
-  if(state==='pitch_selected')return <section className="participant-show film-live"><div className="eyebrow">идея выбрана</div><h2>{String(live.payload?.pitch?.title||'смотрите на экран')}</h2><p>животина сейчас ищет, не снял ли кто-то уже что-то подозрительно похожее.</p></section>
-  if(state==='movie_searching')return <section className="participant-show film-live"><div className="eyebrow">животина роется в кино</div><h2>это уже сняли?</h2><p>телефон можно пока опустить</p></section>
-  if(state==='movie_found')return <section className="participant-show film-live"><div className="eyebrow">максимально близко</div><h2>{live.payload?.found===false?'кажется, это пока не сняли.':String(live.payload?.filmTitle||live.filmTitle||'фильм найден')}</h2>{live.payload?.year&&<p>{String(live.payload.year)}</p>}<p className="muted">{live.payload?.reason?String(live.payload.reason):'дальше всё происходит на большом экране'}</p></section>
-  if(state==='film_intro'||state==='playing_clip')return <section className="participant-show film-live"><div className="eyebrow">сейчас</div><h2>{live.filmTitle||String(live.payload?.filmTitle||'смотрите на экран')}</h2><p>идёт фрагмент. телефон вниз.</p></section>
-  if(state==='question_open')return <section className="participant-show film-live"><div className="row spread participant-show-head"><div><div className="eyebrow">что будет дальше</div><h2>{String(live.payload?.prompt||'выбери ответ')}</h2></div><Pill>{Number(live.payload?.position||0)}/{Number(live.payload?.totalQuestions||target)}</Pill></div><div className="participant-votes">{(Array.isArray(live.payload?.options)?live.payload.options:[]).map((option:any)=>{const selected=JSON.stringify(mine?.answer)===JSON.stringify(option);return <button type="button" className={selected?'selected':''} disabled={busy} key={String(option)} onClick={()=>predict(option)}>{answerText(option)}</button>})}</div>{mine&&<p className="muted">ответ можно поменять, пока вопрос открыт</p>}{message&&<div className={message==='ответ принят'?'success':'form-error'}>{message}</div>}</section>
-  if(state==='question_results')return <section className="participant-show film-live"><div className="eyebrow">зал решил</div><h2>{String(live.payload?.prompt||'результаты')}</h2><p>распределение ответов сейчас на проекторе.</p></section>
-  if(state==='question_reveal')return <section className="participant-show film-live"><div className="eyebrow">что случилось</div><h2>{answerText(live.payload?.correctAnswer)}</h2>{live.payload?.revealText&&<p>{String(live.payload.revealText)}</p>}<p className="muted">смотрите реальное продолжение на большом экране</p></section>
-  if(state==='round_finished')return <section className="participant-show film-live"><div className="eyebrow">{live.payload?.roundNo?`раунд ${live.payload.roundNo}`:'кинораунд'} закончен</div><h2>готово.</h2><p>телефон можно убрать. ведущий сейчас запустит следующий раунд или блок.</p></section>
-  if(state==='assignment_randomizing')return <section className="participant-show film-live"><div className="eyebrow">рандом</div><h2>кому смотреть?</h2><p>животина выбирает кого-то из участников этого раунда.</p></section>
+  const submitPitch=async()=>{try{setBusy(true);setMessage('');await callApi('invented-film-submit',{slug:data.event.slug,title,description});setMessage('фильм принят. до закрытия можно поправить');await reload(true)}catch(e:any){setMessage(e.message||'не получилось отправить фильм')}finally{setBusy(false)}}
+  const submitWord=async()=>{try{setBusy(true);setMessage('');await callApi('film-one-word',{slug:data.event.slug,word});setMessage('слово на экране');await reload(true)}catch(e:any){setMessage(e.message||'не получилось отправить слово')}finally{setBusy(false)}}
+  const predict=async()=>{try{setBusy(true);setMessage('');await callApi('film-prediction',{slug:data.event.slug,questionId,answer:answerDraft});setMessage('ответ принят');await reload(true)}catch(e:any){setMessage(e.message||'не получилось отправить ответ')}finally{setBusy(false)}}
+  if(state==='pitch_collecting')return <section className="participant-show film-live pitch-live"><div className="eyebrow">раунд</div><h2>придумай фильм, которого не существует</h2><Field label="название фильма"><input maxLength={120} value={title} placeholder="название" onChange={e=>{setTitle(e.target.value);setMessage('')}}/></Field><Field label="описание"><textarea maxLength={800} rows={4} value={description} placeholder="что в нём происходит" onChange={e=>{setDescription(e.target.value);setMessage('')}}/></Field><Button disabled={busy||title.trim().length<2||description.trim().length<8} onClick={submitPitch}>{busy?'отправляем…':live.myPitch?'обновить':'готово'}</Button>{message&&<div className={message.startsWith('фильм принят')?'success':'form-error'}>{message}</div>}</section>
+  if(state==='pitch_preview'||state==='pitch_locked')return <section className="participant-show film-live"><div className="eyebrow">идеи собраны</div><h2>смотрим, что придумал зал</h2><p>сейчас ведущий листает фильмы на большом экране.</p></section>
+  if(state==='pitch_randomizing')return <section className="participant-show film-live"><div className="eyebrow">рандом</div><h2>выбираем одну идею</h2><p>смотри на большой экран.</p></section>
+  if(state==='pitch_selected')return <section className="participant-show film-live"><div className="eyebrow">выбрано</div><h2>{String(live.payload?.pitch?.title||'идея выбрана')}</h2><p>животина ищет самый похожий реальный фильм.</p></section>
+  if(state==='movie_searching')return <section className="participant-show film-live"><div className="eyebrow">поиск</div><h2>ищем реальный фильм</h2><p>телефон пока можно опустить.</p></section>
+  if(state==='movie_found')return <section className="participant-show film-live"><div className="eyebrow">нашли</div><h2>{String(live.payload?.filmTitle||live.filmTitle||'фильм')}</h2><p>сейчас смотрим фрагмент.</p></section>
+  if(state==='film_intro'||state==='playing_clip')return <section className="participant-show film-live"><div className="eyebrow">фрагмент</div><h2>{live.filmTitle||String(live.payload?.filmTitle||'смотри на экран')}</h2><p>телефон вниз.</p></section>
+  if(state==='one_word_collecting')return <section className="participant-show film-live"><div className="eyebrow">рецензия одним словом</div><h2>что это за фильм?</h2><Field label="одно слово"><input maxLength={80} value={word} placeholder="например: тревожный" onChange={e=>{setWord(e.target.value.replace(/\s+/g,''));setMessage('')}}/></Field><Button disabled={busy||word.trim().length<2} onClick={submitWord}>{busy?'отправляем…':'отправить'}</Button>{message&&<div className={message==='слово на экране'?'success':'form-error'}>{message}</div>}</section>
+  if(state==='one_word_results')return <section className="participant-show film-live"><div className="eyebrow">рецензия зала</div><h2>слова уже на большом экране</h2><p>дальше животина выберет одного человека, который досмотрит фильм целиком.</p></section>
+  if(state==='question_open')return <section className="participant-show film-live"><div className="row spread participant-show-head"><div><div className="eyebrow">прогноз {Number(live.payload?.position||0)}/{Number(live.payload?.totalQuestions||target)}</div><h2>{String(live.payload?.prompt||'что будет дальше?')}</h2></div></div><Field label="напиши свой вариант"><textarea rows={4} maxLength={700} value={answerDraft} placeholder="своими словами" onChange={e=>{setAnswerDraft(e.target.value);setMessage('')}}/></Field><Button disabled={busy||answerDraft.trim().length<2} onClick={predict}>{busy?'анализируем…':mine?'обновить ответ':'ответить'}</Button>{mine&&<p className="muted">можно изменить, пока ведущий не нажал дальше</p>}{message&&<div className={message==='ответ принят'?'success':'form-error'}>{message}</div>}</section>
+  if(state==='question_results'){const closest:any=live.payload?.closest;return <section className="participant-show film-live"><div className="eyebrow">ближе всех</div><h2>{closest?.animalName||'животина думает'}</h2>{closest?.answer&&<p>«{String(closest.answer)}»</p>}{closest?.comment&&<p className="muted">{String(closest.comment)}</p>}</section>}
+  if(state==='question_reveal')return <section className="participant-show film-live"><div className="eyebrow">что было на самом деле</div><h2>{answerText(live.payload?.correctAnswer)}</h2>{live.payload?.revealText&&<p>{String(live.payload.revealText)}</p>}<p className="muted">продолжение идёт на большом экране.</p></section>
+  if(state==='assignment_randomizing')return <section className="participant-show film-live"><div className="eyebrow">рандом</div><h2>кто досмотрит фильм?</h2><p>смотри на большой экран.</p></section>
   if(state==='assignment_winner'){
     const winner=String(live.payload?.animalName||'животина')
     const mineWinner=winner.trim().toLowerCase()===String(data.creature.name||'').trim().toLowerCase()
     const assignment=(data.filmAssignments||[]).find(x=>x.filmPackageId===live.filmPackageId)
-    return <section className={mineWinner?'participant-show film-live film-winner':'participant-show film-live'}><div className="eyebrow">{mineWinner?'это ты':'фильм достался'}</div><h2>{winner}</h2><p>{mineWinner?'тебе смотреть этот фильм. потом животина ждёт рецензию.':'у '+winner+' теперь есть фильм до следующей субботы.'}</p>{assignment&&<p className="muted">дедлайн: {eventDate(assignment.dueAt)}</p>}{mineWinner&&assignment&&<Button onClick={()=>{location.hash='#/mission/'+assignment.id}}>открыть задание</Button>}</section>
+    return <section className={mineWinner?'participant-show film-live film-winner':'participant-show film-live'}><div className="eyebrow">{mineWinner?'тебе выпал фильм':'фильм достался'}</div><h2>{winner}</h2><p>{mineWinner?'досмотри его целиком и на следующей неделе расскажи, что получилось.':winner+' досмотрит фильм целиком и расскажет на следующей встрече.'}</p>{assignment&&<p className="muted">до {eventDate(assignment.dueAt)}</p>}</section>
   }
+  if(state==='round_finished')return <section className="participant-show film-live"><div className="eyebrow">раунд закончен</div><h2>готово</h2><p>ведущий нажмёт дальше.</p></section>
   return null
 }
 
@@ -587,16 +593,12 @@ function ShowRoundControl({data,busy,run}:{data:DemoState;busy:boolean;run:(acti
   const round=show?.currentRound
   if(!show||!block||block.type!=='cinema_rounds')return null
   const active=round?.status==='active'
-  const target=Math.max(1,Math.min(20,Number(block.roundsTarget||show.program.roundsTarget||7)))
-  const current=Math.max(0,Number(show.runtime.currentRound||0))
+  const target=Math.max(1,Math.min(20,Number(block.roundsTarget||2)))
+  const current=Math.max(0,Number((show.runtime as any).currentBlockRoundCount||0))
   const complete=!active&&current>=target
   return <Card className="show-round-card">
-    <div className="row spread"><div><div className="section-title">кинораунд</div><h2>{active?'раунд '+round?.roundNo:complete?`${target}/${target} раундов завершено`:'готов к запуску'}</h2></div>{active&&<Pill>{round?.pitchCount||0} идей</Pill>}</div>
-    {!active
-      ?complete
-        ?<><p className="muted">кинораунды закончены. дальше по программе финальный выбор фильма вечера.</p><Button disabled={busy||show.runtime.runStatus!=='running'} onClick={()=>run('admin-show-control',{op:'next'})}>перейти к финальному выбору</Button></>
-        :<><p className="muted">одна кнопка сразу откроет сбор идей на телефонах и большом экране. раунд {current+1} из {target}.</p><Button disabled={busy||show.runtime.runStatus!=='running'} onClick={()=>run('admin-round-start')}>{current?'запустить следующий раунд':'запустить раунд'}</Button></>
-      :<p className="muted">раунд {round?.roundNo} из {target} запущен. всё управление этим раундом находится в этом же окне.</p>}
+    <div className="row spread"><div><div className="section-title">этот блок</div><h2>{active?`раунд ${round?.roundNo} · ${round&&round.roundNo%2===1?'одно слово':'вопросы'}`:complete?`${target}/${target} готово`:`раунд ${current+1} из ${target}`}</h2></div></div>
+    {!active?complete?<Button disabled={busy} onClick={()=>run('admin-show-control',{op:'next'})}>дальше → следующий блок</Button>:<Button disabled={busy||show.runtime.runStatus!=='running'} onClick={()=>run('admin-round-start')}>запустить раунд</Button>:<p className="muted">весь раунд идёт ниже одной цепочкой кнопок «дальше».</p>}
   </Card>
 }
 
@@ -741,36 +743,48 @@ function RoundFilmFlowAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(ac
   const pitches=data.inventedFilms||[]
   if(!round||round.status!=='active')return null
   const flow=round.flowStatus||'collecting_films'
+  const mode=round.roundNo%2===1?'review':'questions'
   const pack=round.movie?(data.filmPackages||[]).find(x=>x.movieCandidateId===round.movie?.id):undefined
   const questions=(pack?.questions||[]).slice().sort((a,b)=>a.position-b.position)
-  const target=Math.max(1,Math.min(5,Number(round.questionTarget||questions.length||5)))
+  const target=Math.min(3,Math.max(1,Number(round.questionTarget||3),questions.length?1:0))
   const position=Math.max(0,Number(round.questionPosition||0))
   const currentQuestion=questions.find(q=>q.position===position)
   const project=(op:string,extra:Record<string,unknown>={})=>pack&&run('admin-film-projector',{filmPackageId:pack.id,roundId:round.id,op,...extra})
+  const projector:any=data.projector
+  const previewIndex=Math.max(0,Number(projector?.payload?.index||0))
+  const previewTotal=Math.max(0,Number(projector?.payload?.total||pitches.length))
   const firstFragment:any=pack?.fragments?.[0]
   const fragmentHref=(fragment:any)=>fragment?.videoId?`https://www.youtube.com/watch?v=${encodeURIComponent(String(fragment.videoId))}&t=${Math.max(0,Number(fragment.startSec||0))}s`:String(fragment?.sourceUrl||'')
   const sourceHref=fragmentHref(firstFragment)
-  const chooseAndSearch=async(preparedOnly=false)=>{
+  const chooseAndSearch=async()=>{
     const selected=await run('admin-round-pitch-draw')
     if(!selected)return
-    await new Promise(resolve=>window.setTimeout(resolve,2400))
-    await run('admin-round-find-movie',{preparedOnly})
+    await new Promise(resolve=>window.setTimeout(resolve,1200))
+    await run('admin-round-find-movie',{preparedOnly:true})
+  }
+  const assign=async()=>{
+    if(!pack)return
+    await project('assignment_randomizing')
+    await new Promise(resolve=>window.setTimeout(resolve,900))
+    await run('admin-film-assign',{filmPackageId:pack.id,roundId:round.id})
   }
   return <Card className="round-film-flow-admin">
-    <div className="row spread"><div><div className="section-title">кинораунд · текущий шаг</div><h2>раунд {round.roundNo}</h2></div><Pill>{round.pitchCount||0} идей</Pill></div>
-    {flow==='draft'&&<><p>сбор должен открыться автоматически. нажмите восстановить, если пульт был открыт до обновления.</p><Button disabled={busy} onClick={()=>run('admin-round-pitches-open')}>восстановить сбор</Button></>}
-    {flow==='collecting_films'&&<><p className="muted">форма уже открыта на телефонах. гости могут менять идею до закрытия сбора.</p><div className="round-pitch-list">{pitches.map(x=><div key={x.id}><b>{x.animalName} · {x.title}</b><span>{x.description}</span></div>)}</div>{pitches.length?<Button disabled={busy} onClick={()=>run('admin-round-pitches-close')}>закрыть сбор · {pitches.length}</Button>:<Button kind="secondary" disabled={busy} onClick={()=>run('admin-round-close')}>пропустить пустой раунд</Button>}</>}
-    {flow==='films_locked'&&<><p>сбор закрыт. на большом экране уже лежат все идеи анонимно.</p><Button disabled={busy||!pitches.length} onClick={()=>chooseAndSearch()}>выбрать идею</Button><Button kind="secondary" disabled={busy||!pitches.length} onClick={()=>chooseAndSearch(true)}>рандом + резервный фильм</Button></>}
-    {flow==='randomizing_submission'&&<p>животина крутит рандом. смотрим на большой экран…</p>}
-    {flow==='submission_selected'&&<><div className="selected-pitch-admin"><div className="eyebrow">{round.selectedPitch?.animalName||'животина'} придумала фильм</div><h3>{round.selectedPitch?.title}</h3><p>{round.selectedPitch?.description}</p></div><p className="muted">нейронка ищет максимально похожее реальное кино по всему миру и проверяет, есть ли воспроизводимый фрагмент.</p></>}
-    {flow==='searching_movie'&&<p>животина роется в мировом кино. даём живому поиску до минуты; если проверяемый фрагмент не собирается, автоматически берём резервный киноблок.</p>}
-    {['submission_selected','searching_movie','movie_found'].includes(flow)&&<Button kind="secondary" disabled={busy} onClick={()=>run('admin-round-find-movie',{preparedOnly:true})}>использовать резервный фильм</Button>}
-    {flow==='movie_found'&&<>{round.movie&&pack?<><div className="selected-pitch-admin"><div className="eyebrow">максимально близко</div><h3>{round.movie.title}{round.movie.year?' · '+round.movie.year:''}</h3><p>{Math.min(3,questions.length)} вопроса · по 3 варианта · правильное продолжение привязано к реальным таймкодам</p></div><div className="inline"><Button disabled={busy} onClick={()=>project('film_intro')}>запустить фрагмент</Button>{sourceHref&&<Button kind="secondary" onClick={()=>window.open(sourceHref,'_blank','noopener,noreferrer')}>открыть источник ↗</Button>}</div>{sourceHref&&<small className="media-ready-line">готово · источник проверен · если embed не играет, открывайте ссылку</small>}</>:<p className="form-error">не нашли проверяемый фрагмент. выберите другую идею.</p>}</>}
-    {flow==='playing_clip'&&<div className="film-live-step"><b>фрагмент идёт на экране</b><p className="muted">после остановки открываем первый готовый вопрос. если youtube не стартовал автоматически, на projector доступны обычные controls, а источник можно открыть вручную.</p><div className="inline"><Button disabled={busy||!questions.length} onClick={()=>project('question_open',{position:1})}>открыть вопрос 1/{target}</Button>{sourceHref&&<Button kind="secondary" onClick={()=>window.open(sourceHref,'_blank','noopener,noreferrer')}>открыть источник ↗</Button>}</div></div>}
-    {flow==='question_open'&&currentQuestion&&<div className="film-live-step"><b>{position}/{target}. голосование открыто</b><p>{currentQuestion.prompt}</p><Button disabled={busy} onClick={()=>project('question_results',{position})}>закрыть ответы и показать результат</Button></div>}
-    {flow==='question_results'&&currentQuestion&&<div className="film-live-step"><b>{position}/{target}. результаты на экране</b><Button disabled={busy} onClick={()=>project('question_reveal',{position})}>показать правильный ответ + продолжение</Button></div>}
-    {flow==='question_reveal'&&<div className="film-live-step"><b>{position}/{target}. продолжение показано</b><div className="inline">{position<target?<Button disabled={busy} onClick={()=>project('question_open',{position:position+1})}>открыть вопрос {position+1}/{target}</Button>:<Button disabled={busy} onClick={()=>run('admin-round-close')}>закончить раунд</Button>}{fragmentHref(currentQuestion?.revealFragment)&&<Button kind="secondary" onClick={()=>window.open(fragmentHref(currentQuestion?.revealFragment),'_blank','noopener,noreferrer')}>открыть продолжение ↗</Button>}</div></div>}
-    {flow==='round_finished'&&<div className="success">раунд закончен. запускайте следующий.</div>}
+    <div className="row spread"><div><div className="section-title">раунд {round.roundNo} · {mode==='review'?'одно слово':'открытые вопросы'}</div><h2>{mode==='review'?'рецензия после фрагмента':'угадываем, что дальше'}</h2></div><Pill>{round.pitchCount||0} идей</Pill></div>
+    {flow==='collecting_films'&&<><p className="muted">гости пишут название и описание. кто не успел до кнопки «дальше», тот пропустил.</p><Button disabled={busy||!pitches.length} onClick={()=>run('admin-round-pitches-close')}>дальше → смотреть идеи</Button></>}
+    {flow==='films_locked'&&<div className="film-live-step"><b>идея {Math.min(previewIndex+1,previewTotal)}/{previewTotal}</b><p className="muted">зачитайте карточку с большого экрана.</p><div className="inline">{previewIndex>0&&<Button kind="secondary" disabled={busy} onClick={()=>run('admin-round-pitch-preview',{index:previewIndex-1})}>← назад</Button>}{previewIndex<previewTotal-1?<Button disabled={busy} onClick={()=>run('admin-round-pitch-preview',{index:previewIndex+1})}>дальше →</Button>:<Button disabled={busy} onClick={chooseAndSearch}>дальше → рандом</Button>}</div></div>}
+    {flow==='randomizing_submission'&&<p>рандом выбирает идею на большом экране.</p>}
+    {flow==='submission_selected'&&<p>идея выбрана. ищем проверенный реальный фильм.</p>}
+    {flow==='searching_movie'&&<p>ищем фильм. если живой поиск тормозит, берём проверенный резерв.</p>}
+    {['submission_selected','searching_movie'].includes(flow)&&<Button kind="secondary" disabled={busy} onClick={()=>run('admin-round-find-movie',{preparedOnly:true})}>взять резерв сразу</Button>}
+    {flow==='movie_found'&&<>{round.movie&&pack?<><div className="selected-pitch-admin"><div className="eyebrow">реальный фильм</div><h3>{round.movie.title}{round.movie.year?' · '+round.movie.year:''}</h3></div><div className="inline"><Button disabled={busy} onClick={()=>project('film_intro')}>дальше → показать фрагмент</Button>{sourceHref&&<Button kind="secondary" onClick={()=>window.open(sourceHref,'_blank','noopener,noreferrer')}>источник ↗</Button>}</div></>:<p className="form-error">нет готового фрагмента.</p>}</>}
+    {flow==='playing_clip'&&<div className="film-live-step"><b>фрагмент идёт</b><Button disabled={busy||!pack} onClick={()=>mode==='review'?project('one_word_open'):project('question_open',{position:1})}>{mode==='review'?'дальше → одно слово':'дальше → вопрос 1/3'}</Button></div>}
+    {flow==='one_word_collecting'&&<div className="film-live-step"><b>гости пишут по одному слову</b><p className="muted">слова появляются на экране сразу.</p><Button disabled={busy} onClick={()=>project('one_word_results')}>дальше → зафиксировать слова</Button></div>}
+    {flow==='one_word_results'&&<div className="film-live-step"><b>рецензия зала зафиксирована</b><Button disabled={busy} onClick={assign}>дальше → рандом кому смотреть</Button></div>}
+    {flow==='question_open'&&currentQuestion&&<div className="film-live-step"><b>вопрос {position}/{target}</b><p>{currentQuestion.prompt}</p><Button disabled={busy} onClick={()=>project('question_results',{position})}>дальше → найти самый близкий ответ</Button></div>}
+    {flow==='question_results'&&currentQuestion&&<div className="film-live-step"><b>животина выбрала самый близкий ответ</b><Button disabled={busy} onClick={()=>project('question_reveal',{position})}>дальше → показать, что было на самом деле</Button></div>}
+    {flow==='question_reveal'&&<div className="film-live-step"><b>ответ показан</b>{position<target?<Button disabled={busy} onClick={()=>project('question_open',{position:position+1})}>дальше → вопрос {position+1}/{target}</Button>:<Button disabled={busy} onClick={assign}>дальше → рандом кому смотреть</Button>}</div>}
+    {flow==='assignment_randomizing'&&<p>животина выбирает человека, который досмотрит фильм.</p>}
+    {flow==='assignment_selected'&&<div className="film-live-step"><b>фильм назначен</b><Button disabled={busy} onClick={()=>run('admin-round-close')}>дальше → закончить раунд</Button></div>}
   </Card>
 }
 
