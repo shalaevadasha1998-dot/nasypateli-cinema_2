@@ -1363,16 +1363,18 @@ export async function handleApi(req:Request){
         }catch{return err('Доступ к пульту запрещён',401)}
       }
       await maybeAutoAdvanceShow(db,event)
-      const [state,adminParticipants,movieCatalog,showLog,movieSources]=await Promise.all([
+      const [state,adminParticipants,movieCatalog,movieSources]=await Promise.all([
         buildEventState(db,event,{includeActuals:true,includePrivateOutputs:true}),
         adminParticipantRows(db,event.id),
         db.from('movie_candidates').select('*').eq('event_id',event.id).order('title'),
-        db.from('event_runtime_log').select('id,action,created_at').eq('event_id',event.id).order('created_at',{ascending:false}).limit(20),
         db.from('movie_source_candidates').select('*').eq('event_id',event.id).order('discovered_at',{ascending:false})
       ])
       if(movieCatalog.error)throw movieCatalog.error
-      if(showLog.error)throw showLog.error
       if(movieSources.error)throw movieSources.error
+      let showLogQ=db.from('event_runtime_log').select('id,action,created_at').eq('event_id',event.id)
+      if(state.show?.runtime?.runId)showLogQ=showLogQ.eq('run_id',state.show.runtime.runId)
+      const showLog=await showLogQ.order('created_at',{ascending:false}).limit(20)
+      if(showLog.error)throw showLog.error
       const sourceByMovie=new Map<string,any[]>()
       for(const s of movieSources.data||[]){
         const key=String(s.movie_candidate_id)
