@@ -876,7 +876,7 @@ async function buildReviewDraft(db:any,assignment:any,answers:any){
 }
 
 async function adminParticipantRows(db:any,eventId:string){
-  const regs=await db.from('registrations').select('id,user_id,status,queue_position,photo_video_consent,paid_at,reservation_expires_at,created_at').eq('event_id',eventId).order('created_at')
+  const regs=await db.from('registrations').select('id,user_id,status,queue_position,photo_video_consent,paid_at,reservation_expires_at,created_at,payment_provider,amount_rub,provider_payment_id,telegram_payment_charge_id').eq('event_id',eventId).order('created_at')
   if(regs.error)throw regs.error
   const ids=(regs.data||[]).map((x:any)=>x.user_id)
   if(!ids.length)return []
@@ -908,6 +908,9 @@ async function adminParticipantRows(db:any,eventId:string){
       reservationExpiresAt:r.reservation_expires_at||undefined,
       photoVideoConsent:r.photo_video_consent===true,
       paidAt:r.paid_at||undefined,
+      paymentProvider:r.payment_provider||undefined,
+      amountRub:r.amount_rub==null?undefined:Number(r.amount_rub),
+      paymentReference:r.telegram_payment_charge_id||r.provider_payment_id||undefined,
       registeredAt:r.created_at
     }
   })
@@ -1711,7 +1714,7 @@ export async function handleApi(req:Request){
         show={...show,finalVote:{...show.finalVote,myVote:mineFinal.data?.movie_candidate_id||undefined}}
       }
       const [filmAssignments,filmLive]=await Promise.all([userFilmAssignments(db,user.id),filmLiveState(db,event,user.id)])
-      return json({...common,show,isAdmin,user,profile,filmAssignments,filmLive,onboardingComplete:profile.completed,registration:effectiveRegistrationStatus(reg.data),queuePosition:effectiveRegistrationStatus(reg.data)==='waitlist'?Number(reg.data?.queue_position||0)||undefined:undefined,reservationExpiresAt:effectiveRegistrationStatus(reg.data)==='reserved'?reg.data?.reservation_expires_at||undefined:undefined,idea:idea.data||undefined,predictions:(common.predictions||[]).map((p:any)=>({...p,answer:answerMap.get(p.id)})),predictionSubmitted:(answers.data||[]).length>0,thought:thought.data?.text,reaction:reaction.data?{rating:reaction.data.rating,stateWord:reaction.data.state_word,thought:reaction.data.thought,recommendation:reaction.data.recommendation}:undefined,review:review.data?{rating:review.data.rating,sentence:review.data.final_sentence}:undefined,feedback:feedback.data?{returnIntent:feedback.data.return_intent,strongest:feedback.data.strongest_part||'',improve:feedback.data.improve_text||'',willingness:feedback.data.willingness_to_pay||0,durationFeel:feedback.data.duration_feel||'нормально',inviteFriend:feedback.data.invite_friend===null||feedback.data.invite_friend===undefined?8:Number(feedback.data.invite_friend)}:undefined,...extras,creature,...datingBundle,notificationPrefs:{writeAccess:!!notif.data?.write_access,events:notif.data?.events!==false,creature:notif.data?.creature!==false,stories:notif.data?.stories!==false,matches:notif.data?.matches!==false,tickets:notif.data?.tickets!==false,reminders:notif.data?.reminders!==false,quietHours:notif.data?.quiet_hours!==false}})
+      return json({...common,show,isAdmin,user,profile,filmAssignments,filmLive,onboardingComplete:profile.completed,registration:effectiveRegistrationStatus(reg.data),registrationId:reg.data?.id||undefined,queuePosition:effectiveRegistrationStatus(reg.data)==='waitlist'?Number(reg.data?.queue_position||0)||undefined:undefined,reservationExpiresAt:effectiveRegistrationStatus(reg.data)==='reserved'?reg.data?.reservation_expires_at||undefined:undefined,idea:idea.data||undefined,predictions:(common.predictions||[]).map((p:any)=>({...p,answer:answerMap.get(p.id)})),predictionSubmitted:(answers.data||[]).length>0,thought:thought.data?.text,reaction:reaction.data?{rating:reaction.data.rating,stateWord:reaction.data.state_word,thought:reaction.data.thought,recommendation:reaction.data.recommendation}:undefined,review:review.data?{rating:review.data.rating,sentence:review.data.final_sentence}:undefined,feedback:feedback.data?{returnIntent:feedback.data.return_intent,strongest:feedback.data.strongest_part||'',improve:feedback.data.improve_text||'',willingness:feedback.data.willingness_to_pay||0,durationFeel:feedback.data.duration_feel||'нормально',inviteFriend:feedback.data.invite_friend===null||feedback.data.invite_friend===undefined?8:Number(feedback.data.invite_friend)}:undefined,...extras,creature,...datingBundle,notificationPrefs:{writeAccess:!!notif.data?.write_access,events:notif.data?.events!==false,creature:notif.data?.creature!==false,stories:notif.data?.stories!==false,matches:notif.data?.matches!==false,tickets:notif.data?.tickets!==false,reminders:notif.data?.reminders!==false,quietHours:notif.data?.quiet_hours!==false}})
     }
 
     if(action==='save-profile-progress'||action==='save-profile'){
