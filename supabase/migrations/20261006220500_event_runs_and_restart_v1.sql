@@ -94,6 +94,13 @@ create unique index if not exists event_rounds_run_round_no_idx
 create index if not exists event_rounds_run_block_idx on public.event_rounds(run_id,block_id,round_no);
 create index if not exists event_votes_run_idx on public.event_votes(run_id,round_id,question_key);
 create index if not exists event_runtime_log_run_idx on public.event_runtime_log(run_id,created_at desc);
+alter table public.event_final_votes drop constraint if exists event_final_votes_pkey;
+alter table public.event_final_votes add column if not exists id uuid default gen_random_uuid();
+update public.event_final_votes set id=gen_random_uuid() where id is null;
+alter table public.event_final_votes alter column id set not null;
+alter table public.event_final_votes add constraint event_final_votes_pkey primary key(id);
+alter table public.event_final_votes alter column run_id set not null;
+alter table public.event_final_votes add constraint event_final_votes_run_user_key unique(run_id,user_id);
 create index if not exists event_final_votes_run_idx on public.event_final_votes(run_id);
 create index if not exists random_draws_run_idx on public.random_draws(run_id,created_at desc);
 
