@@ -94,6 +94,28 @@ create unique index if not exists event_rounds_run_round_no_idx
 create index if not exists event_rounds_run_block_idx on public.event_rounds(run_id,block_id,round_no);
 create index if not exists event_votes_run_idx on public.event_votes(run_id,round_id,question_key);
 create index if not exists event_runtime_log_run_idx on public.event_runtime_log(run_id,created_at desc);
+
+create or replace function public.attach_active_event_run()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $
+begin
+  if new.run_id is null then
+    select r.id into new.run_id
+    from public.event_runs r
+    where r.event_id=new.event_id and r.status='active'
+    limit 1;
+  end if;
+  return new;
+end;
+$;
+
+drop trigger if exists event_runtime_log_attach_run on public.event_runtime_log;
+create trigger event_runtime_log_attach_run
+before insert on public.event_runtime_log
+for each row execute function public.attach_active_event_run();
 alter table public.event_final_votes drop constraint if exists event_final_votes_pkey;
 alter table public.event_final_votes add column if not exists id uuid default gen_random_uuid();
 update public.event_final_votes set id=gen_random_uuid() where id is null;
