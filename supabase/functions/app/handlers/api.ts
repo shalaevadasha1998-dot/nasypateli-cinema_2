@@ -1166,8 +1166,13 @@ export async function handleApi(req:Request){
   if(req.method==='OPTIONS')return new Response('ok',{headers:cors})
   if(req.method==='GET')return json({ok:true,version:'0.9.0',release:RELEASE_SHA,service:'nasypateli-cinema'})
   if(req.method!=='POST')return err('Нужен POST-запрос',405)
+  const traceId=crypto.randomUUID()
+  let requestAction='unknown'
+  let requestSlug=''
   try{
     const body=await req.json();const action=String(body.action||'')
+    requestAction=action||'unknown'
+    requestSlug=String(body.slug||'').slice(0,120)
     if(action!=='health'&&Date.now()<dataApiCircuitOpenUntil){
       return new Response(JSON.stringify({error:'сервер восстанавливается. попробуйте ещё раз через несколько секунд'}),{status:503,headers:{...cors,'content-type':'application/json','retry-after':'10'}})
     }
@@ -4037,7 +4042,19 @@ export async function handleApi(req:Request){
     return err(`Неизвестное действие: ${action}`,404)
   }catch(e:any){
     if(e?.message==='EVENT_NOT_FOUND')return err('Событие не найдено',404)
-    console.error(e)
+    console.error(JSON.stringify({
+      type:'critical_error',
+      timestamp:new Date().toISOString(),
+      trace_id:traceId,
+      action:requestAction,
+      slug:requestSlug||undefined,
+      route:new URL(req.url).pathname,
+      method:req.method,
+      release:RELEASE_SHA,
+      error:String(e?.message||e||'unknown error').slice(0,1200),
+      code:e?.code||undefined,
+      stack:String(e?.stack||'').slice(0,6000)
+    }))
     if(e?.message==='EVENT_OPERATION_BUSY')return err('Это действие уже выполняется в другой вкладке. Дождитесь результата и обновите пульт.',409)
     if(dataApiUnavailable(e)){
       dataApiCircuitOpenUntil=Date.now()+10000
