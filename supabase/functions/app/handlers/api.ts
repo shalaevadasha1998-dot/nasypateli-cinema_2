@@ -1834,11 +1834,12 @@ export async function handleApi(req:Request){
         if(!t.data.event_id)return err('У жетона нет события',422)
         const [reg,ev]=await Promise.all([
           db.from('registrations').select('status').eq('event_id',t.data.event_id).eq('user_id',user.id).maybeSingle(),
-          db.from('events').select('slug,title,starts_at,status').eq('id',t.data.event_id).single()
+          db.from('events').select('slug,title,starts_at,status,settings').eq('id',t.data.event_id).single()
         ])
         if(reg.error)throw reg.error;if(ev.error)throw ev.error
         if(!checkinOpenStatuses.has(String(ev.data.status||'')))return err(ev.data.status==='CLOSED'?'Чек-ин на этот вечер уже закрыт':'Чек-ин ещё не открыт',409)
         const awardJoin=async()=>{
+          if(ev.data?.settings?.test_room===true)return null
           const p=await db.from('event_programs').select('config').eq('event_id',t.data.event_id).maybeSingle()
           if(p.error){console.error('checkin reward config failed',p.error);return null}
           const amount=Math.max(0,Math.min(100,Number(p.data?.config?.rewards?.join||0)))
