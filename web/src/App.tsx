@@ -633,7 +633,12 @@ function ShowControl({data,busy,run}:{data:DemoState;busy:boolean;run:(action:st
     </div>
 
     {runtime.runStatus==='idle'&&<>
+      {runtime.isTest&&<div className="show-test-banner">test mode · ${runtime.runKey||'test run'} · постоянные крошки и live-статистика не меняются</div>}
       <Button disabled={busy||!screenReady} onClick={()=>command('start')}>начать мероприятие + музыку</Button>
+      <div className="show-secondary-controls">
+        <Button kind="secondary" disabled={busy} onClick={()=>{if(window.confirm('создать новый чистый test run? тестовые голоса и результаты будут отделены от live.'))void command('restart_test')}}>новый test run</Button>
+        {runtime.isTest&&<Button kind="secondary" disabled={busy} onClick={()=>{if(window.confirm('создать чистый live run для настоящего мероприятия?'))void command('restart_live')}}>перейти в live</Button>}
+      </div>
       {!screenReady&&<p className="muted">сначала на ноутбуке projector нажми «включить звук и проверить». после этого эта кнопка станет активной.</p>}
     </>}
 
@@ -1554,7 +1559,7 @@ function ProjectorAudio({data,screenToken}:{data:DemoState;screenToken:string}){
   </>
 }
 
-function Screen(){const {slug}=useParams();const [search]=useSearchParams();const privileged=usePrivilegedState('screen',slug);const {data,error}=privileged;const [now,setNow]=useState(()=>Date.now());useEffect(()=>{const t=window.setInterval(()=>setNow(Date.now()),1000);return()=>window.clearInterval(t)},[]);if(!data)return <Loading error={error}/>;const animalDemo=search.get('demo')==='animals';const projectedFlow=!!data.projector&&!['idle','arrival'].includes(data.projector.state);const content=animalDemo?<ScreenCreatureDemo data={data}/>:screenContent(data);const timer=animalDemo||projectedFlow?'':showTimerText(data,now);const status=animalDemo?'репетиция животин':projectedFlow?projectorStateLabel(data.projector!.state):data.show?.runtime.currentBlock?.type==='arrival'?'сбор гостей':data.show?.runtime.runStatus!=='idle'?data.show?.runtime.currentBlock?.title:statusLabel(data.event.status);return <div className="screen-page">{!animalDemo&&<ProjectorAudio data={data} screenToken={privileged.token}/>}<div className="screen-brand">НАСЫПАТЕЛИ В КИНО</div><div className="screen-status">{status}{timer&&<b>{timer}</b>}</div>{!animalDemo&&data.screenMessage&&<div className="screen-message">{data.screenMessage}</div>}<div className="screen-content">{content}</div><div className="screen-footer">{animalDemo?'demo · база не меняется':eventDate(data.event.startsAt)+'. НАСЫПАТЕЛИ В КИНО'}</div></div>}
+function Screen(){const {slug}=useParams();const [search]=useSearchParams();const privileged=usePrivilegedState('screen',slug);const {data,error}=privileged;const [now,setNow]=useState(()=>Date.now());useEffect(()=>{const t=window.setInterval(()=>setNow(Date.now()),1000);return()=>window.clearInterval(t)},[]);if(!data)return <Loading error={error}/>;const animalDemo=search.get('demo')==='animals';const projectedFlow=!!data.projector&&!['idle','arrival'].includes(data.projector.state);const content=animalDemo?<ScreenCreatureDemo data={data}/>:screenContent(data);const timer=animalDemo||projectedFlow?'':showTimerText(data,now);const status=animalDemo?'репетиция животин':projectedFlow?projectorStateLabel(data.projector!.state):data.show?.runtime.currentBlock?.type==='arrival'?'сбор гостей':data.show?.runtime.runStatus!=='idle'?data.show?.runtime.currentBlock?.title:statusLabel(data.event.status);const testMode=data.show?.runtime.isTest===true;return <div className="screen-page">{!animalDemo&&<ProjectorAudio data={data} screenToken={privileged.token}/>}<div className="screen-brand">НАСЫПАТЕЛИ В КИНО</div>{testMode&&<div className="screen-message">test mode · {data.show?.runtime.runKey||'test run'} · результаты не попадут в live</div>}<div className="screen-status">{status}{timer&&<b>{timer}</b>}</div>{!animalDemo&&data.screenMessage&&<div className="screen-message">{data.screenMessage}</div>}<div className="screen-content">{content}</div><div className="screen-footer">{animalDemo?'demo · база не меняется':eventDate(data.event.startsAt)+'. НАСЫПАТЕЛИ В КИНО'}</div></div>}
 
 function TelegramStartRouter(){
   const nav=useNavigate()
