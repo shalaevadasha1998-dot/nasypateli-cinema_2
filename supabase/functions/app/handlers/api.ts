@@ -3251,49 +3251,7 @@ export async function handleApi(req:Request){
         const ev=await db.from('events').update({status:'CHECKIN',winner_user_id:null}).eq('id',event.id)
         if(ev.error)throw ev.error
         return json({ok:true,run:restarted.data?.[0]||null,show:await buildShowState(db,{...event,status:'CHECKIN'})})
-        /* legacy destructive reset intentionally bypassed after run isolation
 
-        const keepUser=String(event?.settings?.test_user_id||'')
-        if(isUuid(keepUser)){
-          const regs=await db.from('registrations').delete().eq('event_id',event.id).neq('user_id',keepUser)
-          if(regs.error)throw regs.error
-          const admitted=await db.from('registrations').upsert({
-            event_id:event.id,user_id:keepUser,status:'attended',queue_position:null,payment_provider:'test_room',
-            provider_payment_id:null,telegram_payment_charge_id:null,amount_rub:0,photo_video_consent:false,
-            paid_at:new Date().toISOString(),reservation_expires_at:null
-          },{onConflict:'event_id,user_id'})
-          if(admitted.error)throw admitted.error
-        }
-        for(const table of ['event_final_votes','event_presence','event_runtime_log','random_draws']){
-          const d=await db.from(table).delete().eq('event_id',event.id)
-          if(d.error)throw d.error
-        }
-        const rounds=await db.from('event_rounds').delete().eq('event_id',event.id)
-        if(rounds.error)throw rounds.error
-        const screen=await db.from('event_screen_status').delete().eq('event_id',event.id)
-        if(screen.error)throw screen.error
-        const now=new Date().toISOString()
-        const ev=await db.from('events').update({status:'CHECKIN',winner_user_id:null}).eq('id',event.id)
-        if(ev.error)throw ev.error
-        const rt=await db.from('event_runtime').select('revision').eq('event_id',event.id).single()
-        if(rt.error)throw rt.error
-        const runtime=await db.from('event_runtime').update({
-          run_status:'idle',current_block_id:'arrival',current_block_index:0,current_round:0,current_round_id:null,
-          current_movie_id:null,current_question:null,vote_state:'closed',results_visible:false,video_state:{status:'idle'},
-          started_at:null,block_started_at:null,paused_at:null,director_cue_index:0,
-          audio_state:{mode:'auto',status:'stopped',track_key:null,playlist_index:0,volume:.32,updated_at:null},
-          revision:Number(rt.data.revision||0)+1,updated_at:now
-        }).eq('event_id',event.id)
-        if(runtime.error)throw runtime.error
-        const projector=await db.from('event_projector_state').select('revision').eq('event_id',event.id).maybeSingle()
-        if(projector.error)throw projector.error
-        const p=await db.from('event_projector_state').upsert({
-          event_id:event.id,state:'arrival',round_id:null,film_package_id:null,payload:{},
-          revision:Number(projector.data?.revision||0)+1,updated_at:now
-        },{onConflict:'event_id'})
-        if(p.error)throw p.error
-        return json({ok:true,show:await buildShowState(db,{...event,status:'CHECKIN'})})
-        */
       })
     }
 
