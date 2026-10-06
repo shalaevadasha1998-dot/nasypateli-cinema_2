@@ -593,8 +593,6 @@ function ShowControl({data,busy,run}:{data:DemoState;busy:boolean;run:(action:st
   const confirmed=rows.filter(row=>['paid','attended'].includes(row.status)).length
   const attended=rows.filter(row=>row.status==='attended').length
   const waiting=rows.filter(row=>row.status==='waitlist').length
-  const noShow=rows.filter(row=>row.status==='no_show').length
-  const attendanceRate=confirmed+noShow>0?Math.round(attended/(confirmed+noShow)*100):0
   const runtime=show.runtime
   const block=runtime.currentBlock
   const finished=runtime.runStatus==='finished'
@@ -1176,6 +1174,9 @@ function AdminParticipants({data,reload,adminToken=''}:{data:DemoState;reload:()
   const confirmed=rows.filter(row=>['paid','attended'].includes(row.status)).length
   const attended=rows.filter(row=>row.status==='attended').length
   const waiting=rows.filter(row=>row.status==='waitlist').length
+  const noShow=rows.filter(row=>row.status==='no_show').length
+  const attendanceBase=attended+noShow
+  const attendanceRate=attendanceBase>0?Math.round(attended/attendanceBase*100):0
   const fix=async(row:AdminParticipant,action:'mark_attended'|'undo_attended'|'release_hold'|'cancel_registration')=>{
     const confirmation=action==='cancel_registration'
       ?'сбросить билет у этого участника? место освободится. профиль и животина останутся, а человек сможет получить бесплатный билет заново'
