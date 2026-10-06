@@ -3274,7 +3274,10 @@ export async function handleApi(req:Request){
       if(!allowed.has(op))return err('неизвестная команда пульта',422)
       return await withEventOperation(db,event.id,'show-control',async()=>{
         if(op==='restart'||op==='restart_test'||op==='restart_live'){
-          const mode=op==='restart_test'?'test':op==='restart_live'?'live':(event?.settings?.test_room===true?'test':String(runtimeR?.data?.event_runs?.mode||'live'))
+          const currentRun=await db.from('event_runtime').select('run_id,event_runs(mode)').eq('event_id',event.id).maybeSingle()
+          if(currentRun.error)throw currentRun.error
+          const currentMode=String((currentRun.data as any)?.event_runs?.mode||'')
+          const mode=op==='restart_test'?'test':op==='restart_live'?'live':(currentMode==='test'?'test':'live')
           const restarted=await db.rpc('restart_event_run',{p_event_id:event.id,p_mode:mode})
           if(restarted.error)throw restarted.error
           return json({ok:true,run:restarted.data?.[0]||null,show:await buildShowState(db,event)})
