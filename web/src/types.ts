@@ -253,6 +253,10 @@ export type ShowRound = {
 }
 
 export type EventRuntime = {
+  runId?:string
+  runKey?:string
+  runMode?:'test'|'live'
+  isTest?:boolean
   runStatus:'idle'|'running'|'paused'|'finished'
   currentBlockId:string
   currentBlockIndex:number
