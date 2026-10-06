@@ -3270,11 +3270,11 @@ export async function handleApi(req:Request){
 
     if(action==='admin-show-control'){
       const op=String(body.op||'').trim()
-      const allowed=new Set(['start','next','back','jump','pause','resume','restart','skip','start_music','end_music','end_event'])
+      const allowed=new Set(['start','next','back','jump','pause','resume','restart','restart_test','restart_live','skip','start_music','end_music','end_event'])
       if(!allowed.has(op))return err('неизвестная команда пульта',422)
       return await withEventOperation(db,event.id,'show-control',async()=>{
-        if(op==='restart'){
-          const mode=event?.settings?.test_room===true?'test':'live'
+        if(op==='restart'||op==='restart_test'||op==='restart_live'){
+          const mode=op==='restart_test'?'test':op==='restart_live'?'live':(event?.settings?.test_room===true?'test':String(runtimeR?.data?.event_runs?.mode||'live'))
           const restarted=await db.rpc('restart_event_run',{p_event_id:event.id,p_mode:mode})
           if(restarted.error)throw restarted.error
           return json({ok:true,run:restarted.data?.[0]||null,show:await buildShowState(db,event)})
