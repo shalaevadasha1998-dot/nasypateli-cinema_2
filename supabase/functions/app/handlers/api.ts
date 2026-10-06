@@ -716,10 +716,14 @@ async function projectorPublicState(db:any,event:any){
 }
 
 async function setProjectorState(db:any,event:any,state:string,roundId:string|null,filmPackageId:string|null,payload:any){
-  const current=await db.from('event_projector_state').select('revision').eq('event_id',event.id).maybeSingle()
+  const [current,runtime]=await Promise.all([
+    db.from('event_projector_state').select('revision').eq('event_id',event.id).maybeSingle(),
+    db.from('event_runtime').select('run_id').eq('event_id',event.id).maybeSingle()
+  ])
   if(current.error)throw current.error
+  if(runtime.error)throw runtime.error
   const saved=await db.from('event_projector_state').upsert({
-    event_id:event.id,state,round_id:roundId,film_package_id:filmPackageId,payload:payload||{},
+    event_id:event.id,run_id:runtime.data?.run_id||null,state,round_id:roundId,film_package_id:filmPackageId,payload:payload||{},
     revision:Number(current.data?.revision||0)+1,updated_at:new Date().toISOString()
   },{onConflict:'event_id'})
   if(saved.error)throw saved.error
@@ -2048,17 +2052,20 @@ export async function handleApi(req:Request){
       if(show.runtime?.runStatus!=='running'||show.runtime?.currentBlock?.type!=='final_vote')return err('финальный выбор сейчас закрыт',409)
       const movieId=String(body.movieId||'')
       if(!isUuid(movieId))return err('выберите фильм',422)
-      const allowed=await db.from('event_rounds').select('id').eq('event_id',event.id).eq('movie_candidate_id',movieId).limit(1).maybeSingle()
+      let allowedQ=db.from('event_rounds').select('id').eq('event_id',event.id).eq('movie_candidate_id',movieId)
+      if(show.runtime?.runId)allowedQ=allowedQ.eq('run_id',show.runtime.runId)
+      const allowed=await allowedQ.limit(1).maybeSingle()
       if(allowed.error)throw allowed.error
       if(!allowed.data)return err('этого фильма нет в финальном выборе',422)
+      if(!show.runtime?.runId)return err('нет активного запуска мероприятия',409)
       const saved=await db.from('event_final_votes').upsert({
-        event_id:event.id,user_id:user.id,movie_candidate_id:movieId,updated_at:new Date().toISOString()
-      },{onConflict:'event_id,user_id'}).select('movie_candidate_id').single()
+        event_id:event.id,run_id:show.runtime.runId,user_id:user.id,movie_candidate_id:movieId,updated_at:new Date().toISOString()
+      },{onConflict:'run_id,user_id'}).select('movie_candidate_id').single()
       if(saved.error)throw saved.error
       const reward=Math.max(0,Math.min(100,Number(show.program?.rewards?.finale||0)))
       let crumbs:any=null
-      if(reward>0){
-        const award=await db.rpc('award_event_crumbs',{p_user_id:user.id,p_event_id:event.id,p_amount:reward,p_reason:'final_vote',p_source_id:event.id})
+      if(reward>0&&!show.runtime?.isTest){
+        const award=await db.rpc('award_event_crumbs',{p_user_id:user.id,p_event_id:event.id,p_amount:reward,p_reason:'final_vote',p_source_id:`${show.runtime.runId||event.id}:final_vote`})
         if(award.error)console.error('final vote crumb award failed',award.error)
         else crumbs=award.data
       }
@@ -2075,8 +2082,10 @@ export async function handleApi(req:Request){
       const answer=body.answer
       const encoded=JSON.stringify(answer)
       if(answer===undefined||encoded.length>1200)return err('некорректный ответ',422)
+      if(!show.runtime?.runId)return err('нет активного запуска мероприятия',409)
       const vote=await db.from('event_votes').upsert({
         event_id:event.id,
+        run_id:show.runtime.runId,
         round_id:round.id,
         question_key:questionKey,
         user_id:user.id,
@@ -2086,7 +2095,7 @@ export async function handleApi(req:Request){
       if(vote.error)throw vote.error
       const reward=Math.max(0,Math.min(100,Number(show.program?.rewards?.vote||0)))
       let crumbs:any=null
-      if(reward>0){
+      if(reward>0&&!show.runtime?.isTest){
         const award=await db.rpc('award_event_crumbs',{p_user_id:user.id,p_event_id:event.id,p_amount:reward,p_reason:'vote',p_source_id:`${round.id}:${questionKey}`})
         if(award.error)console.error('vote crumb award failed',award.error)
         else crumbs=award.data
@@ -3207,6 +3216,13 @@ export async function handleApi(req:Request){
     if(action==='admin-test-room-reset'){
       if(event?.settings?.test_room!==true)return err('сброс доступен только в тестовой комнате',403)
       return await withEventOperation(db,event.id,'test-room-reset',async()=>{
+        const restarted=await db.rpc('restart_event_run',{p_event_id:event.id,p_mode:'test'})
+        if(restarted.error)throw restarted.error
+        const ev=await db.from('events').update({status:'CHECKIN',winner_user_id:null}).eq('id',event.id)
+        if(ev.error)throw ev.error
+        return json({ok:true,run:restarted.data?.[0]||null,show:await buildShowState(db,{...event,status:'CHECKIN'})})
+        /* legacy destructive reset intentionally bypassed after run isolation
+
         const keepUser=String(event?.settings?.test_user_id||'')
         if(isUuid(keepUser)){
           const regs=await db.from('registrations').delete().eq('event_id',event.id).neq('user_id',keepUser)
@@ -3247,6 +3263,7 @@ export async function handleApi(req:Request){
         },{onConflict:'event_id'})
         if(p.error)throw p.error
         return json({ok:true,show:await buildShowState(db,{...event,status:'CHECKIN'})})
+        */
       })
     }
 
@@ -3255,6 +3272,12 @@ export async function handleApi(req:Request){
       const allowed=new Set(['start','next','back','jump','pause','resume','restart','skip','start_music','end_music','end_event'])
       if(!allowed.has(op))return err('неизвестная команда пульта',422)
       return await withEventOperation(db,event.id,'show-control',async()=>{
+        if(op==='restart'){
+          const mode=event?.settings?.test_room===true?'test':'live'
+          const restarted=await db.rpc('restart_event_run',{p_event_id:event.id,p_mode:mode})
+          if(restarted.error)throw restarted.error
+          return json({ok:true,run:restarted.data?.[0]||null,show:await buildShowState(db,event)})
+        }
         const [programR,runtimeR]=await Promise.all([
           db.from('event_programs').select('config').eq('event_id',event.id).single(),
           db.from('event_runtime').select('*').eq('event_id',event.id).single()
@@ -3306,8 +3329,6 @@ export async function handleApi(req:Request){
             blockStartedAt=new Date(new Date(blockStartedAt).getTime()+shift).toISOString()
           }
           runStatus='running';pausedAt=null
-        }else if(op==='restart'){
-          blockStartedAt=now;runStatus='running';pausedAt=null;resetRound=true
         }else if(op==='end_event'){
           const post=blocks.findIndex((x:any)=>x.type==='post_event')
           idx=post>=0?post:blocks.length-1;runStatus='finished';blockStartedAt=now;pausedAt=null;resetRound=true
@@ -3370,7 +3391,8 @@ export async function handleApi(req:Request){
         if(!block||String(block.type)!=='cinema_rounds')return err('кинораунд запускается только внутри киношного блока',409)
         if(show.runtime.runStatus!=='running')return err('сначала запустите шоу',409)
         const roundTarget=Math.max(1,Math.min(20,Number(block.roundsTarget||2)))
-        const blockRounds=await db.from('event_rounds').select('*',{count:'exact',head:true}).eq('event_id',event.id).eq('block_id',block.id)
+        if(!show.runtime.runId)return err('нет активного запуска мероприятия',409)
+        const blockRounds=await db.from('event_rounds').select('*',{count:'exact',head:true}).eq('event_id',event.id).eq('run_id',show.runtime.runId).eq('block_id',block.id)
         if(blockRounds.error)throw blockRounds.error
         if(Number(blockRounds.count||0)>=roundTarget&&show.currentRound?.status!=='active')return err('все раунды этого блока уже завершены · нажмите следующий блок',409)
         const now=new Date().toISOString()
@@ -3378,11 +3400,11 @@ export async function handleApi(req:Request){
           const c=await db.from('event_rounds').update({status:'closed',flow_status:'round_finished',closed_at:now,updated_at:now,vote_state:'closed'}).eq('id',show.currentRound.id)
           if(c.error)throw c.error
         }
-        const lastRound=await db.from('event_rounds').select('round_no').eq('event_id',event.id).order('round_no',{ascending:false}).limit(1).maybeSingle()
+        const lastRound=await db.from('event_rounds').select('round_no').eq('event_id',event.id).eq('run_id',show.runtime.runId).order('round_no',{ascending:false}).limit(1).maybeSingle()
         if(lastRound.error)throw lastRound.error
         const roundNo=Number(lastRound.data?.round_no||0)+1
         const ins=await db.from('event_rounds').insert({
-          event_id:event.id,round_no:roundNo,block_id:block.id,status:'active',flow_status:'round_intro',
+          event_id:event.id,run_id:show.runtime.runId,round_no:roundNo,block_id:block.id,status:'active',flow_status:'round_intro',
           question_position:0,question_target:roundNo%2===0?3:0,vote_state:'closed',results_visible:false,video_state:{status:'idle'},started_at:now
         }).select('id').single()
         if(ins.error)throw ins.error
@@ -3405,7 +3427,7 @@ export async function handleApi(req:Request){
         if(!show.currentRound?.id||show.currentRound.status!=='active')return err('сначала запустите раунд',409)
         const [packages,used]=await Promise.all([
           db.from('film_packages').select('movie_candidate_id').eq('event_id',event.id).eq('status','ready'),
-          db.from('event_rounds').select('movie_candidate_id').eq('event_id',event.id).not('movie_candidate_id','is',null)
+          db.from('event_rounds').select('movie_candidate_id').eq('event_id',event.id).eq('run_id',show.runtime.runId).not('movie_candidate_id','is',null)
         ])
         if(packages.error)throw packages.error;if(used.error)throw used.error
         const readyIds=[...new Set((packages.data||[]).map((x:any)=>String(x.movie_candidate_id)))]
@@ -3421,7 +3443,7 @@ export async function handleApi(req:Request){
         const rt=await db.from('event_runtime').select('revision').eq('event_id',event.id).single();if(rt.error)throw rt.error
         const runU=await db.from('event_runtime').update({current_movie_id:chosen.id,revision:Number(rt.data.revision||0)+1,updated_at:now}).eq('event_id',event.id).eq('revision',rt.data.revision).select('event_id').maybeSingle();if(runU.error)throw runU.error
         if(!runU.data)return err('пульт уже изменился в другой вкладке · обновите экран',409)
-        const draw=await db.from('random_draws').insert({event_id:event.id,draw_type:'show_movie',candidate_ids:pool.map((x:any)=>x.id),chosen_id:chosen.id,random_bytes_hex:pick.randomBytesHex});if(draw.error)throw draw.error
+        const draw=await db.from('random_draws').insert({event_id:event.id,run_id:show.runtime.runId||null,draw_type:'show_movie',candidate_ids:pool.map((x:any)=>x.id),chosen_id:chosen.id,random_bytes_hex:pick.randomBytesHex});if(draw.error)throw draw.error
         return json({ok:true,movieId:chosen.id,show:await buildShowState(db,event)})
       })
     }
