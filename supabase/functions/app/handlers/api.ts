@@ -1709,7 +1709,9 @@ export async function handleApi(req:Request){
         show={...show,myVote:mine.data?.answer}
       }
       if(show?.finalVote){
-        const mineFinal=await db.from('event_final_votes').select('movie_candidate_id').eq('event_id',event.id).eq('user_id',user.id).maybeSingle()
+        let mineFinalQ=db.from('event_final_votes').select('movie_candidate_id').eq('event_id',event.id).eq('user_id',user.id)
+        if(show.runtime?.runId)mineFinalQ=mineFinalQ.eq('run_id',show.runtime.runId)
+        const mineFinal=await mineFinalQ.maybeSingle()
         if(mineFinal.error)throw mineFinal.error
         show={...show,finalVote:{...show.finalVote,myVote:mineFinal.data?.movie_candidate_id||undefined}}
       }
@@ -2990,6 +2992,25 @@ export async function handleApi(req:Request){
       if(pack.error)throw pack.error
       if(roundInfo.error)throw roundInfo.error
       if(!pack.data||!roundInfo.data)return err('киноблок не найден',404)
+      const show=await buildShowState(db,event)
+      if(show.runtime?.isTest){
+        const candidate=await db.from('registrations').select('user_id,creatures(name,stage,settings)').eq('event_id',event.id).eq('status','attended').limit(1).maybeSingle()
+        if(candidate.error)throw candidate.error
+        if(!candidate.data)return err('для test run отметьте хотя бы одного тестового участника',409)
+        const animal:any=(candidate.data as any).creatures||{}
+        const dueAt=new Date(Date.now()+7*86400000).toISOString()
+        await setProjectorState(db,event,'assignment_winner',roundId,packageId,{
+          animalName:String(animal.name||'животина'),filmTitle:pack.data.title_snapshot,dueAt,
+          assignmentKind:Number(roundInfo.data.question_target||0)>0?'seer':'viewer',
+          correctCount:0,totalQuestions:Number(roundInfo.data.question_target||0),
+          animalStage:String(animal.stage||'stage_0'),
+          visualVariant:Math.max(1,Math.min(50,Math.round(Number(animal.settings?.visual_variant||1)))),
+          testMode:true
+        })
+        const flow=await db.from('event_rounds').update({flow_status:'assignment_selected',updated_at:new Date().toISOString()}).eq('id',roundId).eq('event_id',event.id)
+        if(flow.error)throw flow.error
+        return json({ok:true,testMode:true,assignment:{animalName:String(animal.name||'животина'),filmTitle:pack.data.title_snapshot,dueAt},projector:await projectorPublicState(db,event)})
+      }
       const assignment=await db.rpc('assign_film_mission',{p_event_id:event.id,p_round_id:roundId,p_film_package_id:packageId})
       if(assignment.error){
         const m=String(assignment.error.message||'')
