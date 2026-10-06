@@ -3637,8 +3637,8 @@ export async function handleApi(req:Request){
     }
 
     if(action==='admin-award-crumbs'){
-      if(event?.settings?.test_room===true)return json({ok:true,awarded:0,already:0,participants:0,amount:0,testRoom:true})
       const show=await buildShowState(db,event)
+      if(event?.settings?.test_room===true||show.runtime?.isTest===true)return json({ok:true,awarded:0,already:0,participants:0,amount:0,testMode:true})
       const amount=Math.max(1,Math.min(100,Math.round(Number(body.amount)||show.program.rewards.round||1)))
       const scope=String(body.scope||'round_voters')
       const sourceId=String(body.sourceId||show.currentRound?.id||show.runtime.currentBlockId||'manual').slice(0,160)
