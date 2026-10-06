@@ -633,7 +633,7 @@ function ShowControl({data,busy,run}:{data:DemoState;busy:boolean;run:(action:st
     </div>
 
     {runtime.runStatus==='idle'&&<>
-      {runtime.isTest&&<div className="show-test-banner">test mode · ${runtime.runKey||'test run'} · постоянные крошки и live-статистика не меняются</div>}
+      {runtime.isTest&&<div className="show-test-banner">test mode · {runtime.runKey||'test run'} · постоянные крошки и live-статистика не меняются</div>}
       <Button disabled={busy||!screenReady} onClick={()=>command('start')}>начать мероприятие + музыку</Button>
       <div className="show-secondary-controls">
         <Button kind="secondary" disabled={busy} onClick={()=>{if(window.confirm('создать новый чистый test run? тестовые голоса и результаты будут отделены от live.'))void command('restart_test')}}>новый test run</Button>
