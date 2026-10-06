@@ -584,7 +584,7 @@ function Club(){const {data,error}=useStateData();if(!data)return <Loading error
 
 
 function showRunStatusLabel(status:string){return status==='idle'?'готово':status==='running'?'эфир':status==='paused'?'пауза':status==='finished'?'завершено':status}
-function registrationStatusLabel(status:AdminParticipant['status']){return status==='paid'?'билет':status==='attended'?'пришёл':status==='reserved'?'резерв':status==='waitlist'?'ожидание':status==='cancelled'?'билет сброшен':status==='no_show'?'не пришёл':status==='refunded'?'возврат':status}
+function registrationStatusLabel(status:AdminParticipant['status']){return status==='paid'?'оплачен':status==='attended'?'пришёл':status==='reserved'?'ожидает оплаты':status==='waitlist'?'ожидание':status==='cancelled'?'отменён':status==='no_show'?'не пришёл':status==='refunded'?'возврат':status}
 
 function ShowControl({data,busy,run}:{data:DemoState;busy:boolean;run:(action:string,payload?:Record<string,unknown>)=>Promise<any>}){
   const show=data.show
