@@ -605,7 +605,7 @@ function ShowControl({data,busy,run}:{data:DemoState;busy:boolean;run:(action:st
   const cinemaRoundActive=block?.type==='cinema_rounds'&&show.currentRound?.status==='active'
   const activeParticipant=rows.find(x=>x.status==='attended')||rows[0]
   const creatureName=uiLower(activeParticipant?.creatureName||'животина')
-  const testRoom=String(data.event.slug||'').startsWith('test-')
+  const testRoom=runtime.isTest===true||String(data.event.slug||'').startsWith('test-')
   let scheduleCursor=0
   const exactSlots=new Map(show.program.blocks.map(b=>{
     const start=scheduleCursor
@@ -616,7 +616,7 @@ function ShowControl({data,busy,run}:{data:DemoState;busy:boolean;run:(action:st
   const minuteMark=(value:number)=>`${String(Math.floor(value/60)).padStart(2,'0')}:${String(Math.round(value%60)).padStart(2,'0')}`
   return <section className={runtime.runStatus==='running'?'show-console live':'show-console'}>
     <div className="show-console-head">
-      <div><div className="eyebrow">{testRoom?`тест · ${creatureName} · ${attended} из ${Math.max(confirmed,1)}`:finished?'вечер закончен':runtime.runStatus==='idle'?'готово к запуску':runtime.runStatus==='paused'?'шоу на паузе':'шоу идёт'}</div><h1>{block?.title||'мероприятие'}</h1></div>
+      <div><div className="eyebrow">{testRoom?`test mode · ${runtime.runKey||'run'} · ${creatureName} · ${attended} из ${Math.max(confirmed,1)}`:finished?'вечер закончен':runtime.runStatus==='idle'?'готово к запуску':runtime.runStatus==='paused'?'шоу на паузе':'шоу идёт'}</div><h1>{block?.title||'мероприятие'}</h1></div>
       <span className={runtime.runStatus==='running'?'show-live-dot on':'show-live-dot'}>{showRunStatusLabel(runtime.runStatus)}</span>
     </div>
 
@@ -656,8 +656,9 @@ function ShowControl({data,busy,run}:{data:DemoState;busy:boolean;run:(action:st
 
     {['running','paused'].includes(runtime.runStatus)&&<details className="show-emergency-controls"><summary>аварийные действия</summary><div className="show-secondary-controls">
       {runtime.runStatus==='running'&&<Button kind="secondary" disabled={busy} onClick={()=>command('pause')}>пауза мероприятия</Button>}
-      <Button kind="secondary" disabled={busy} onClick={()=>command('restart')}>перезапустить текущий блок</Button>
-      {testRoom&&<Button kind="secondary" disabled={busy} onClick={()=>{if(window.confirm('сбросить тестовую комнату полностью и начать с нуля?'))void run('admin-test-room-reset')}}>сбросить тест с нуля</Button>}
+      <Button kind="secondary" disabled={busy} onClick={()=>{if(window.confirm('рестарт мероприятия? текущий run останется в архиве, а состояние шоу начнётся с нуля. билеты, пользователи и постоянные крошки не удалятся.'))void command('restart')}}>рестарт мероприятия</Button>
+      <Button kind="secondary" disabled={busy} onClick={()=>{if(window.confirm('создать новый чистый test run? тестовые голоса и результаты будут отделены от live.'))void command('restart_test')}}>новый test run</Button>
+      {testRoom&&<Button kind="secondary" disabled={busy} onClick={()=>{if(window.confirm('создать чистый live run? используй это только перед настоящим мероприятием.'))void command('restart_live')}}>перейти в live</Button>}
       {!finished&&<Button kind="danger" disabled={busy} onClick={()=>{if(window.confirm('закончить мероприятие?'))void command('end_event')}}>закончить мероприятие</Button>}
     </div></details>}
   </section>
