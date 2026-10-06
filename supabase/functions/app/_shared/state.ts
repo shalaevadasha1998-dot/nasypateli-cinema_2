@@ -94,7 +94,7 @@ function voteSummary(rows:any[]){
 export async function buildShowState(db:any,event:any){
   const [programR,runtimeR,presenceR,mediaR,screenR]=await Promise.all([
     db.from('event_programs').select('config,updated_at').eq('event_id',event.id).maybeSingle(),
-    db.from('event_runtime').select('*').eq('event_id',event.id).maybeSingle(),
+    db.from('event_runtime').select('*,event_runs(id,run_key,mode,status,sequence_no)').eq('event_id',event.id).maybeSingle(),
     db.from('event_presence').select('*',{count:'exact',head:true}).eq('event_id',event.id).gte('last_seen_at',new Date(Date.now()-45000).toISOString()),
     db.from('media_assets').select('asset_key,title,category,mime_type,duration_sec,public_url').eq('status','ready').order('asset_key'),
     db.from('event_screen_status').select('audio_unlocked,last_seen_at,test_nonce,test_asset_key').eq('event_id',event.id).maybeSingle()
@@ -108,7 +108,9 @@ export async function buildShowState(db:any,event:any){
   let results:any[]=[]
   let currentBlockRoundCount=0
   if(block?.type==='cinema_rounds'){
-    const blockRounds=await db.from('event_rounds').select('*',{count:'exact',head:true}).eq('event_id',event.id).eq('block_id',String(block.id))
+    let blockRoundsQ=db.from('event_rounds').select('*',{count:'exact',head:true}).eq('event_id',event.id).eq('block_id',String(block.id))
+    if(raw.run_id)blockRoundsQ=blockRoundsQ.eq('run_id',raw.run_id)
+    const blockRounds=await blockRoundsQ
     if(blockRounds.error)throw blockRounds.error
     currentBlockRoundCount=Number(blockRounds.count||0)
   }
@@ -162,10 +164,10 @@ export async function buildShowState(db:any,event:any){
 
   let finalVote:any=undefined
   if(['final_vote','finale','post_event'].includes(String(block?.type||''))||String(raw.run_status)==='finished'){
-    const [roundMoviesR,finalVotesR]=await Promise.all([
-      db.from('event_rounds').select('round_no,movie_candidate_id,movie_candidates(id,title,year,genre)').eq('event_id',event.id).not('movie_candidate_id','is',null).order('round_no'),
-      db.from('event_final_votes').select('movie_candidate_id').eq('event_id',event.id)
-    ])
+    let roundMoviesQ=db.from('event_rounds').select('round_no,movie_candidate_id,movie_candidates(id,title,year,genre)').eq('event_id',event.id).not('movie_candidate_id','is',null).order('round_no')
+    let finalVotesQ=db.from('event_final_votes').select('movie_candidate_id').eq('event_id',event.id)
+    if(raw.run_id){roundMoviesQ=roundMoviesQ.eq('run_id',raw.run_id);finalVotesQ=finalVotesQ.eq('run_id',raw.run_id)}
+    const [roundMoviesR,finalVotesR]=await Promise.all([roundMoviesQ,finalVotesQ])
     if(roundMoviesR.error)throw roundMoviesR.error
     if(finalVotesR.error)throw finalVotesR.error
     const counts=new Map<string,number>()
@@ -193,6 +195,10 @@ export async function buildShowState(db:any,event:any){
   return {
     program,
     runtime:{
+      runId:raw.run_id||undefined,
+      runKey:raw.event_runs?.run_key||undefined,
+      runMode:raw.event_runs?.mode||undefined,
+      isTest:raw.event_runs?.mode==='test',
       runStatus:raw.run_status||'idle',
       currentBlockId:block?.id||raw.current_block_id||'arrival',
       currentBlockIndex:block?.index??blockIndex,
