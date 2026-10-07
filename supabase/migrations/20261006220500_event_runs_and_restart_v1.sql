@@ -100,7 +100,7 @@ returns trigger
 language plpgsql
 security invoker
 set search_path = ''
-as $
+as $run$
 begin
   if new.run_id is null then
     select r.id into new.run_id
@@ -110,7 +110,7 @@ begin
   end if;
   return new;
 end;
-$;
+$run$;
 
 drop trigger if exists event_runtime_log_attach_run on public.event_runtime_log;
 create trigger event_runtime_log_attach_run
