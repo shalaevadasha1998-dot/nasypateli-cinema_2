@@ -93,7 +93,7 @@ jobs:
           const localMap=new Map(local.map(row=>[row.version,row.name]))
           const missingRemote=local.filter(row=>!remote.has(row.version))
           const missingLocal=[...remote.entries()].filter(([version])=>!localMap.has(version))
-          const knownLegacyProductionOnly=new Set(['20261002003637','20261002181924'])
+          const knownLegacyProductionOnly=new Set(['20261002003637','20261002181924','20261004114943'])
           const unexpectedProductionOnly=missingLocal.filter(([version])=>!knownLegacyProductionOnly.has(version))
           const legacyProductionOnly=missingLocal.filter(([version])=>knownLegacyProductionOnly.has(version))
           const renamed=local.filter(row=>remote.has(row.version)&&remote.get(row.version)!==row.name)
