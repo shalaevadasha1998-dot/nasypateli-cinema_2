@@ -129,6 +129,9 @@ export type AdminParticipant = {
   reservationExpiresAt?:string
   photoVideoConsent:boolean
   paidAt?:string
+  paymentProvider?:string
+  amountRub?:number
+  paymentReference?:string
   registeredAt:string
 }
 
@@ -253,6 +256,10 @@ export type ShowRound = {
 }
 
 export type EventRuntime = {
+  runId?:string
+  runKey?:string
+  runMode?:'test'|'live'
+  isTest?:boolean
   runStatus:'idle'|'running'|'paused'|'finished'
   currentBlockId:string
   currentBlockIndex:number
@@ -374,6 +381,7 @@ export type DemoState = {
   profile: CinemaProfile
   onboardingComplete:boolean
   registration: 'none'|'reserved'|'paid'|'attended'|'waitlist'|'refunded'|'cancelled'|'no_show'
+  registrationId?: string
   queuePosition?: number
   reservationExpiresAt?: string
   idea?: FilmIdea

@@ -48,14 +48,22 @@ export async function handleTelegram(req:Request){
           db.from('users').select('telegram_id').eq('id',parsed.userId).maybeSingle()
         ])
         if(reg.error)throw reg.error;if(payer.error)throw payer.error
-        const notExpired=!!reg.data?.reservation_expires_at && new Date(reg.data.reservation_expires_at).getTime()>Date.now()
         const amountOk=Number(q.total_amount)===Number(reg.data?.amount_rub||0)*100
         const currencyOk=String(q.currency)==='RUB'
         const payerOk=Number(q.from?.id)===Number(payer.data?.telegram_id)
-        ok=reg.data?.status==='reserved'&&notExpired&&amountOk&&currencyOk&&payerOk
-        if(!payerOk) errorMessage='Эта ссылка на оплату создана для другого Telegram-аккаунта.'
-        else if(reg.data?.status==='paid') errorMessage='Этот билет уже оплачен.'
-        else if(!notExpired) errorMessage='Резерв места истёк. Откройте мини-приложение и зарезервируйте место заново.'
+        if(amountOk&&currencyOk&&payerOk){
+          const authorized=await db.rpc('authorize_telegram_checkout',{
+            p_event_id:parsed.eventId,p_user_id:parsed.userId,p_amount_rub:Number(reg.data?.amount_rub||0)
+          })
+          if(authorized.error)throw authorized.error
+          const auth=authorized.data?.[0]
+          ok=auth?.ok===true
+          if(!ok){
+            if(auth?.reason==='already_paid')errorMessage='Этот билет уже оплачен.'
+            else if(auth?.reason==='sales_closed')errorMessage='Продажа билетов уже закрыта.'
+            else if(auth?.reason==='reservation_expired')errorMessage='Резерв места истёк. Откройте мини-приложение и зарезервируйте место заново.'
+          }
+        }else if(!payerOk) errorMessage='Эта ссылка на оплату создана для другого Telegram-аккаунта.'
       }
 
       await tg('answerPreCheckoutQuery',{pre_checkout_query_id:q.id,ok,...(!ok?{error_message:errorMessage}:{})})
@@ -78,19 +86,19 @@ export async function handleTelegram(req:Request){
         const payerOk=Number(msg.from?.id)===Number(payer.data?.telegram_id)
         const statusOk=['reserved','paid'].includes(reg.data?.status||'')
         if(reg.data&&amountOk&&currencyOk&&payerOk&&statusOk){
-          if(reg.data.status!=='paid'){
-            const paid=await db.from('registrations').update({
-              status:'paid',
-              paid_at:new Date().toISOString(),
-              reservation_expires_at:null,
-              provider_payment_id:p.provider_payment_charge_id||null,
-              telegram_payment_charge_id:p.telegram_payment_charge_id||null,
-              payment_provider:'telegram'
-            }).eq('event_id',parsed.eventId).eq('user_id',parsed.userId)
-            if(paid.error)throw paid.error
-            const [ev,occupied]=await Promise.all([db.from('events').select('capacity').eq('id',parsed.eventId).single(),db.from('registrations').select('*',{count:'exact',head:true}).eq('event_id',parsed.eventId).in('status',['paid','attended'])]);if(ev.error)throw ev.error;if(occupied.error)throw occupied.error;const seatsLeft=Math.max(0,Number(ev.data?.capacity||0)-Number(occupied.count||0));await emitStoryTrigger(db,parsed.userId,'ticket_paid',{seats_left:seatsLeft},parsed.eventId)
+          const confirmed=await db.rpc('confirm_telegram_payment',{
+            p_event_id:parsed.eventId,
+            p_user_id:parsed.userId,
+            p_amount_rub:Number(reg.data.amount_rub||0),
+            p_provider_payment_id:p.provider_payment_charge_id||null,
+            p_telegram_charge_id:p.telegram_payment_charge_id||null
+          })
+          if(confirmed.error)throw confirmed.error
+          const result=confirmed.data?.[0]
+          if(result&&!result.already_confirmed){
+            await emitStoryTrigger(db,parsed.userId,'ticket_paid',{seats_left:Number(result.seats_left||0)},parsed.eventId)
           }
-          paymentAccepted=true
+          paymentAccepted=!!result
         }else{
           console.error('successful_payment validation failed',{eventId:parsed.eventId,userId:parsed.userId,amountOk,currencyOk,payerOk,status:reg.data?.status})
         }
