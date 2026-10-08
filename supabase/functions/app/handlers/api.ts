@@ -582,6 +582,18 @@ async function mustAdmin(db:any,user:any,tg:any){
   throw new Error('Admin access required')
 }
 async function hasPaidAccess(db:any,eventId:string,userId:string){const r=await db.from('registrations').select('status').eq('event_id',eventId).eq('user_id',userId).maybeSingle();if(r.error)throw r.error;return ['paid','attended'].includes(r.data?.status||'')}
+async function activeRunIsTest(db:any,eventId:string){
+  const r=await db.from('event_runtime').select('run_id,event_runs(mode)').eq('event_id',eventId).maybeSingle()
+  if(r.error)throw r.error
+  return String((r.data as any)?.event_runs?.mode||'')==='test'
+}
+async function canUseLiveMechanics(db:any,eventId:string,userId:string,requireAttended=false){
+  if(await activeRunIsTest(db,eventId))return true
+  if(!requireAttended)return await hasPaidAccess(db,eventId,userId)
+  const r=await db.from('registrations').select('status').eq('event_id',eventId).eq('user_id',userId).maybeSingle()
+  if(r.error)throw r.error
+  return r.data?.status==='attended'
+}
 function effectiveRegistrationStatus(reg:any){const status=String(reg?.status||'none');if(status==='reserved'){const expires=reg?.reservation_expires_at?new Date(reg.reservation_expires_at).getTime():0;if(!expires||expires<=Date.now())return 'none'}return status}
 async function activeSeatCount(db:any,eventId:string){
   const now=new Date().toISOString()
@@ -2114,9 +2126,7 @@ export async function handleApi(req:Request){
     }
 
     if(action==='event-final-vote'){
-      const reg=await db.from('registrations').select('status').eq('event_id',event.id).eq('user_id',user.id).maybeSingle()
-      if(reg.error)throw reg.error
-      if(reg.data?.status!=='attended')return err('финальный выбор доступен тем, кто отметился в зале',403)
+      if(!await canUseLiveMechanics(db,event.id,user.id,true))return err('финальный выбор доступен тем, кто отметился в зале',403)
       const show=await buildShowState(db,event)
       if(show.runtime?.runStatus!=='running'||show.runtime?.currentBlock?.type!=='final_vote')return err('финальный выбор сейчас закрыт',409)
       const movieId=String(body.movieId||'')
@@ -2142,7 +2152,7 @@ export async function handleApi(req:Request){
     }
 
     if(action==='event-vote'){
-      if(!await hasPaidAccess(db,event.id,user.id))return err('нужен подтверждённый билет',403)
+      if(!await canUseLiveMechanics(db,event.id,user.id,false))return err('нужен подтверждённый билет',403)
       const show=await buildShowState(db,event)
       const round=show.currentRound
       if(!round?.id||round.status!=='active')return err('сейчас нет активного раунда',409)
@@ -2173,9 +2183,7 @@ export async function handleApi(req:Request){
     }
 
     if(action==='invented-film-submit'){
-      const reg=await db.from('registrations').select('status').eq('event_id',event.id).eq('user_id',user.id).maybeSingle()
-      if(reg.error)throw reg.error
-      if(reg.data?.status!=='attended')return err('эта механика только для тех, кто уже отметился в зале',403)
+      if(!await canUseLiveMechanics(db,event.id,user.id,true))return err('эта механика только для тех, кто уже отметился в зале',403)
       const runtime=await db.from('event_runtime').select('current_round_id').eq('event_id',event.id).maybeSingle()
       if(runtime.error)throw runtime.error
       const roundId=String(runtime.data?.current_round_id||'')
@@ -2199,9 +2207,7 @@ export async function handleApi(req:Request){
     }
 
     if(action==='film-one-word'){
-      const reg=await db.from('registrations').select('status').eq('event_id',event.id).eq('user_id',user.id).maybeSingle()
-      if(reg.error)throw reg.error
-      if(reg.data?.status!=='attended')return err('эта механика только для тех, кто уже отметился в зале',403)
+      if(!await canUseLiveMechanics(db,event.id,user.id,true))return err('эта механика только для тех, кто уже отметился в зале',403)
       const projector=await db.from('event_projector_state').select('*').eq('event_id',event.id).single()
       if(projector.error)throw projector.error
       if(projector.data.state!=='one_word_collecting'||!projector.data.round_id||!projector.data.film_package_id)return err('сейчас слово не собираем',409)
@@ -2223,9 +2229,7 @@ export async function handleApi(req:Request){
     }
 
     if(action==='film-prediction'){
-      const reg=await db.from('registrations').select('status').eq('event_id',event.id).eq('user_id',user.id).maybeSingle()
-      if(reg.error)throw reg.error
-      if(reg.data?.status!=='attended')return err('эта механика только для тех, кто уже отметился в зале',403)
+      if(!await canUseLiveMechanics(db,event.id,user.id,true))return err('эта механика только для тех, кто уже отметился в зале',403)
       const projector=await db.from('event_projector_state').select('*').eq('event_id',event.id).single()
       if(projector.error)throw projector.error
       const questionId=String(body.questionId||'')
@@ -3335,6 +3339,7 @@ export async function handleApi(req:Request){
         if(runtimeR.error)throw runtimeR.error
         const blocks=sanitizeProgramBlocks(programR.data.config?.blocks)||[]
         if(!blocks.length)return err('программа вечера пустая',409)
+        const isTestRun=await activeRunIsTest(db,event.id)
         const from=runtimeR.data
         let idx=Math.max(0,Math.min(blocks.length-1,Number(from.current_block_index||0)))
         let runStatus=String(from.run_status||'idle')
@@ -3348,7 +3353,7 @@ export async function handleApi(req:Request){
           const screen=await db.from('event_screen_status').select('audio_unlocked,last_seen_at').eq('event_id',event.id).maybeSingle()
           if(screen.error)throw screen.error
           if(!screen.data?.audio_unlocked||Date.now()-new Date(screen.data.last_seen_at||0).getTime()>20000)return err('сначала включите звук на экране ноутбука',409)
-          if(event.status==='DRAFT')return err('сначала откройте регистрацию',409)
+          if(event.status==='DRAFT'&&!isTestRun)return err('сначала откройте регистрацию',409)
           idx=0;runStatus='running';startedAt=startedAt||now;blockStartedAt=now;pausedAt=null;resetRound=true
         }else if(op==='next'||op==='skip'){
           if(idx>=blocks.length-1){idx=blocks.length-1;runStatus='finished'}else{idx+=1;runStatus='running'}
@@ -3409,7 +3414,7 @@ export async function handleApi(req:Request){
         }
 
         let lifecycleStatus=event.status
-        if(op==='start'&&event.status==='SALES_OPEN'){
+        if(!isTestRun&&op==='start'&&event.status==='SALES_OPEN'){
           const e=await db.from('events').update({status:'CHECKIN'}).eq('id',event.id).eq('status','SALES_OPEN').select('status').maybeSingle()
           if(e.error)throw e.error
           if(e.data){
@@ -3418,7 +3423,7 @@ export async function handleApi(req:Request){
             if(tr.error)console.error('show lifecycle transition log failed',tr.error)
           }
         }
-        if(op==='end_event'&&event.status!=='CLOSED'){
+        if(!isTestRun&&op==='end_event'&&event.status!=='CLOSED'){
           const absent=await db.from('registrations').update({status:'no_show'}).eq('event_id',event.id).eq('status','paid').select('user_id')
           if(absent.error)throw absent.error
           const e=await db.from('events').update({status:'CLOSED'}).eq('id',event.id).neq('status','CLOSED').select('status').maybeSingle()
@@ -3427,6 +3432,7 @@ export async function handleApi(req:Request){
           if((absent.data||[]).length)await refreshLeaderboard(db,(absent.data||[]).map((x:any)=>x.user_id))
         }
 
+        if(isTestRun&&op==='end_event')lifecycleStatus=event.status
         const log=await db.from('event_runtime_log').insert({event_id:event.id,action:op,actor_user_id:user?.id||null,from_state:from,to_state:updated.data})
         if(log.error)console.error('show runtime log failed',log.error)
         return json({ok:true,eventStatus:lifecycleStatus,show:await buildShowState(db,{...event,status:lifecycleStatus})})
