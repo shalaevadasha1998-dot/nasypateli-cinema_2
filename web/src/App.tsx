@@ -58,7 +58,7 @@ function useStateData(enabled=true,eventSlug='',allowUnregisteredLive=false){
     poll()
     const timer=window.setInterval(poll,testRoom?1000:2000)
     return()=>{dead=true;window.clearInterval(timer)}
-  },[enabled,eventSlug,data?.registration,data?.event.slug])
+  },[enabled,eventSlug,allowUnregisteredLive,data?.registration,data?.event.slug])
   return {data,error,reload}
 }
 
