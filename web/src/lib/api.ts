@@ -76,9 +76,9 @@ export async function bootstrapPwaHandoff(){
 
 export function buildPwaHandoffUrl(token:string){
   const url=new URL(window.location.href)
-  url.hash=''
   url.search=''
   url.searchParams.set('pwa_handoff',token)
+  url.hash='/profile?install=1'
   return url.toString()
 }
 
