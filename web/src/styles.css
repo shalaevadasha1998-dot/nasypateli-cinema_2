@@ -1799,6 +1799,47 @@ body{text-transform:lowercase}
 .show-secondary-controls{
   grid-template-columns:repeat(3,minmax(0,1fr));
 }
+.rehearsal-control-card{
+  display:grid;
+  gap:12px;
+  margin:14px 0;
+  padding:14px;
+  border:1px solid rgba(234,229,220,.11);
+  border-radius:16px;
+  background:#0e0f0c;
+}
+.rehearsal-control-card h3{
+  margin:4px 0 6px;
+}
+.show-test-banner{
+  display:grid;
+  gap:4px;
+  padding:11px 12px;
+  border:1px solid rgba(196,154,43,.28);
+  border-radius:12px;
+  background:rgba(196,154,43,.08);
+}
+.show-test-banner b{
+  font-size:12px;
+  text-transform:lowercase;
+}
+.show-test-banner span{
+  color:#aaa79f;
+  font-size:10px;
+  line-height:1.45;
+}
+.show-rehearsal-actions{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px;
+}
+.rehearsal-page{
+  display:grid;
+  gap:12px;
+}
+@media (max-width:560px){
+  .show-rehearsal-actions{grid-template-columns:1fr}
+}
 .show-round-card{
   margin:0 0 16px;
 }
