@@ -1,0 +1,25 @@
+{
+  "name": "насыпатели в кино",
+  "short_name": "насыпатели",
+  "description": "киноклуб, животина и события «насыпатели в кино»",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#090906",
+  "theme_color": "#090906",
+  "icons": [
+    {
+      "src": "assets/rabbit-head.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/rabbit-head.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
