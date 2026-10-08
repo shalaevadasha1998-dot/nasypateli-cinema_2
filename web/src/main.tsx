@@ -2,6 +2,8 @@ import { Component, StrictMode } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
+import { bootstrapPwaHandoff } from './lib/api'
+import { initPwa } from './lib/pwa'
 
 class AppErrorBoundary extends Component<{children:ReactNode},{error:string}> {
   state={error:''}
@@ -13,4 +15,12 @@ class AppErrorBoundary extends Component<{children:ReactNode},{error:string}> {
   }
 }
 
-createRoot(document.getElementById('root')!).render(<StrictMode><AppErrorBoundary><App/></AppErrorBoundary></StrictMode>)
+initPwa()
+
+async function mount(){
+  const handoff=await bootstrapPwaHandoff()
+  if(handoff.handled&&!handoff.ok)console.warn('PWA handoff failed',handoff.error)
+  createRoot(document.getElementById('root')!).render(<StrictMode><AppErrorBoundary><App/></AppErrorBoundary></StrictMode>)
+}
+
+void mount()

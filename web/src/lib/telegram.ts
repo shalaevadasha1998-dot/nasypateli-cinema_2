@@ -11,6 +11,7 @@ declare global {
         expand?: () => void
         close?: () => void
         openInvoice?: (url:string, cb?:(status:string)=>void) => void
+        openLink?: (url:string, options?:{try_instant_view?:boolean}) => void
         themeParams?: Record<string,string>
         disableVerticalSwipes?:()=>void
         requestWriteAccess?:(cb?:(granted:boolean)=>void)=>void

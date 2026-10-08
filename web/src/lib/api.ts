@@ -6,6 +6,10 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const fn = (import.meta.env.VITE_API_FUNCTION as string | undefined) || 'app'
 export const demoMode = import.meta.env.VITE_DEMO_MODE !== 'false' || !supabaseUrl
 export const buildSha = (import.meta.env.VITE_BUILD_SHA as string | undefined) || 'dev'
+const PWA_SESSION_KEY='nasypateli-pwa-session'
+export function pwaSessionToken(){try{return localStorage.getItem(PWA_SESSION_KEY)||''}catch{return ''}}
+export function storePwaSessionToken(token:string){try{if(token)localStorage.setItem(PWA_SESSION_KEY,token);else localStorage.removeItem(PWA_SESSION_KEY)}catch{}}
+export function clearPwaSession(){storePwaSessionToken('')}
 function testRoomToken(){
   if(typeof window==='undefined')return ''
   const hash=window.location.hash||''
@@ -39,7 +43,7 @@ async function requestApi<T=unknown>(action:string,payload:Record<string,unknown
   try{
     const res=await fetch(`${supabaseUrl}/functions/v1/${fn}`,{
       method:'POST',
-      headers:{'content-type':'application/json','x-telegram-init-data':telegramInitData(),'x-client-build':buildSha,...(testRoomToken()?{'x-test-room-token':testRoomToken()}:{}),...extraHeaders},
+      headers:{'content-type':'application/json','x-telegram-init-data':telegramInitData(),'x-client-build':buildSha,...(pwaSessionToken()?{'x-pwa-session':pwaSessionToken()}:{}),...(testRoomToken()?{'x-test-room-token':testRoomToken()}:{}),...extraHeaders},
       body:JSON.stringify({action,...payload,...(typeof window!=='undefined'&&/^#\/rehearsal\/test-/i.test(window.location.hash||'')&&testRoomToken()?{testProfile:true}:{})}),
       signal:controller.signal
     })
@@ -50,6 +54,32 @@ async function requestApi<T=unknown>(action:string,payload:Record<string,unknown
     if(e?.name==='AbortError') throw new Error('сервер отвечает слишком долго. попробуйте ещё раз')
     throw e
   }finally{window.clearTimeout(timeout)}
+}
+
+export async function bootstrapPwaHandoff(){
+  if(typeof window==='undefined'||demoMode)return {ok:false as const,handled:false as const}
+  const url=new URL(window.location.href)
+  const token=url.searchParams.get('pwa_handoff')||''
+  if(!token)return {ok:false as const,handled:false as const}
+  url.searchParams.delete('pwa_handoff')
+  window.history.replaceState(null,'',url.toString())
+  try{
+    const out=await requestApi<{ok:boolean;sessionToken:string;expiresAt:string}>('pwa-exchange-handoff',{token})
+    if(!out.sessionToken)throw new Error('сервер не выдал standalone-сессию')
+    storePwaSessionToken(out.sessionToken)
+    return {ok:true as const,handled:true as const,expiresAt:out.expiresAt}
+  }catch(e:any){
+    clearPwaSession()
+    return {ok:false as const,handled:true as const,error:String(e?.message||e||'не получилось войти в приложение')}
+  }
+}
+
+export function buildPwaHandoffUrl(token:string){
+  const url=new URL(window.location.href)
+  url.search=''
+  url.searchParams.set('pwa_handoff',token)
+  url.hash='/profile?install=1'
+  return url.toString()
 }
 
 function normalizeBootstrap(raw:any):DemoState{

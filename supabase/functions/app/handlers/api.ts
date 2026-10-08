@@ -938,6 +938,28 @@ async function sha256Hex(value:string){
   const digest=new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))
   return [...digest].map(x=>x.toString(16).padStart(2,'0')).join('')
 }
+function randomOpaqueToken(){
+  const bytes=new Uint8Array(32)
+  crypto.getRandomValues(bytes)
+  let binary=''
+  for(const byte of bytes)binary+=String.fromCharCode(byte)
+  return btoa(binary).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')
+}
+async function pwaSessionUser(db:any,req:Request){
+  const token=String(req.headers.get('x-pwa-session')||'').trim()
+  if(!token)return null
+  if(token.length<32||token.length>256)return null
+  const hash=await sha256Hex(token)
+  const session=await db.from('pwa_sessions').select('id,user_id,expires_at,revoked_at').eq('token_hash',hash).maybeSingle()
+  if(session.error)throw session.error
+  if(!session.data||session.data.revoked_at||new Date(session.data.expires_at).getTime()<=Date.now())return null
+  const user=await db.from('users').select('*').eq('id',session.data.user_id).maybeSingle()
+  if(user.error)throw user.error
+  if(!user.data)return null
+  const touched=await db.from('pwa_sessions').update({last_seen_at:new Date().toISOString()}).eq('id',session.data.id)
+  if(touched.error)console.warn('pwa session touch failed',String(touched.error.message||touched.error))
+  return user.data
+}
 async function testRoomTokenMatches(event:any,token:string){
   if(event?.settings?.test_room!==true)return false
   const expected=String(event?.settings?.test_room_token_hash||'')
@@ -1181,6 +1203,22 @@ export async function handleApi(req:Request){
     const testRoomHeader=req.headers.get('x-test-room-token')||''
     if(action==='health')return json(await runtimeHealth(db))
 
+    if(action==='pwa-exchange-handoff'){
+      const token=String(body.token||'').trim()
+      if(token.length<32||token.length>256)return err('Ссылка для входа некорректна',422)
+      const tokenHash=await sha256Hex(token)
+      const consumed=await db.rpc('consume_pwa_handoff',{p_token_hash:tokenHash})
+      if(consumed.error)throw consumed.error
+      const userId=String(consumed.data||'')
+      if(!isUuid(userId))return err('Ссылка для входа истекла или уже использована. Откройте приложение из Telegram ещё раз.',401)
+      const sessionToken=randomOpaqueToken()
+      const sessionHash=await sha256Hex(sessionToken)
+      const expiresAt=new Date(Date.now()+90*24*60*60*1000).toISOString()
+      const created=await db.from('pwa_sessions').insert({user_id:userId,token_hash:sessionHash,expires_at:expiresAt,last_seen_at:new Date().toISOString()}).select('id').single()
+      if(created.error)throw created.error
+      return json({ok:true,sessionToken,expiresAt})
+    }
+
     if(action==='screen-bootstrap'){
       const slug=String(body.slug||'2026-10-03')
       if(!screenTokenOk&&!slug.startsWith('test-'))return err('Доступ к экрану запрещён',401)
@@ -1351,15 +1389,20 @@ export async function handleApi(req:Request){
       const adminSlug=String(body.slug||'2026-10-03')
       const hasAdminHeader=!!String(req.headers.get('x-admin-token')||'').trim()
       const hasTelegramAuth=!!String(req.headers.get('x-telegram-init-data')||'').trim()
-      if(!adminTokenOk&&!hasAdminHeader&&!hasTelegramAuth&&!adminSlug.startsWith('test-'))return err('Доступ к пульту запрещён',401)
+      const hasPwaAuth=!!String(req.headers.get('x-pwa-session')||'').trim()
+      if(!adminTokenOk&&!hasAdminHeader&&!hasTelegramAuth&&!hasPwaAuth&&!adminSlug.startsWith('test-'))return err('Доступ к пульту запрещён',401)
       const event=await eventBySlug(db,adminSlug)
       const testAdminOk=await testRoomTokenMatches(event,req.headers.get('x-admin-token')||'')
       const openTestAdmin=event?.settings?.test_room===true
       if(!adminTokenOk&&!testAdminOk&&!openTestAdmin){
         try{
-          const adminTg=await telegramUserFromRequest(req)
-          const adminUser=await getOrCreateUser(db,adminTg)
-          await mustAdmin(db,adminUser,adminTg)
+          const pwaUser=await pwaSessionUser(db,req)
+          if(pwaUser)await mustAdmin(db,pwaUser,null)
+          else{
+            const adminTg=await telegramUserFromRequest(req)
+            const adminUser=await getOrCreateUser(db,adminTg)
+            await mustAdmin(db,adminUser,adminTg)
+          }
         }catch{return err('Доступ к пульту запрещён',401)}
       }
       await maybeAutoAdvanceShow(db,event)
@@ -1504,6 +1547,7 @@ export async function handleApi(req:Request){
     const isAdminAction=action.startsWith('admin-')||action.startsWith('ai-')||action.startsWith('draw-')
     let tg:any=null,user:any=null,testEvent:any=null,testParticipantAccess=false
     const requestedSlug=String(body.slug||'')
+    user=await pwaSessionUser(db,req)
     if(testRoomHeader&&requestedSlug){
       try{
         const candidate=await eventBySlug(db,requestedSlug)
@@ -1519,7 +1563,7 @@ export async function handleApi(req:Request){
             if(!testUser.data)return err('Тестовый участник не найден',500)
             user=testUser.data
             tg={id:0,first_name:'тестовый участник'}
-          }else{
+          }else if(!user){
             try{
               tg=await telegramUserFromRequest(req)
               user=await getOrCreateUser(db,tg)
@@ -1543,6 +1587,18 @@ export async function handleApi(req:Request){
     if(!user&&(!isAdminAction||(!adminTokenOk&&!suppliedAdminToken&&!anonymousTestAdmin))){
       try{tg=await telegramUserFromRequest(req);user=await getOrCreateUser(db,tg)}
       catch(e){if(isAdminAction)return err('Доступ к пульту запрещён: откройте его через Telegram или закрытую ссылку',401);throw e}
+    }
+
+    if(action==='pwa-create-handoff'){
+      if(!tg?.id)return err('Откройте приложение из Telegram, чтобы связать его с рабочим столом',401)
+      const token=randomOpaqueToken()
+      const tokenHash=await sha256Hex(token)
+      const expiresAt=new Date(Date.now()+10*60*1000).toISOString()
+      const cleanup=await db.from('pwa_handoffs').delete().eq('user_id',user.id).lt('expires_at',new Date().toISOString())
+      if(cleanup.error)console.warn('pwa handoff cleanup failed',String(cleanup.error.message||cleanup.error))
+      const inserted=await db.from('pwa_handoffs').insert({user_id:user.id,token_hash:tokenHash,expires_at:expiresAt}).select('id').single()
+      if(inserted.error)throw inserted.error
+      return json({ok:true,token,expiresAt})
     }
 
     if(action==='creature-tasks'){
