@@ -20,7 +20,7 @@ export function hasInstallPrompt(){return deferredPrompt!==null}
 
 export function subscribePwaInstall(listener:()=>void){
   listeners.add(listener)
-  return ()=>listeners.delete(listener)
+  return ()=>{listeners.delete(listener)}
 }
 
 export function isIosDevice(){
