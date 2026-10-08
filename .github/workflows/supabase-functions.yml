@@ -21,6 +21,8 @@ jobs:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       ADMIN_TELEGRAM_USERNAMES: ${{ secrets.ADMIN_TELEGRAM_USERNAMES }}
       TELEGRAM_PROVIDER_TOKEN: ${{ secrets.TELEGRAM_PROVIDER_TOKEN }}
+      TELEGRAM_PROVIDER_DATA_JSON: ${{ secrets.TELEGRAM_PROVIDER_DATA_JSON }}
+      TELEGRAM_REQUIRE_RECEIPT_EMAIL: ${{ secrets.TELEGRAM_REQUIRE_RECEIPT_EMAIL }}
       PROJECT_ID: vwteokawtqnoiyzmsldj
 
     steps:
@@ -54,6 +56,12 @@ jobs:
 
           if [ -n "$TELEGRAM_PROVIDER_TOKEN" ]; then
             supabase secrets set TELEGRAM_PROVIDER_TOKEN="$TELEGRAM_PROVIDER_TOKEN" --project-ref "$PROJECT_ID"
+          fi
+          if [ -n "$TELEGRAM_PROVIDER_DATA_JSON" ]; then
+            supabase secrets set TELEGRAM_PROVIDER_DATA_JSON="$TELEGRAM_PROVIDER_DATA_JSON" --project-ref "$PROJECT_ID"
+          fi
+          if [ -n "$TELEGRAM_REQUIRE_RECEIPT_EMAIL" ]; then
+            supabase secrets set TELEGRAM_REQUIRE_RECEIPT_EMAIL="$TELEGRAM_REQUIRE_RECEIPT_EMAIL" --project-ref "$PROJECT_ID"
           fi
 
       - name: Stamp release SHA

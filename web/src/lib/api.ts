@@ -275,7 +275,10 @@ export async function buyTicket(slug:string){
   const timeout=window.setTimeout(()=>controller.abort(),15000)
   try{
     const res=await fetch(`${supabaseUrl}/functions/v1/${fn}?mode=invoice`,{
-      method:'POST',headers:{'content-type':'application/json','x-telegram-init-data':telegramInitData()},body:JSON.stringify({slug}),signal:controller.signal
+      method:'POST',
+      headers:{'content-type':'application/json','x-telegram-init-data':telegramInitData(),...(pwaSessionToken()?{'x-pwa-session':pwaSessionToken()}: {})},
+      body:JSON.stringify({slug}),
+      signal:controller.signal
     })
     const data=await res.json().catch(()=>({error:'сервер оплаты вернул пустой ответ'}))
     if(res.status===409 && data.waitlist) return data
