@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Card, Empty, Field, Pill } from './components/UI'
 import { Rabbit } from './components/Rabbit'
-import { callApi } from './lib/api'
-import { haptic, hapticSuccess, requestTelegramWriteAccess } from './lib/telegram'
+import { buildPwaHandoffUrl, callApi } from './lib/api'
+import { hasInstallPrompt, isIosDevice, isStandalonePwa, promptPwaInstall, subscribePwaInstall } from './lib/pwa'
+import { haptic, hapticSuccess, requestTelegramWriteAccess, telegramWebApp } from './lib/telegram'
 import type { DatingIntent, DatingProfile, DemoState, NotificationPrefs } from './types'
 
 function useBootstrap(){
@@ -70,6 +71,10 @@ export function CreatureProfilePage(){
   const [nameMsg,setNameMsg]=useState('')
   const [deleteMsg,setDeleteMsg]=useState('')
   const [renameDraft,setRenameDraft]=useState('')
+  const [installMsg,setInstallMsg]=useState('')
+  const [installBusy,setInstallBusy]=useState(false)
+  const [,setInstallRevision]=useState(0)
+  useEffect(()=>subscribePwaInstall(()=>setInstallRevision(x=>x+1)),[])
   useEffect(()=>{if(data?.creature?.name)setRenameDraft(prev=>prev||data.creature.name.toLocaleLowerCase('ru-RU'))},[data?.creature?.name])
   if(!data)return <Load error={error}/>
   const creatureName=((data.creature.name||'животина').trim()||'животина').toLocaleLowerCase('ru-RU')
@@ -99,7 +104,46 @@ export function CreatureProfilePage(){
     finally{setBusy('')}
   }
 
+  const installGuide=/[?&]install=1(?:&|$)/.test(window.location.hash||'')
+  const standalone=isStandalonePwa()
+  const installApp=async()=>{
+    if(standalone){setInstallMsg('приложение уже открыто с домашнего экрана');return}
+    setInstallMsg('')
+    const prompted=await promptPwaInstall()
+    if(prompted==='accepted'){setInstallMsg('готово. приложение добавлено');return}
+    if(prompted==='dismissed'){setInstallMsg('установку отменили. можно повторить позже');return}
+
+    const tg=telegramWebApp()
+    if(!tg?.initData){
+      setInstallMsg(isIosDevice()
+        ?'iphone: нажмите «поделиться» в safari → «на экран домой»'
+        :'откройте меню браузера и выберите «установить приложение» или «добавить на главный экран»')
+      return
+    }
+
+    try{
+      setInstallBusy(true)
+      const handoff=await callApi<{ok:boolean;token:string;expiresAt:string}>('pwa-create-handoff')
+      const url=buildPwaHandoffUrl(handoff.token)
+      if(tg.openLink){
+        setInstallMsg('открываю браузер. там останется только добавить приложение на экран домой')
+        tg.openLink(url,{try_instant_view:false})
+      }else{
+        const copied=await copyText(url)
+        setInstallMsg(copied?'ссылка скопирована. откройте её в safari/chrome и добавьте приложение на экран домой':'откройте ссылку в обычном браузере и добавьте приложение на экран домой')
+      }
+    }catch(e:any){setInstallMsg(e.message||'не получилось подготовить установку')}
+    finally{setInstallBusy(false)}
+  }
+
   return <div className="page creature-page creature-static-page">
+    {installGuide&&!standalone&&<Card className="pwa-install-card">
+      <div className="eyebrow">приложение</div>
+      <h2>добавьте на экран домой</h2>
+      <p>{isIosDevice()?'вы уже вошли. теперь в safari нажмите «поделиться» → «на экран домой». после этого приложение будет открываться отдельной иконкой':'вы уже вошли. нажмите кнопку установки ниже или выберите «установить приложение» в меню браузера'}</p>
+      <Button disabled={installBusy} onClick={()=>void installApp()}>{installBusy?'готовим…':hasInstallPrompt()?'установить приложение':'как установить'}</Button>
+      {installMsg&&<div className="success">{installMsg}</div>}
+    </Card>}
     <section className="creature-static-hero">
       <div className="eyebrow">ваша животина</div>
       <div className="creature-static-art"><img src={`${import.meta.env.BASE_URL}assets/rabbit-full.webp`} alt={creatureName} draggable={false}/></div>
@@ -133,6 +177,8 @@ export function CreatureProfilePage(){
       <Button kind="secondary" onClick={()=>nav('/onboarding?edit=1')}>изменить кинопрофиль</Button>
       <Button kind="secondary" onClick={()=>nav('/notifications')}>уведомления</Button>
       <Button kind="secondary" onClick={()=>nav('/rules')}>правила насыпателей в кино</Button>
+      <Button kind="secondary" disabled={installBusy||standalone} onClick={()=>void installApp()}>{standalone?'приложение установлено':'установить приложение'}</Button>
+      {installMsg&&<div className="success">{installMsg}</div>}
       {nameMsg&&<div className={nameMsg==='имя сохранено'?'success':'form-error'}>{nameMsg}</div>}
     </Card>
 
