@@ -17,7 +17,7 @@ function downloadEventExport(data:any,format:'csv'|'json'){const slug=String(dat
 function moscowInputValue(iso:string){const d=new Date(iso);if(!Number.isFinite(d.getTime()))return '';return new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Moscow',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).format(d).replace(' ','T')}
 function moscowIso(value:string){const d=new Date(`${value}:00+03:00`);return Number.isFinite(d.getTime())?d.toISOString():''}
 
-function useStateData(enabled=true,eventSlug=''){
+function useStateData(enabled=true,eventSlug='',allowUnregisteredLive=false){
   const [data,setData]=useState<DemoState|null>(null)
   const [error,setError]=useState('')
   const reload=(fresh=false)=>{
@@ -41,7 +41,7 @@ function useStateData(enabled=true,eventSlug=''){
     const slug=eventSlug||data.event.slug
     if(!slug)return
     const testRoom=slug.startsWith('test-')
-    if(data.registration!=='attended'&&!testRoom)return
+    if(data.registration!=='attended'&&!testRoom&&!allowUnregisteredLive)return
     let dead=false,inFlight=false,failures=0,retryAt=0
     const poll=()=>{if(dead||inFlight||document.visibilityState!=='visible'||Date.now()<retryAt)return;inFlight=true;void callApi<any>('live-refresh',{slug}).then(x=>{
       if(dead)return
@@ -194,7 +194,7 @@ function FilmLiveParticipant({data,reload}:{data:DemoState;reload:(fresh?:boolea
   const [message,setMessage]=useState('')
   useEffect(()=>{setTitle(live?.myPitch?.title||'');setDescription(live?.myPitch?.description||'')},[live?.myPitch?.id,live?.myPitch?.updatedAt,live?.revision])
   useEffect(()=>{setAnswerDraft(answerText((live?.myAnswers||[]).find(x=>x.question_id===String(live?.payload?.questionId||''))?.answer));setMessage('')},[live?.payload?.questionId])
-  if(!live||!data.show||data.registration!=='attended')return null
+  if(!live||!data.show||(!data.show.runtime.isTest&&data.registration!=='attended'))return null
   const state=live.state
   const target=Math.max(1,Math.min(5,Number(live.questionTarget||3)))
   const questionId=String(live.payload?.questionId||'')
@@ -241,7 +241,7 @@ function ParticipantShow({data,reload}:{data:DemoState;reload:(fresh?:boolean)=>
   const show=data.show
   const [busy,setBusy]=useState(false)
   const [message,setMessage]=useState('')
-  if(!show||show.runtime.runStatus==='idle'||!['paid','attended'].includes(data.registration))return null
+  if(!show||show.runtime.runStatus==='idle'||(!show.runtime.isTest&&!['paid','attended'].includes(data.registration)))return null
   const block=show.runtime.currentBlock
   if(!block)return null
   if(show.runtime.runStatus==='finished')return <section className="participant-show"><div className="eyebrow">вечер закончился</div><h2>спасибо за вечер</h2><p>животина остаётся с вами. всё, что случилось сегодня, сохранено.</p></section>
@@ -395,11 +395,14 @@ function TasteSummary({taste}:{taste:TasteVector}){const rows:[string,number][]=
 
 function RehearsalPage(){
   const {slug}=useParams()
-  const {data,error,reload}=useStateData(true,slug||'')
+  const {data,error,reload}=useStateData(true,slug||'',true)
   if(!data)return <Loading error={error}/>
   if(slug!==data.event.slug)return <div className="page"><Empty>такой тестовой комнаты нет</Empty></div>
+  const runtime=data.show?.runtime
+  if(!runtime?.isTest)return <div className="page rehearsal-page"><Card><div className="eyebrow">тестовый прогон</div><div className="big-copy">тест сейчас не запущен</div><p>организатор ещё не создал test run или уже вернулся в live.</p></Card></div>
   return <div className="page home-page rehearsal-page">
-    {data.show?.runtime.currentBlock?.type==='cinema_rounds'
+    <div className="show-test-banner"><b>test mode · {runtime.runKey||'test run'}</b><span>это репетиция. тестовые ответы отделены от live, реальные билеты и постоянные крошки не меняются.</span></div>
+    {runtime.currentBlock?.type==='cinema_rounds'
       ?<FilmLiveParticipant data={data} reload={reload}/>
       :<ParticipantShow data={data} reload={reload}/>}
   </div>
@@ -597,6 +600,8 @@ function ShowControl({data,busy,run}:{data:DemoState;busy:boolean;run:(action:st
   const block=runtime.currentBlock
   const finished=runtime.runStatus==='finished'
   const command=(op:string,extra:Record<string,unknown>={})=>run('admin-show-control',{op,...extra})
+  const rehearsalUrl=()=>`${new URL(import.meta.env.BASE_URL,window.location.origin).toString()}#/rehearsal/${encodeURIComponent(data.event.slug)}`
+  const copyRehearsalUrl=async()=>{const url=rehearsalUrl();try{await navigator.clipboard.writeText(url)}catch{window.prompt('скопируйте ссылку для тестеров',url)}}
   const audio=show.audio
   const audioState=audio?.state
   const currentTrack=audio?.assets.find(x=>x.key===audioState?.track_key)
@@ -633,13 +638,23 @@ function ShowControl({data,busy,run}:{data:DemoState;busy:boolean;run:(action:st
     </div>
 
     {runtime.runStatus==='idle'&&<>
-      {runtime.isTest&&<div className="show-test-banner">test mode · {runtime.runKey||'test run'} · постоянные крошки и live-статистика не меняются</div>}
-      <Button disabled={busy||!screenReady} onClick={()=>command('start')}>начать мероприятие + музыку</Button>
-      <div className="show-secondary-controls">
-        <Button kind="secondary" disabled={busy} onClick={()=>{if(window.confirm('создать новый чистый test run? тестовые голоса и результаты будут отделены от live.'))void command('restart_test')}}>новый test run</Button>
-        {runtime.isTest&&<Button kind="secondary" disabled={busy} onClick={()=>{if(window.confirm('создать чистый live run для настоящего мероприятия?'))void command('restart_live')}}>перейти в live</Button>}
-      </div>
-      {!screenReady&&<p className="muted">сначала на ноутбуке projector нажми «включить звук и проверить». после этого эта кнопка станет активной.</p>}
+      {runtime.isTest
+        ?<div className="rehearsal-control-card">
+          <div className="show-test-banner"><b>test mode · {runtime.runKey||'test run'}</b><span>люди могут зайти по отдельной ссылке. тестовые результаты не смешиваются с live.</span></div>
+          <div className="show-rehearsal-actions">
+            <Button disabled={busy||!screenReady} onClick={()=>command('start')}>начать тестовый прогон</Button>
+            <Button kind="secondary" disabled={busy} onClick={()=>void copyRehearsalUrl()}>скопировать ссылку для тестеров</Button>
+            <Button kind="secondary" disabled={busy} onClick={()=>window.open(rehearsalUrl(),'_blank','noopener,noreferrer')}>открыть как участник ↗</Button>
+            <Button kind="secondary" disabled={busy} onClick={()=>{if(window.confirm('перезапустить тест? текущий test run останется в истории, а новый начнётся с чистого состояния.'))void command('restart_test')}}>рестарт теста</Button>
+            <Button kind="secondary" disabled={busy} onClick={()=>{if(window.confirm('закончить репетицию и создать чистый live run? тестовые данные останутся отдельно.'))void command('restart_live')}}>закончить тест → live</Button>
+          </div>
+        </div>
+        :<div className="rehearsal-control-card">
+          <div><div className="section-title">репетиция</div><h3>прогнать всё до настоящего показа</h3><p className="muted">создаст отдельный test run. реальные билеты, оплаты, live-статистика и постоянные крошки не изменятся.</p></div>
+          <Button kind="secondary" disabled={busy} onClick={()=>{if(window.confirm('создать отдельный тестовый прогон? live-данные не изменятся.'))void command('restart_test')}}>тестовый прогон</Button>
+          <Button disabled={busy||!screenReady} onClick={()=>command('start')}>начать live мероприятие + музыку</Button>
+        </div>}
+      {!screenReady&&<p className="muted">сначала на ноутбуке projector нажми «включить звук и проверить». после этого запуск станет активным.</p>}
     </>}
 
     {runtime.runStatus==='paused'&&<Button disabled={busy} onClick={()=>command('resume')}>продолжить мероприятие</Button>}
