@@ -3470,3 +3470,54 @@ html.chat-keyboard-open .chat-compose-inline{
 .admin-checkin-manual{display:grid;grid-template-columns:1fr auto;gap:8px}.admin-checkin-manual input{min-width:0}
 .admin-checkin-backup{margin-top:12px}.admin-checkin-backup summary{cursor:pointer;color:#777a70;font-size:11px;margin-bottom:10px}
 @media(max-width:480px){.admin-checkin-result{grid-template-columns:72px 1fr}.admin-checkin-result-creature{width:72px;height:88px}.admin-checkin-manual{grid-template-columns:1fr}.admin-checkin-page{padding-left:12px;padding-right:12px}}
+
+/* notification opt-in */
+.notification-optin-backdrop{
+  position:fixed;
+  inset:0;
+  z-index:160;
+  display:grid;
+  place-items:end center;
+  padding:18px max(14px,env(safe-area-inset-right)) calc(18px + env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left));
+  background:rgba(0,0,0,.72);
+  backdrop-filter:blur(12px);
+}
+.notification-optin-dialog{
+  width:min(100%,520px);
+  display:grid;
+  gap:12px;
+  padding:22px;
+  border:1px solid rgba(234,229,220,.16);
+  border-radius:24px;
+  background:#0d0e0b;
+  box-shadow:0 30px 90px rgba(0,0,0,.55);
+}
+.notification-optin-dialog h2{
+  margin:0;
+  font-size:clamp(36px,10vw,54px);
+  line-height:.92;
+  letter-spacing:-.055em;
+}
+.notification-optin-dialog p{
+  margin:0 0 4px;
+  color:#aaa79f;
+  line-height:1.45;
+}
+.notification-optin-dialog small{
+  color:#6f7169;
+  font-size:10px;
+  text-align:center;
+}
+.notification-optin-later{
+  border:0;
+  background:transparent;
+  color:#85847d;
+  font:inherit;
+  font-size:12px;
+  padding:10px;
+  cursor:pointer;
+}
+.notification-optin-later:disabled{opacity:.45;cursor:default}
+@media(min-width:700px){
+  .notification-optin-backdrop{place-items:center}
+}
