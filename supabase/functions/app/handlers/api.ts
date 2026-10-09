@@ -3754,6 +3754,68 @@ export async function handleApi(req:Request){
       if(targetUserId&&['mark_attended','undo_attended'].includes(fix)&&event?.settings?.test_room!==true)await refreshLeaderboard(db,[targetUserId])
       return json({ok:true,registrationId:String(result.registration_id||registrationId),status:String(result.status||''),promoted:Number(result.promoted||0)})
     }
+    if(action==='admin-checkin-ticket'){
+      const raw=String(body.ticketQr||body.registrationId||'').trim()
+      let registrationId=raw
+      let payloadSlug=''
+      const parsed=raw.match(/^nasypateli-ticket:v1:([^:]+):([0-9a-f-]{36})$/i)
+      if(parsed){payloadSlug=String(parsed[1]||'');registrationId=String(parsed[2]||'')}
+      if(payloadSlug&&payloadSlug!==String(event.slug||''))return err('Этот билет от другого мероприятия',409)
+      if(!isUuid(registrationId))return err('QR билета не распознан',422)
+      if(!checkinOpenStatuses.has(String(event.status||'')))return err(event.status==='CLOSED'?'Чек-ин на этот вечер уже закрыт':'Чек-ин ещё не открыт',409)
+
+      const registration=await db.from('registrations').select('id,user_id,status').eq('id',registrationId).eq('event_id',event.id).maybeSingle()
+      if(registration.error)throw registration.error
+      if(!registration.data)return err('Билет не найден для этого мероприятия',404)
+
+      const userId=String(registration.data.user_id||'')
+      let alreadyAttended=registration.data.status==='attended'
+      if(!alreadyAttended){
+        if(!['paid','no_show'].includes(String(registration.data.status||'')))return err('Этот билет сейчас нельзя отметить на входе',409)
+        const fixed=await db.rpc('admin_fix_event_registration',{p_event_id:event.id,p_registration_id:registrationId,p_action:'mark_attended'})
+        if(fixed.error){
+          const latest=await db.from('registrations').select('status').eq('id',registrationId).eq('event_id',event.id).maybeSingle()
+          if(latest.error)throw latest.error
+          if(latest.data?.status!=='attended')throw fixed.error
+          alreadyAttended=true
+        }
+      }
+
+      const [memberCount,creature,userRow,program]=await Promise.all([
+        db.from('registrations').select('*',{count:'exact',head:true}).eq('event_id',event.id).eq('status','attended'),
+        db.from('creatures').select('name,stage,settings').eq('user_id',userId).maybeSingle(),
+        db.from('users').select('display_name,telegram_username').eq('id',userId).maybeSingle(),
+        db.from('event_programs').select('config').eq('event_id',event.id).maybeSingle()
+      ])
+      if(memberCount.error)throw memberCount.error
+      if(creature.error)throw creature.error
+      if(userRow.error)throw userRow.error
+      if(program.error)throw program.error
+
+      if(!alreadyAttended&&event?.settings?.test_room!==true){
+        const amount=Math.max(0,Math.min(100,Number(program.data?.config?.rewards?.join||0)))
+        if(amount>0){
+          const award=await db.rpc('award_event_crumbs',{p_user_id:userId,p_event_id:event.id,p_amount:amount,p_reason:'event_join',p_source_id:'checkin'})
+          if(award.error)console.error('qr checkin crumb award failed',award.error)
+        }
+        const minutesBefore=Math.round((new Date(event.starts_at).getTime()-Date.now())/60000)
+        await emitStoryTrigger(db,userId,'event_checkin',{event_slug:event.slug,member_number:Number(memberCount.count||0),minutes_before:minutesBefore,source:'ticket_qr'},event.id)
+        await refreshLeaderboard(db,[userId])
+      }
+
+      const settings:any=creature.data?.settings||{}
+      return json({
+        ok:true,
+        alreadyAttended,
+        registrationId,
+        attendeeCount:Number(memberCount.count||0),
+        displayName:String(userRow.data?.display_name||userRow.data?.telegram_username||'гость'),
+        creatureName:String(creature.data?.name||'животина'),
+        creatureStage:String(creature.data?.stage||'stage_0'),
+        visualVariant:Math.max(1,Math.min(50,Math.round(Number(settings.visual_variant||1))))
+      })
+    }
+
     if(action==='admin-create-checkin-token'){
       const now=new Date().toISOString();const existing=await db.from('encounter_tokens').select('token,expires_at').eq('event_id',event.id).eq('kind','event_checkin').gt('expires_at',now).order('created_at',{ascending:false}).limit(1).maybeSingle();if(existing.error)throw existing.error
       let token=String(existing.data?.token||'');let expiresAt=existing.data?.expires_at||null
