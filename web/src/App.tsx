@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import QRCode from 'qrcode'
+import QrScanner from 'qr-scanner'
 import type { ReactNode } from 'react'
 import { HashRouter, Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import Layout from './components/Layout'
@@ -129,6 +131,20 @@ function parseCommaList(v:string){return v.split(/[\n,]+/).map(x=>x.trim()).filt
 function eventDate(iso:string){try{return new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long',timeZone:'Europe/Moscow'}).format(new Date(iso))}catch{return iso}}
 function eventTime(iso:string){try{return new Intl.DateTimeFormat('ru-RU',{hour:'2-digit',minute:'2-digit',timeZone:'Europe/Moscow'}).format(new Date(iso))}catch{return ''}}
 function eventShortDate(iso:string){try{return new Intl.DateTimeFormat('ru-RU',{day:'2-digit',month:'2-digit',timeZone:'Europe/Moscow'}).format(new Date(iso))}catch{return iso}}
+
+function ticketQrPayload(slug:string,registrationId:string){return `nasypateli-ticket:v1:${slug}:${registrationId}`}
+function TicketQr({slug,registrationId,attended=false}:{slug:string;registrationId:string;attended?:boolean}){
+  const [src,setSrc]=useState('')
+  useEffect(()=>{
+    let dead=false
+    void QRCode.toDataURL(ticketQrPayload(slug,registrationId),{width:320,margin:1,errorCorrectionLevel:'M'}).then(url=>{if(!dead)setSrc(url)}).catch(()=>{if(!dead)setSrc('')})
+    return()=>{dead=true}
+  },[slug,registrationId])
+  return <div className={attended?'event-pass-qr attended':'event-pass-qr'}>
+    {src?<img src={src} alt="qr-код билета"/>:<div className="event-pass-qr-loading">создаём qr…</div>}
+    <div><b>{attended?'вход уже отмечен':'покажи qr координатору на входе'}</b><small>один qr = один билет</small></div>
+  </div>
+}
 
 function Onboarding(){
   const {data,error,reload}=useStateData();const [search]=useSearchParams();const nav=useNavigate();const editing=search.get('edit')==='1'
@@ -374,7 +390,18 @@ function FilmMissionPage(){
   </div>
 }
 
-function EventPass({event,attended=false,registrationId}:{event:DemoState['event'];attended?:boolean;registrationId?:string}){return <div className="event-pass" role="group" aria-label="билет на мероприятие"><div className="event-pass-top"><span>насыпатели в кино. билет</span><b>{attended?'вход отмечен':'билет оплачен'}</b></div><div className="event-pass-date">{eventShortDate(event.startsAt)}</div><div className="event-pass-grid"><div><small>начало</small><strong>{eventTime(event.startsAt)}</strong></div><div><small>место</small><strong>{event.venueName||'место объявим позже'}</strong></div></div>{event.venueAddress&&<div className="event-pass-address">{event.venueAddress}</div>}{registrationId&&<div className="event-pass-address">ticket id · {registrationId}</div>}<div className="event-pass-stub"><span>билет живёт внутри приложения</span><span>что будет дальше, приложение откроет по ходу вечера</span></div></div>}
+function EventPass({event,attended=false,registrationId}:{event:DemoState['event'];attended?:boolean;registrationId?:string}){
+  const free=Number(event.ticketPriceRub)===0
+  return <div className="event-pass" role="group" aria-label="билет на мероприятие">
+    <div className="event-pass-top"><span>насыпатели в кино. билет</span><b>{attended?'вход отмечен':free?'бесплатный билет':'билет оплачен'}</b></div>
+    <div className="event-pass-date">{eventShortDate(event.startsAt)}</div>
+    <div className="event-pass-grid"><div><small>начало</small><strong>{eventTime(event.startsAt)}</strong></div><div><small>место</small><strong>{event.venueName||'место объявим позже'}</strong></div></div>
+    {event.venueAddress&&<div className="event-pass-address">{event.venueAddress}</div>}
+    {registrationId&&<TicketQr slug={event.slug} registrationId={registrationId} attended={attended}/>}
+    {registrationId&&<div className="event-pass-address">ticket id · {registrationId}</div>}
+    <div className="event-pass-stub"><span>билет живёт внутри приложения</span><span>{attended?'координатор уже отметил вход':'на входе координатор сканирует qr, и ваша животина появляется на общем экране'}</span></div>
+  </div>
+}
 
 function NextAction({data,onOpen,onBuy,onClaim,buyBusy=false,claimBusy=false,reserveCountdown=''}:{data:DemoState;onOpen:()=>void;onBuy:()=>void;onClaim:()=>void;buyBusy?:boolean;claimBusy?:boolean;reserveCountdown?:string}){
   const s=data.event.status;const salesOpen=s==='SALES_OPEN';const freeEntry=Number(data.event.ticketPriceRub)===0;const freeClaimOpen=freeEntry&&['SALES_OPEN','CHECKIN'].includes(s)
@@ -1102,6 +1129,97 @@ function ReviewQueueAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(acti
   </Card>
 }
 
+function AdminCheckinScanner(){
+  const {slug}=useParams()
+  const nav=useNavigate()
+  const privileged=usePrivilegedState('admin',slug)
+  const data=privileged.data,error=privileged.error,reload=privileged.reload
+  const videoRef=useRef<HTMLVideoElement>(null)
+  const scannerRef=useRef<QrScanner|null>(null)
+  const processing=useRef(false)
+  const lastScan=useRef({value:'',at:0})
+  const [cameraOn,setCameraOn]=useState(false)
+  const [busy,setBusy]=useState(false)
+  const [message,setMessage]=useState('')
+  const [manual,setManual]=useState('')
+  const [lastResult,setLastResult]=useState<any>(null)
+
+  const stopCamera=()=>{
+    scannerRef.current?.stop()
+    scannerRef.current?.destroy()
+    scannerRef.current=null
+    setCameraOn(false)
+  }
+  useEffect(()=>()=>stopCamera(),[])
+
+  const checkin=async(raw:string)=>{
+    const value=String(raw||'').trim()
+    if(!value||processing.current||!data)return
+    const now=Date.now()
+    if(lastScan.current.value===value&&now-lastScan.current.at<2500)return
+    lastScan.current={value,at:now}
+    processing.current=true
+    setBusy(true);setMessage('')
+    try{
+      const result:any=await callAdminApi('admin-checkin-ticket',{slug:data.event.slug,ticketQr:value},privileged.token)
+      setLastResult(result)
+      setManual('')
+      setMessage(result.alreadyAttended?'уже отмечен. животина уже на экране':'готово. животина появилась на экране')
+      if('vibrate' in navigator)navigator.vibrate?.(120)
+      await reload()
+    }catch(e:any){
+      setLastResult(null)
+      setMessage(e.message||'не получилось отметить билет')
+    }finally{
+      processing.current=false
+      setBusy(false)
+    }
+  }
+
+  const startCamera=async()=>{
+    if(!data||!videoRef.current||scannerRef.current)return
+    setMessage('')
+    try{
+      const scanner=new QrScanner(videoRef.current,(result:any)=>void checkin(typeof result==='string'?result:result.data),{
+        preferredCamera:'environment',
+        highlightScanRegion:true,
+        highlightCodeOutline:true,
+        returnDetailedScanResult:true
+      })
+      scannerRef.current=scanner
+      await scanner.start()
+      setCameraOn(true)
+    }catch(e:any){
+      scannerRef.current?.destroy();scannerRef.current=null
+      setCameraOn(false)
+      setMessage(e?.message?.includes('permission')?'дай браузеру доступ к камере и попробуй ещё раз':'камера не запустилась. можно вставить ticket id вручную')
+    }
+  }
+
+  if(!data)return <Loading error={error}/>
+  const checked=(data.adminParticipants||[]).filter(x=>x.status==='attended').length
+  return <div className="admin-checkin-page">
+    <div className="admin-checkin-head">
+      <Button kind="secondary" onClick={()=>nav(`/admin/event/${data.event.slug}`)}>← в админку</Button>
+      <div><div className="eyebrow">координатор · чек-ин</div><h1>сканер билетов</h1><p>{checked} животин уже в зале</p></div>
+    </div>
+    <Card className="admin-checkin-scanner">
+      <div className="admin-checkin-camera"><video ref={videoRef} muted playsInline/></div>
+      <div className="admin-checkin-actions">
+        {!cameraOn?<Button disabled={busy} onClick={()=>void startCamera()}>включить камеру</Button>:<Button kind="secondary" disabled={busy} onClick={stopCamera}>выключить камеру</Button>}
+      </div>
+      <p className="muted">наведи камеру на qr внутри билета. повторный скан безопасен и второй раз человека не добавит.</p>
+      {message&&<div className={lastResult?'success':'form-error'}>{message}</div>}
+      {lastResult&&<div className="admin-checkin-result"><div className="admin-checkin-result-creature"><ProjectorCreatureImage stage={String(lastResult.creatureStage||'stage_0')} visualVariant={Number(lastResult.visualVariant||1)}/></div><div><small>{lastResult.alreadyAttended?'уже в зале':'в зал заходит'}</small><b>{lastResult.creatureName||'животина'}</b><span>№ {Number(lastResult.attendeeCount||0)} · {lastResult.displayName||'гость'}</span></div></div>}
+    </Card>
+    <Card>
+      <div className="section-title">если камера не читает</div>
+      <p className="muted">вставь ticket id из билета или весь текст qr.</p>
+      <div className="admin-checkin-manual"><input value={manual} onChange={e=>setManual(e.target.value)} placeholder="ticket id"/><Button disabled={busy||!manual.trim()} onClick={()=>void checkin(manual)}>отметить вход</Button></div>
+    </Card>
+  </div>
+}
+
 function Admin(){
   const {slug}=useParams()
   const privileged=usePrivilegedState('admin',slug)
@@ -1148,7 +1266,7 @@ function Admin(){
       <Card><div className="section-title">событие</div><Field label="дата и время. москва"><input type="datetime-local" value={startsAt} onChange={e=>setStartsAt(e.target.value)}/></Field><Field label="цена билета. ₽"><input type="number" min="0" max="100000" value={ticketPrice} onChange={e=>setTicketPrice(Number(e.target.value))}/></Field><Field label="максимальный хронометраж"><input type="number" min="45" max="360" value={runtimeCap} onChange={e=>setRuntimeCap(Number(e.target.value))}/></Field><Field label="площадка"><input value={venueName} onChange={e=>setVenueName(e.target.value)}/></Field><Field label="адрес"><input value={venueAddress} onChange={e=>setVenueAddress(e.target.value)}/></Field><Button disabled={busy||!moscowIso(startsAt)} onClick={()=>run('admin-event-config',{startsAt:moscowIso(startsAt),ticketPriceRub:ticketPrice,maxMovieRuntimeMin:runtimeCap,venueName,venueAddress})}>сохранить событие</Button></Card>
       <Card><div className="section-title">вместимость</div><div className="inline"><input type="number" min="1" max="500" value={cap} onChange={e=>setCap(Number(e.target.value))}/><Button disabled={busy} onClick={()=>run('admin-capacity',{capacity:cap})}>применить</Button></div><p className="muted">сейчас {data.event.capacity} мест</p></Card>
       <Card><div className="section-title">сообщение на проектор</div><textarea value={message} onChange={e=>setMessage(e.target.value)} placeholder="например: 10 минут до начала"/><Button disabled={busy} onClick={()=>run('admin-screen-message',{message})}>показать</Button></Card>
-      <Card><div className="section-title">чек-ин</div><Button kind="secondary" disabled={busy} onClick={async()=>{const x:any=await run('admin-create-checkin-token');if(x)setCheckinLink(String(x.deepLink||x.token||''))}}>получить ссылку чек-ина</Button>{checkinLink&&<><input className="share-link" readOnly value={checkinLink}/><Button kind="secondary" onClick={async()=>{try{await navigator.clipboard.writeText(checkinLink)}catch{window.prompt('скопируйте ссылку',checkinLink)}}}>скопировать</Button></>}</Card>
+      <Card><div className="section-title">чек-ин</div><p className="muted">координатор сканирует персональный qr в билете. после успешного скана животина автоматически появляется на общем экране.</p><Button onClick={()=>{location.hash=`/admin/checkin/${data.event.slug}`}}>открыть сканер билетов</Button><details className="admin-checkin-backup"><summary>резервный самостоятельный чек-ин</summary><Button kind="secondary" disabled={busy} onClick={async()=>{const x:any=await run('admin-create-checkin-token');if(x)setCheckinLink(String(x.deepLink||x.token||''))}}>получить резервную ссылку</Button>{checkinLink&&<><input className="share-link" readOnly value={checkinLink}/><Button kind="secondary" onClick={async()=>{try{await navigator.clipboard.writeText(checkinLink)}catch{window.prompt('скопируйте ссылку',checkinLink)}}}>скопировать</Button></>}</details></Card>
       {!demoMode&&<Card><div className="section-title">telegram</div><Button kind="secondary" disabled={busy} onClick={()=>run('admin-configure-telegram')}>обновить webhook + кнопку бота</Button></Card>}
       <Card><div className="section-title">выгрузка</div><div className="inline"><Button kind="secondary" disabled={busy} onClick={async()=>{const x=await run('admin-export-event');if(x)downloadEventExport(x,'csv')}}>csv</Button><Button kind="secondary" disabled={busy} onClick={async()=>{const x=await run('admin-export-event');if(x)downloadEventExport(x,'json')}}>json</Button></div></Card>
     </div></details>
@@ -1578,4 +1696,4 @@ function TelegramStartRouter(){
 
 function statusLabel(s:EventStatus){const m:Record<EventStatus,string>={DRAFT:'черновик',SALES_OPEN:'регистрация открыта',CHECKIN:'сбор гостей',IDEAS_OPEN:'идеи открыты',IDEAS_LOCKED:'идеи закрыты',TOP3_READY:'три идеи',IDEA_RANDOMIZED:'идея выбрана',MOVIE_SEARCH:'поиск фильма',MOVIE_FINALISTS:'три фильма',MOVIE_SELECTED:'фильм выбран',PREDICTIONS_OPEN:'прогнозы',PREDICTIONS_LOCKED:'прогнозы закрыты',WATCHING:'просмотр',PREDICTIONS_SCORED:'результаты',DISCUSSION:'реакции',FINAL_REVIEW:'финальная фраза',FEEDBACK:'исследование',CLOSED:'закрыто'};return m[s]}
 
-export default function App(){return <HashRouter><TelegramStartRouter/><Routes><Route path="/onboarding" element={<Onboarding/>}/><Route path="/birth" element={<BirthPage/>}/><Route path="/rules" element={<RulesPage/>}/><Route element={<Layout/>}><Route path="/" element={<RequireProfile><Home/></RequireProfile>}/><Route path="/profile" element={<RequireProfile><CreatureProfilePage/></RequireProfile>}/><Route path="/mission/:assignmentId" element={<RequireProfile><FilmMissionPage/></RequireProfile>}/><Route path="/dating" element={<RequireProfile><DatingPage/></RequireProfile>}/><Route path="/notifications" element={<RequireProfile><NotificationPage/></RequireProfile>}/><Route path="/event/:slug" element={<RequireProfile><EventPage/></RequireProfile>}/><Route path="/archive" element={<RequireProfile><ArchivePage/></RequireProfile>}/><Route path="/club" element={<Navigate to="/archive" replace/>}/><Route path="/zhivotina" element={<RequireProfile><ZhivotinaPage/></RequireProfile>}/><Route path="/jipitina" element={<Navigate to="/zhivotina" replace/>}/></Route><Route path="/admin/:slug" element={<Admin/>}/><Route path="/admin/event/:slug" element={<Admin/>}/><Route path="/screen/:slug" element={<Screen/>}/><Route path="/screen/event/:slug" element={<Screen/>}/><Route path="/rehearsal/:slug" element={<RehearsalPage/>}/><Route path="*" element={<Navigate to="/" replace/>}/></Routes></HashRouter>}
+export default function App(){return <HashRouter><TelegramStartRouter/><Routes><Route path="/onboarding" element={<Onboarding/>}/><Route path="/birth" element={<BirthPage/>}/><Route path="/rules" element={<RulesPage/>}/><Route element={<Layout/>}><Route path="/" element={<RequireProfile><Home/></RequireProfile>}/><Route path="/profile" element={<RequireProfile><CreatureProfilePage/></RequireProfile>}/><Route path="/mission/:assignmentId" element={<RequireProfile><FilmMissionPage/></RequireProfile>}/><Route path="/dating" element={<RequireProfile><DatingPage/></RequireProfile>}/><Route path="/notifications" element={<RequireProfile><NotificationPage/></RequireProfile>}/><Route path="/event/:slug" element={<RequireProfile><EventPage/></RequireProfile>}/><Route path="/archive" element={<RequireProfile><ArchivePage/></RequireProfile>}/><Route path="/club" element={<Navigate to="/archive" replace/>}/><Route path="/zhivotina" element={<RequireProfile><ZhivotinaPage/></RequireProfile>}/><Route path="/jipitina" element={<Navigate to="/zhivotina" replace/>}/></Route><Route path="/admin/:slug" element={<Admin/>}/><Route path="/admin/event/:slug" element={<Admin/>}/><Route path="/admin/checkin/:slug" element={<AdminCheckinScanner/>}/><Route path="/screen/:slug" element={<Screen/>}/><Route path="/screen/event/:slug" element={<Screen/>}/><Route path="/rehearsal/:slug" element={<RehearsalPage/>}/><Route path="*" element={<Navigate to="/" replace/>}/></Routes></HashRouter>}
