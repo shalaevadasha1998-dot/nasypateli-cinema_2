@@ -1030,6 +1030,11 @@ async function notificationRelevance(db:any,n:any){
     }
   }
   if(n.kind==='events'&&n.event_id){
+    if(String(n.dedupe_key||'').startsWith('free_oct17_invite_')){
+      const reg=await db.from('registrations').select('status').eq('event_id',n.event_id).eq('user_id',n.user_id).maybeSingle()
+      if(reg.error)throw reg.error
+      if(['paid','attended','reserved'].includes(String(reg.data?.status||'')))return {ok:false,reason:'ticket already claimed'}
+    }
     const event=await db.from('events').select('status,starts_at').eq('id',n.event_id).maybeSingle();if(event.error)throw event.error
     if(!event.data||['DRAFT','CLOSED'].includes(String(event.data.status||''))||new Date(event.data.starts_at).getTime()<=now)return {ok:false,reason:'event announcement no longer current'}
   }
@@ -1484,7 +1489,7 @@ export async function handleApi(req:Request){
           const prefR=await db.from('notification_preferences').select('*').eq('user_id',n.user_id).maybeSingle()
           if(prefR.error)throw prefR.error
           const pref=prefR.data
-          const allowed=pref?.write_access===true&&pref?.[n.kind]!==false
+          const allowed=n.kind==='events'?pref?.events!==false:(pref?.write_access===true&&pref?.[n.kind]!==false)
           if(!allowed){
             const r=await db.from('notification_queue').update({status:'cancelled',error:'preference disabled'}).eq('id',n.id)
             if(r.error)throw r.error
