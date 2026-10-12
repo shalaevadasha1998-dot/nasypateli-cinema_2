@@ -1,0 +1,22 @@
+name: read-only 50-user production load test
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'scripts/load_test_50.py'
+      - '.github/workflows/load-test-50.yml'
+jobs:
+  load-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test 50 concurrent clients against each read-only endpoint
+        run: python3 scripts/load_test_50.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: load-test-50-report
+          path: test-results/load-50.json
