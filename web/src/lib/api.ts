@@ -14,7 +14,10 @@ function testRoomToken(){
   if(typeof window==='undefined')return ''
   const hash=window.location.hash||''
   const q=hash.includes('?')?hash.slice(hash.indexOf('?')+1):''
-  return new URLSearchParams(q).get('room')||''
+  const fromHash=new URLSearchParams(q).get('room')||''
+  if(fromHash)return fromHash
+  const invite=new URLSearchParams(window.location.search).get('test_invite')||''
+  return /^test_test-[a-z0-9-]+_([0-9a-f]{64})$/.exec(invite)?.[1]||''
 }
 
 function normalizeCreatureStage(stage:unknown):DemoState['creature']['stage']{
