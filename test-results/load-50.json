@@ -4,28 +4,39 @@
       "requests": 50,
       "success": 50,
       "failures": 0,
-      "p50_ms": 257,
-      "p95_ms": 327,
-      "max_ms": 334,
+      "p50_ms": 440,
+      "p95_ms": 527,
+      "max_ms": 530,
       "error_examples": []
     },
     "api_get": {
       "requests": 50,
       "success": 50,
       "failures": 0,
-      "p50_ms": 226,
-      "p95_ms": 280,
-      "max_ms": 349,
+      "p50_ms": 287,
+      "p95_ms": 386,
+      "max_ms": 397,
       "error_examples": []
     },
     "api_health_post": {
       "requests": 50,
       "success": 50,
       "failures": 0,
-      "p50_ms": 220,
-      "p95_ms": 256,
-      "max_ms": 300,
-      "error_examples": []
+      "p50_ms": 294,
+      "p95_ms": 389,
+      "max_ms": 435,
+      "error_examples": [],
+      "ready_count": 0,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     }
   },
   "results": [
@@ -33,336 +44,336 @@
       "target": "miniapp",
       "user": 0,
       "status": 200,
-      "ms": 231,
-      "bytes_sample": 1024,
+      "ms": 466,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 1,
       "status": 200,
-      "ms": 230,
-      "bytes_sample": 1024,
+      "ms": 400,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 2,
       "status": 200,
-      "ms": 261,
-      "bytes_sample": 1024,
+      "ms": 458,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 3,
       "status": 200,
-      "ms": 283,
-      "bytes_sample": 1024,
+      "ms": 455,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 4,
       "status": 200,
-      "ms": 311,
-      "bytes_sample": 1024,
+      "ms": 522,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 5,
       "status": 200,
-      "ms": 222,
-      "bytes_sample": 1024,
+      "ms": 520,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 6,
       "status": 200,
-      "ms": 306,
-      "bytes_sample": 1024,
+      "ms": 526,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 7,
       "status": 200,
-      "ms": 248,
-      "bytes_sample": 1024,
+      "ms": 530,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 8,
       "status": 200,
-      "ms": 254,
-      "bytes_sample": 1024,
+      "ms": 523,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 9,
       "status": 200,
-      "ms": 234,
-      "bytes_sample": 1024,
+      "ms": 529,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 10,
       "status": 200,
-      "ms": 307,
-      "bytes_sample": 1024,
+      "ms": 465,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 11,
       "status": 200,
-      "ms": 265,
-      "bytes_sample": 1024,
+      "ms": 493,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 12,
       "status": 200,
-      "ms": 246,
-      "bytes_sample": 1024,
+      "ms": 435,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 13,
       "status": 200,
-      "ms": 327,
-      "bytes_sample": 1024,
+      "ms": 501,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 14,
       "status": 200,
-      "ms": 265,
-      "bytes_sample": 1024,
+      "ms": 507,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 15,
       "status": 200,
-      "ms": 321,
-      "bytes_sample": 1024,
+      "ms": 447,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 16,
       "status": 200,
-      "ms": 334,
-      "bytes_sample": 1024,
+      "ms": 374,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 17,
       "status": 200,
-      "ms": 327,
-      "bytes_sample": 1024,
+      "ms": 501,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 18,
       "status": 200,
-      "ms": 263,
-      "bytes_sample": 1024,
+      "ms": 364,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 19,
       "status": 200,
-      "ms": 299,
-      "bytes_sample": 1024,
+      "ms": 527,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 20,
       "status": 200,
-      "ms": 293,
-      "bytes_sample": 1024,
+      "ms": 487,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 21,
       "status": 200,
-      "ms": 315,
-      "bytes_sample": 1024,
+      "ms": 500,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 22,
       "status": 200,
-      "ms": 285,
-      "bytes_sample": 1024,
+      "ms": 447,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 23,
       "status": 200,
-      "ms": 315,
-      "bytes_sample": 1024,
+      "ms": 478,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 24,
       "status": 200,
-      "ms": 294,
-      "bytes_sample": 1024,
+      "ms": 485,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 25,
       "status": 200,
-      "ms": 263,
-      "bytes_sample": 1024,
+      "ms": 487,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 26,
       "status": 200,
-      "ms": 292,
-      "bytes_sample": 1024,
+      "ms": 496,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 27,
       "status": 200,
-      "ms": 297,
-      "bytes_sample": 1024,
+      "ms": 458,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 28,
       "status": 200,
-      "ms": 269,
-      "bytes_sample": 1024,
+      "ms": 437,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 29,
       "status": 200,
-      "ms": 285,
-      "bytes_sample": 1024,
+      "ms": 460,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 30,
       "status": 200,
-      "ms": 287,
-      "bytes_sample": 1024,
+      "ms": 420,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 31,
       "status": 200,
-      "ms": 191,
-      "bytes_sample": 1024,
+      "ms": 440,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 32,
       "status": 200,
-      "ms": 257,
-      "bytes_sample": 1024,
+      "ms": 403,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 33,
       "status": 200,
-      "ms": 269,
-      "bytes_sample": 1024,
+      "ms": 408,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 34,
       "status": 200,
-      "ms": 244,
-      "bytes_sample": 1024,
+      "ms": 383,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 35,
       "status": 200,
-      "ms": 254,
-      "bytes_sample": 1024,
+      "ms": 371,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 36,
       "status": 200,
-      "ms": 116,
-      "bytes_sample": 1024,
+      "ms": 354,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 37,
       "status": 200,
-      "ms": 116,
-      "bytes_sample": 1024,
+      "ms": 355,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 38,
       "status": 200,
-      "ms": 105,
-      "bytes_sample": 1024,
+      "ms": 359,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 39,
       "status": 200,
-      "ms": 105,
-      "bytes_sample": 1024,
+      "ms": 367,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 40,
       "status": 200,
-      "ms": 106,
-      "bytes_sample": 1024,
+      "ms": 380,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 41,
       "status": 200,
-      "ms": 108,
-      "bytes_sample": 1024,
+      "ms": 118,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
@@ -370,864 +381,1414 @@
       "user": 42,
       "status": 200,
       "ms": 115,
-      "bytes_sample": 1024,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 43,
       "status": 200,
-      "ms": 114,
-      "bytes_sample": 1024,
+      "ms": 173,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 44,
       "status": 200,
-      "ms": 113,
-      "bytes_sample": 1024,
+      "ms": 103,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 45,
       "status": 200,
-      "ms": 105,
-      "bytes_sample": 1024,
+      "ms": 173,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 46,
       "status": 200,
-      "ms": 112,
-      "bytes_sample": 1024,
+      "ms": 162,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 47,
       "status": 200,
-      "ms": 105,
-      "bytes_sample": 1024,
+      "ms": 95,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 48,
       "status": 200,
-      "ms": 120,
-      "bytes_sample": 1024,
+      "ms": 99,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "miniapp",
       "user": 49,
       "status": 200,
-      "ms": 105,
-      "bytes_sample": 1024,
+      "ms": 107,
+      "bytes_sample": 1613,
       "ok": true
     },
     {
       "target": "api_get",
       "user": 0,
       "status": 200,
-      "ms": 231,
-      "bytes_sample": 1024,
+      "ms": 294,
+      "bytes_sample": 8192,
       "ok": true
     },
     {
       "target": "api_get",
       "user": 1,
       "status": 200,
-      "ms": 239,
-      "bytes_sample": 1024,
+      "ms": 289,
+      "bytes_sample": 8192,
       "ok": true
     },
     {
       "target": "api_get",
       "user": 2,
       "status": 200,
-      "ms": 256,
-      "bytes_sample": 1024,
+      "ms": 258,
+      "bytes_sample": 8192,
       "ok": true
     },
     {
       "target": "api_get",
       "user": 3,
       "status": 200,
-      "ms": 229,
-      "bytes_sample": 1024,
+      "ms": 283,
+      "bytes_sample": 8192,
       "ok": true
     },
     {
       "target": "api_get",
       "user": 4,
       "status": 200,
-      "ms": 253,
-      "bytes_sample": 1024,
+      "ms": 287,
+      "bytes_sample": 8192,
       "ok": true
     },
     {
       "target": "api_get",
       "user": 5,
       "status": 200,
-      "ms": 250,
-      "bytes_sample": 1024,
+      "ms": 294,
+      "bytes_sample": 8192,
       "ok": true
     },
     {
       "target": "api_get",
       "user": 6,
       "status": 200,
-      "ms": 251,
-      "bytes_sample": 1024,
+      "ms": 285,
+      "bytes_sample": 8192,
       "ok": true
     },
     {
       "target": "api_get",
       "user": 7,
       "status": 200,
-      "ms": 244,
-      "bytes_sample": 1024,
+      "ms": 397,
+      "bytes_sample": 8192,
       "ok": true
     },
     {
       "target": "api_get",
       "user": 8,
       "status": 200,
-      "ms": 244,
-      "bytes_sample": 1024,
+      "ms": 265,
+      "bytes_sample": 8192,
       "ok": true
     },
     {
       "target": "api_get",
       "user": 9,
       "status": 200,
-      "ms": 280,
-      "bytes_sample": 1024,
+      "ms": 309,
+      "bytes_sample": 8192,
       "ok": true
     },
     {
       "target": "api_get",
       "user": 10,
       "status": 200,
-      "ms": 257,
-      "bytes_sample": 1024,
+      "ms": 296,
+      "bytes_sample": 8192,
       "ok": true
     },
     {
       "target": "api_get",
-      "user": 11,
-      "status": 200,
-      "ms": 240,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 12,
-      "status": 200,
-      "ms": 242,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 13,
-      "status": 200,
-      "ms": 349,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 14,
-      "status": 200,
-      "ms": 275,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 15,
-      "status": 200,
-      "ms": 229,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 16,
-      "status": 200,
-      "ms": 238,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 17,
-      "status": 200,
-      "ms": 228,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 18,
-      "status": 200,
-      "ms": 192,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 19,
-      "status": 200,
-      "ms": 275,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 20,
-      "status": 200,
-      "ms": 218,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 21,
-      "status": 200,
-      "ms": 195,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 22,
-      "status": 200,
-      "ms": 211,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 23,
-      "status": 200,
-      "ms": 208,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 24,
-      "status": 200,
-      "ms": 251,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 25,
-      "status": 200,
-      "ms": 211,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 26,
-      "status": 200,
-      "ms": 266,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 27,
-      "status": 200,
-      "ms": 200,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 28,
-      "status": 200,
-      "ms": 192,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 29,
-      "status": 200,
-      "ms": 228,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 30,
-      "status": 200,
-      "ms": 224,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 31,
-      "status": 200,
-      "ms": 206,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 32,
-      "status": 200,
-      "ms": 189,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 33,
-      "status": 200,
-      "ms": 217,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 34,
-      "status": 200,
-      "ms": 207,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 35,
-      "status": 200,
-      "ms": 209,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 36,
-      "status": 200,
-      "ms": 164,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 37,
-      "status": 200,
-      "ms": 204,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 38,
-      "status": 200,
-      "ms": 204,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 39,
-      "status": 200,
-      "ms": 282,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 40,
-      "status": 200,
-      "ms": 209,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 41,
-      "status": 200,
-      "ms": 197,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 42,
-      "status": 200,
-      "ms": 213,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 43,
-      "status": 200,
-      "ms": 196,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 44,
-      "status": 200,
-      "ms": 243,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 45,
-      "status": 200,
-      "ms": 226,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 46,
-      "status": 200,
-      "ms": 245,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 47,
-      "status": 200,
-      "ms": 180,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 48,
-      "status": 200,
-      "ms": 189,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_get",
-      "user": 49,
-      "status": 200,
-      "ms": 204,
-      "bytes_sample": 1024,
-      "ok": true
-    },
-    {
-      "target": "api_health_post",
-      "user": 0,
-      "status": 200,
-      "ms": 208,
-      "bytes_sample": 254,
-      "ok": true
-    },
-    {
-      "target": "api_health_post",
-      "user": 1,
-      "status": 200,
-      "ms": 228,
-      "bytes_sample": 254,
-      "ok": true
-    },
-    {
-      "target": "api_health_post",
-      "user": 2,
-      "status": 200,
-      "ms": 226,
-      "bytes_sample": 254,
-      "ok": true
-    },
-    {
-      "target": "api_health_post",
-      "user": 3,
-      "status": 200,
-      "ms": 254,
-      "bytes_sample": 254,
-      "ok": true
-    },
-    {
-      "target": "api_health_post",
-      "user": 4,
-      "status": 200,
-      "ms": 226,
-      "bytes_sample": 254,
-      "ok": true
-    },
-    {
-      "target": "api_health_post",
-      "user": 5,
-      "status": 200,
-      "ms": 255,
-      "bytes_sample": 254,
-      "ok": true
-    },
-    {
-      "target": "api_health_post",
-      "user": 6,
-      "status": 200,
-      "ms": 256,
-      "bytes_sample": 254,
-      "ok": true
-    },
-    {
-      "target": "api_health_post",
-      "user": 7,
-      "status": 200,
-      "ms": 254,
-      "bytes_sample": 254,
-      "ok": true
-    },
-    {
-      "target": "api_health_post",
-      "user": 8,
-      "status": 200,
-      "ms": 236,
-      "bytes_sample": 254,
-      "ok": true
-    },
-    {
-      "target": "api_health_post",
-      "user": 9,
-      "status": 200,
-      "ms": 79,
-      "bytes_sample": 254,
-      "ok": true
-    },
-    {
-      "target": "api_health_post",
-      "user": 10,
-      "status": 200,
-      "ms": 212,
-      "bytes_sample": 254,
-      "ok": true
-    },
-    {
-      "target": "api_health_post",
       "user": 11,
       "status": 200,
       "ms": 300,
-      "bytes_sample": 254,
+      "bytes_sample": 8192,
       "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 12,
+      "status": 200,
+      "ms": 351,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 13,
+      "status": 200,
+      "ms": 293,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 14,
+      "status": 200,
+      "ms": 282,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 15,
+      "status": 200,
+      "ms": 261,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 16,
+      "status": 200,
+      "ms": 263,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 17,
+      "status": 200,
+      "ms": 290,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 18,
+      "status": 200,
+      "ms": 326,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 19,
+      "status": 200,
+      "ms": 337,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 20,
+      "status": 200,
+      "ms": 290,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 21,
+      "status": 200,
+      "ms": 261,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 22,
+      "status": 200,
+      "ms": 253,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 23,
+      "status": 200,
+      "ms": 252,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 24,
+      "status": 200,
+      "ms": 243,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 25,
+      "status": 200,
+      "ms": 390,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 26,
+      "status": 200,
+      "ms": 260,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 27,
+      "status": 200,
+      "ms": 284,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 28,
+      "status": 200,
+      "ms": 253,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 29,
+      "status": 200,
+      "ms": 305,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 30,
+      "status": 200,
+      "ms": 323,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 31,
+      "status": 200,
+      "ms": 298,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 32,
+      "status": 200,
+      "ms": 305,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 33,
+      "status": 200,
+      "ms": 249,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 34,
+      "status": 200,
+      "ms": 225,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 35,
+      "status": 200,
+      "ms": 344,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 36,
+      "status": 200,
+      "ms": 280,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 37,
+      "status": 200,
+      "ms": 318,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 38,
+      "status": 200,
+      "ms": 238,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 39,
+      "status": 200,
+      "ms": 231,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 40,
+      "status": 200,
+      "ms": 271,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 41,
+      "status": 200,
+      "ms": 256,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 42,
+      "status": 200,
+      "ms": 254,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 43,
+      "status": 200,
+      "ms": 308,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 44,
+      "status": 200,
+      "ms": 293,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 45,
+      "status": 200,
+      "ms": 248,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 46,
+      "status": 200,
+      "ms": 250,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 47,
+      "status": 200,
+      "ms": 291,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 48,
+      "status": 200,
+      "ms": 386,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_get",
+      "user": 49,
+      "status": 200,
+      "ms": 332,
+      "bytes_sample": 8192,
+      "ok": true
+    },
+    {
+      "target": "api_health_post",
+      "user": 0,
+      "status": 200,
+      "ms": 312,
+      "bytes_sample": 254,
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
+    },
+    {
+      "target": "api_health_post",
+      "user": 1,
+      "status": 200,
+      "ms": 307,
+      "bytes_sample": 254,
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
+    },
+    {
+      "target": "api_health_post",
+      "user": 2,
+      "status": 200,
+      "ms": 284,
+      "bytes_sample": 254,
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
+    },
+    {
+      "target": "api_health_post",
+      "user": 3,
+      "status": 200,
+      "ms": 322,
+      "bytes_sample": 254,
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
+    },
+    {
+      "target": "api_health_post",
+      "user": 4,
+      "status": 200,
+      "ms": 281,
+      "bytes_sample": 254,
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
+    },
+    {
+      "target": "api_health_post",
+      "user": 5,
+      "status": 200,
+      "ms": 262,
+      "bytes_sample": 254,
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
+    },
+    {
+      "target": "api_health_post",
+      "user": 6,
+      "status": 200,
+      "ms": 300,
+      "bytes_sample": 254,
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
+    },
+    {
+      "target": "api_health_post",
+      "user": 7,
+      "status": 200,
+      "ms": 194,
+      "bytes_sample": 254,
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
+    },
+    {
+      "target": "api_health_post",
+      "user": 8,
+      "status": 200,
+      "ms": 402,
+      "bytes_sample": 254,
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
+    },
+    {
+      "target": "api_health_post",
+      "user": 9,
+      "status": 200,
+      "ms": 306,
+      "bytes_sample": 254,
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
+    },
+    {
+      "target": "api_health_post",
+      "user": 10,
+      "status": 200,
+      "ms": 298,
+      "bytes_sample": 254,
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
+    },
+    {
+      "target": "api_health_post",
+      "user": 11,
+      "status": 200,
+      "ms": 268,
+      "bytes_sample": 254,
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 12,
       "status": 200,
-      "ms": 241,
+      "ms": 377,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 13,
       "status": 200,
-      "ms": 231,
+      "ms": 303,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 14,
       "status": 200,
-      "ms": 221,
+      "ms": 280,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 15,
       "status": 200,
-      "ms": 239,
+      "ms": 273,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 16,
       "status": 200,
-      "ms": 220,
+      "ms": 260,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 17,
       "status": 200,
-      "ms": 101,
+      "ms": 356,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 18,
       "status": 200,
-      "ms": 180,
+      "ms": 168,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 19,
       "status": 200,
-      "ms": 115,
+      "ms": 292,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 20,
       "status": 200,
-      "ms": 221,
+      "ms": 281,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 21,
       "status": 200,
-      "ms": 230,
+      "ms": 339,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 22,
       "status": 200,
-      "ms": 230,
+      "ms": 435,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 23,
       "status": 200,
-      "ms": 248,
+      "ms": 300,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 24,
       "status": 200,
-      "ms": 218,
+      "ms": 275,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 25,
       "status": 200,
-      "ms": 248,
+      "ms": 323,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 26,
       "status": 200,
-      "ms": 215,
+      "ms": 170,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 27,
       "status": 200,
-      "ms": 253,
+      "ms": 298,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 28,
       "status": 200,
-      "ms": 214,
+      "ms": 294,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 29,
       "status": 200,
-      "ms": 234,
+      "ms": 388,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 30,
       "status": 200,
-      "ms": 233,
+      "ms": 298,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 31,
       "status": 200,
-      "ms": 226,
+      "ms": 311,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 32,
       "status": 200,
-      "ms": 214,
+      "ms": 389,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 33,
       "status": 200,
-      "ms": 199,
+      "ms": 295,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 34,
       "status": 200,
-      "ms": 283,
+      "ms": 128,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 35,
       "status": 200,
-      "ms": 94,
+      "ms": 274,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 36,
       "status": 200,
-      "ms": 230,
+      "ms": 272,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 37,
       "status": 200,
-      "ms": 208,
+      "ms": 272,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 38,
       "status": 200,
-      "ms": 203,
+      "ms": 365,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 39,
       "status": 200,
-      "ms": 52,
+      "ms": 127,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 40,
       "status": 200,
-      "ms": 157,
+      "ms": 280,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 41,
       "status": 200,
-      "ms": 205,
+      "ms": 302,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 42,
       "status": 200,
-      "ms": 193,
+      "ms": 300,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 43,
       "status": 200,
-      "ms": 245,
+      "ms": 285,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 44,
       "status": 200,
-      "ms": 213,
+      "ms": 292,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 45,
       "status": 200,
-      "ms": 168,
+      "ms": 304,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 46,
       "status": 200,
-      "ms": 199,
+      "ms": 130,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 47,
       "status": 200,
-      "ms": 182,
+      "ms": 298,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 48,
       "status": 200,
-      "ms": 60,
+      "ms": 283,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     },
     {
       "target": "api_health_post",
       "user": 49,
       "status": 200,
-      "ms": 190,
+      "ms": 274,
       "bytes_sample": 254,
-      "ok": true
+      "ok": true,
+      "health_ready": false,
+      "health_checks": {
+        "database": true,
+        "telegram": true,
+        "payments": false,
+        "openai": true,
+        "admin": true,
+        "screen": true,
+        "cron": true,
+        "demoOff": true
+      }
     }
   ]
 }
