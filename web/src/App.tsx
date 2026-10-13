@@ -1697,7 +1697,7 @@ function TestInviteCard({adminToken}:{adminToken:string}){
 function TelegramStartRouter({children}:{children:ReactNode}){
   const nav=useNavigate()
   const location=useLocation()
-  const [path]=useState(()=>telegramStartPath(telegramStartParam()||new URLSearchParams(window.location.search).get('tgWebAppStartParam')||''))
+  const [path]=useState(()=>telegramStartPath(new URLSearchParams(window.location.search).get('test_invite')||telegramStartParam()||new URLSearchParams(window.location.search).get('tgWebAppStartParam')||''))
   const [ready,setReady]=useState(!path)
   useEffect(()=>{
     if(ready)return
