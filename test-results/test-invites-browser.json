@@ -1,0 +1,8 @@
+{
+  "checks": [
+    "admin button opens Telegram share with guest-only link",
+    "320px guest routes directly into own test profile without live bootstrap",
+    "430px guest routes directly into own test profile without live bootstrap"
+  ],
+  "errors": []
+}

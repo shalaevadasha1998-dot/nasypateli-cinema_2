@@ -1,3 +1,4 @@
+import { testInviteToken, testInviteMatches } from '../_shared/testInvite.ts'
 import { adminDb } from '../_shared/db.ts'
 import { cors, err, json } from '../_shared/http.ts'
 import { telegramUserFromRequest, isConfiguredAdmin } from '../_shared/telegram.ts'
@@ -565,7 +566,7 @@ async function getOrCreateUser(db:any,tg:any){
   return created.data
 }
 async function mustAdmin(db:any,user:any,tg:any){
-  if(isConfiguredAdmin(tg))return
+  if(tg&&isConfiguredAdmin(tg))return
   const direct=await db.from('admins').select('role').eq('user_id',user.id).maybeSingle()
   if(direct.error)throw direct.error
   if(direct.data)return
@@ -1398,8 +1399,7 @@ export async function handleApi(req:Request){
       if(!adminTokenOk&&!hasAdminHeader&&!hasTelegramAuth&&!hasPwaAuth&&!adminSlug.startsWith('test-'))return err('Доступ к пульту запрещён',401)
       const event=await eventBySlug(db,adminSlug)
       const testAdminOk=await testRoomTokenMatches(event,req.headers.get('x-admin-token')||'')
-      const openTestAdmin=event?.settings?.test_room===true
-      if(!adminTokenOk&&!testAdminOk&&!openTestAdmin){
+      if(!adminTokenOk&&!testAdminOk){
         try{
           const pwaUser=await pwaSessionUser(db,req)
           if(pwaUser)await mustAdmin(db,pwaUser,null)
@@ -1556,42 +1556,25 @@ export async function handleApi(req:Request){
     if(testRoomHeader&&requestedSlug){
       try{
         const candidate=await eventBySlug(db,requestedSlug)
-        if(await testRoomTokenMatches(candidate,testRoomHeader)){
+        if(await testInviteMatches(candidate,testRoomHeader)||await testRoomTokenMatches(candidate,testRoomHeader)){
           testEvent=candidate
           testParticipantAccess=true
-          const useTestProfile=body.testProfile===true
-          if(useTestProfile){
-            const testUserId=String(candidate?.settings?.test_user_id||'')
-            if(!isUuid(testUserId))return err('Тестовая комната настроена некорректно',500)
-            const testUser=await db.from('users').select('*').eq('id',testUserId).maybeSingle()
-            if(testUser.error)throw testUser.error
-            if(!testUser.data)return err('Тестовый участник не найден',500)
-            user=testUser.data
-            tg={id:0,first_name:'тестовый участник'}
-          }else if(!user){
-            try{
-              tg=await telegramUserFromRequest(req)
-              user=await getOrCreateUser(db,tg)
-            }catch{
-              const testUserId=String(candidate?.settings?.test_user_id||'')
-              if(!isUuid(testUserId))return err('Тестовая комната настроена некорректно',500)
-              const testUser=await db.from('users').select('*').eq('id',testUserId).maybeSingle()
-              if(testUser.error)throw testUser.error
-              if(!testUser.data)return err('Тестовый участник не найден',500)
-              user=testUser.data
-              tg={id:0,first_name:'тестовый участник'}
-            }
+          // A room capability grants event access, never a shared identity.
+          // Telegram takes precedence over any stale standalone session.
+          if(req.headers.get('x-telegram-init-data')||!user){
+            try{tg=await telegramUserFromRequest(req)}
+            catch{return err('Откройте приглашение в Telegram: для теста нужен ваш личный профиль',401)}
+            user=await getOrCreateUser(db,tg)
           }
         }
       }catch(e:any){if(e?.message!=='EVENT_NOT_FOUND')throw e}
     }
     const suppliedAdminToken=req.headers.get('x-admin-token')||''
-    // Resolve the trusted event flag BEFORE Telegram authentication for test controls.
     const adminTarget=isAdminAction?await eventBySlug(db,requestedSlug||'2026-10-03'):null
-    const anonymousTestAdmin=isAdminAction&&adminTarget?.settings?.test_room===true
-    if(!user&&(!isAdminAction||(!adminTokenOk&&!suppliedAdminToken&&!anonymousTestAdmin))){
+    const legacyTestAdmin=isAdminAction&&await testRoomTokenMatches(adminTarget,suppliedAdminToken)
+    if(!user&&(!isAdminAction||(!adminTokenOk&&!legacyTestAdmin))){
       try{tg=await telegramUserFromRequest(req);user=await getOrCreateUser(db,tg)}
-      catch(e){if(isAdminAction)return err('Доступ к пульту запрещён: откройте его через Telegram или закрытую ссылку',401);throw e}
+      catch{return err(isAdminAction?'Доступ к пульту запрещён: откройте его через Telegram или закрытую ссылку':'Откройте приложение через Telegram',401)}
     }
 
     if(action==='pwa-create-handoff'){
@@ -1737,7 +1720,7 @@ export async function handleApi(req:Request){
         return json({user,profile,event:null,onboardingComplete:profile.completed,creature})
       }
       await maybeAutoAdvanceShow(db,event)
-      if(testParticipantAccess&&event?.settings?.test_room===true&&Number(tg?.id||0)>0){
+      if(testParticipantAccess&&event?.settings?.test_room===true&&Number(user?.telegram_id||0)>0){
         const admitted=await db.from('registrations').upsert({
           event_id:event.id,user_id:user.id,status:'attended',queue_position:null,payment_provider:'test_room',
           provider_payment_id:null,telegram_payment_charge_id:null,amount_rub:0,photo_video_consent:false,
@@ -1951,8 +1934,7 @@ export async function handleApi(req:Request){
 
     const slug=String(body.slug||'2026-10-03');const event=await eventBySlug(db,slug)
     const testAdminTokenOk=await testRoomTokenMatches(event,req.headers.get('x-admin-token')||'')
-    const openTestAdmin=event?.settings?.test_room===true
-    if(event?.settings?.test_room===true&&!testParticipantAccess&&!testAdminTokenOk&&!adminTokenOk&&!openTestAdmin)return err('Тестовая комната закрыта',403)
+    if(!isAdminAction&&event?.settings?.test_room===true&&!testParticipantAccess)return err('Тестовая комната закрыта',403)
 
     if(action==='claim-event-ticket'){
       if(Number(event.ticket_price_rub)!==0)return err('этот билет нельзя получить без оплаты',409)
@@ -2138,7 +2120,7 @@ export async function handleApi(req:Request){
       if(saved.error)throw saved.error
       const reward=Math.max(0,Math.min(100,Number(show.program?.rewards?.finale||0)))
       let crumbs:any=null
-      if(reward>0&&!show.runtime?.isTest){
+      if(reward>0&&event.settings?.test_room!==true&&!show.runtime?.isTest){
         const award=await db.rpc('award_event_crumbs',{p_user_id:user.id,p_event_id:event.id,p_amount:reward,p_reason:'final_vote',p_source_id:`${show.runtime.runId||event.id}:final_vote`})
         if(award.error)console.error('final vote crumb award failed',award.error)
         else crumbs=award.data
@@ -2169,7 +2151,7 @@ export async function handleApi(req:Request){
       if(vote.error)throw vote.error
       const reward=Math.max(0,Math.min(100,Number(show.program?.rewards?.vote||0)))
       let crumbs:any=null
-      if(reward>0&&!show.runtime?.isTest){
+      if(reward>0&&event.settings?.test_room!==true&&!show.runtime?.isTest){
         const award=await db.rpc('award_event_crumbs',{p_user_id:user.id,p_event_id:event.id,p_amount:reward,p_reason:'vote',p_source_id:`${round.id}:${questionKey}`})
         if(award.error)console.error('vote crumb award failed',award.error)
         else crumbs=award.data
@@ -2381,9 +2363,15 @@ export async function handleApi(req:Request){
       return json({ok:true,reviewId:inserted.data.id,status:'submitted'})
     }
 
-    if(!adminTokenOk&&!testAdminTokenOk&&!openTestAdmin){
-      if(!user||!tg)return err('Доступ к пульту запрещён',401)
-      await mustAdmin(db,user,tg)
+    if(!adminTokenOk&&!testAdminTokenOk){
+      if(!user)return err('Доступ к пульту запрещён',401)
+      try{await mustAdmin(db,user,tg)}catch{return err('Доступ к пульту запрещён',403)}
+    }
+
+    if(action==='admin-test-invite'){
+      if(event.settings?.test_room!==true||event.slug!=='test-2026-10-03')return err('Приглашение доступно только для тестового вечера',403)
+      const token=await testInviteToken(event)
+      return json({ok:true,url:`https://t.me/nasipateli_v_kinobot?startapp=test_${event.slug}_${token}`})
     }
 
     if(action==='admin-media-sync'){
@@ -3322,12 +3310,13 @@ export async function handleApi(req:Request){
       const op=String(body.op||'').trim()
       const allowed=new Set(['start','next','back','jump','pause','resume','restart','restart_test','restart_live','skip','start_music','end_music','end_event'])
       if(!allowed.has(op))return err('неизвестная команда пульта',422)
+      if(event.settings?.test_room===true&&op==='restart_live')return err('Тестовая комната всегда остаётся тестовой',403)
       return await withEventOperation(db,event.id,'show-control',async()=>{
         if(op==='restart'||op==='restart_test'||op==='restart_live'){
           const currentRun=await db.from('event_runtime').select('run_id,event_runs(mode)').eq('event_id',event.id).maybeSingle()
           if(currentRun.error)throw currentRun.error
           const currentMode=String((currentRun.data as any)?.event_runs?.mode||'')
-          const mode=op==='restart_test'?'test':op==='restart_live'?'live':(currentMode==='test'?'test':'live')
+          const mode=event.settings?.test_room===true||op==='restart_test'?'test':op==='restart_live'?'live':(currentMode==='test'?'test':'live')
           const restarted=await db.rpc('restart_event_run',{p_event_id:event.id,p_mode:mode})
           if(restarted.error)throw restarted.error
           return json({ok:true,run:restarted.data?.[0]||null,show:await buildShowState(db,event)})

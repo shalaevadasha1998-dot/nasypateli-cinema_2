@@ -345,9 +345,9 @@ async function discoverMode(movie:any,mode:'fragment'|'trailer'){
 }
 
 export async function discoverMovieSourcesFast(movie:any){
-  const fast=(promise:Promise<MovieSourceCandidate[]>,ms:number)=>Promise.race<MovieSourceCandidate[]>([
+  const fast=(promise:Promise<MovieSourceCandidate[]>,ms:number)=>Promise.race([
     promise,
-    new Promise(resolve=>setTimeout(()=>resolve([]),ms))
+    new Promise<MovieSourceCandidate[]>(resolve=>setTimeout(()=>resolve([]),ms))
   ])
   const fragments=await fast(searchYoutubePublic(movie,'fragment'),6500)
   const usableFragments=fragments.filter(x=>x.verified&&x.embeddable&&x.confidence>=.60)

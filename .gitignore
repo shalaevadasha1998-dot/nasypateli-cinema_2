@@ -19,3 +19,6 @@ web/*.tsbuildinfo
 
 # repository snapshots are history, not source
 *.zip
+
+# isolated verification runtime
+.local-test/

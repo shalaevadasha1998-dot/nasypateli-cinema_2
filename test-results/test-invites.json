@@ -1,0 +1,77 @@
+{
+  "environment": "isolated local PostgreSQL + real Deno API handler; signed synthetic Telegram identities",
+  "checks": [
+    {
+      "check": "anonymous invite generation denied",
+      "passed": true
+    },
+    {
+      "check": "anonymous test admin denied",
+      "passed": true
+    },
+    {
+      "check": "invite contains no admin or bot secret",
+      "passed": true
+    },
+    {
+      "check": "no shared test profile without signed identity",
+      "passed": true
+    },
+    {
+      "check": "forged invite denied",
+      "passed": true
+    },
+    {
+      "check": "five signed participants receive independent profiles",
+      "passed": true
+    },
+    {
+      "check": "each guest admitted only to test room",
+      "passed": true
+    },
+    {
+      "check": "participant invite cannot mint admin capabilities",
+      "passed": true
+    },
+    {
+      "check": "participant cannot open admin panel",
+      "passed": true
+    },
+    {
+      "check": "participant cannot operate show",
+      "passed": true
+    },
+    {
+      "check": "repeated voting updates own vote without overwriting others",
+      "passed": true
+    },
+    {
+      "check": "all five votes belong to correct people",
+      "passed": true
+    },
+    {
+      "check": "test votes award no permanent crumbs",
+      "passed": true
+    },
+    {
+      "check": "test admission gives no live ticket or voting access",
+      "passed": true
+    },
+    {
+      "check": "test room cannot become a live run",
+      "passed": true
+    },
+    {
+      "check": "October 17 event untouched",
+      "passed": true
+    },
+    {
+      "check": "October 17 registrations untouched",
+      "passed": true
+    },
+    {
+      "check": "October 17 votes untouched",
+      "passed": true
+    }
+  ]
+}
