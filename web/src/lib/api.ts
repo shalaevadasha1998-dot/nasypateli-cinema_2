@@ -17,7 +17,7 @@ function testRoomToken(){
   const fromHash=new URLSearchParams(q).get('room')||''
   if(fromHash)return fromHash
   const invite=new URLSearchParams(window.location.search).get('test_invite')||''
-  return /^test_test-[a-z0-9-]+_([0-9a-f]{64})$/.exec(invite)?.[1]||''
+  return /^t_([0-9a-f]{32})$/.exec(invite)?.[1]||''
 }
 
 function normalizeCreatureStage(stage:unknown):DemoState['creature']['stage']{
