@@ -10,5 +10,7 @@ export function telegramStartPath(start:string){
 export function testShareUrl(inviteUrl:string){
   const url=new URL(inviteUrl)
   if(url.origin!=='https://t.me'||url.pathname!=='/nasipateli_v_kinobot'||!/^test_test-[a-z0-9-]+_[0-9a-f]{64}$/.test(url.searchParams.get('startapp')||''))throw new Error('неверная ссылка приглашения')
-  return `https://t.me/share/url?${new URLSearchParams({url:inviteUrl,text:'приглашаю на тестовый вечер «насыпатели в кино». открой ссылку в Telegram — у каждого свой профиль и свои голоса. это репетиция, не билет на 17 октября'})}`
+  const payload=url.searchParams.get('startapp')||''
+  const botUrl=`https://t.me/nasipateli_v_kinobot?start=${encodeURIComponent(payload)}`
+  return `https://t.me/share/url?${new URLSearchParams({url:botUrl,text:'приглашаю на тестовый вечер «насыпатели в кино». открой бота, нажми «попасть на событие» и проверь вечер вместе со мной. это репетиция, не билет на 17 октября'})}`
 }
