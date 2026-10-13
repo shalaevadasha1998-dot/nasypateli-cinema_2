@@ -1,3 +1,4 @@
+import { testInviteMatches } from '../_shared/testInvite.ts'
 import { adminDb } from '../_shared/db.ts'
 import { json } from '../_shared/http.ts'
 import { emitStoryTrigger } from '../_shared/stories.ts'
@@ -112,6 +113,21 @@ export async function handleTelegram(req:Request){
     if(msg?.text?.startsWith('/start')){
       const payload=String(msg.text||'').split(/\s+/)[1]||'';let launchUrl=webAppUrl;let buttonText='открыть клуб';let intro='это НАСЫПАТЕЛИ В КИНО. здесь билеты, животина, знакомства и механики вечера'
       if(payload.startsWith('encounter_')&&webAppUrl){const token=payload.slice('encounter_'.length);const t=await db.from('encounter_tokens').select('kind').eq('token',token).maybeSingle();const u=new URL(webAppUrl);u.searchParams.set('encounter',token);launchUrl=u.toString();buttonText=t.data?.kind==='event_checkin'?'отметиться на событии':'встретить животину';intro=t.data?.kind==='event_checkin'?'откройте НАСЫПАТЕЛИ В КИНО, чтобы отметиться на событии':'кажется, ваши животины сейчас встретятся'}
+      const testInvite=/^test_(test-[a-z0-9-]+)_([0-9a-f]{64})$/.exec(payload)
+      if(testInvite&&webAppUrl){
+        const room=await db.from('events').select('id,slug,title,settings').eq('slug',testInvite[1]).maybeSingle()
+        if(room.error)throw room.error
+        if(room.data&&await testInviteMatches(room.data,testInvite[2])){
+          const u=new URL(webAppUrl)
+          u.hash=`/rehearsal/${room.data.slug}?room=${encodeURIComponent(testInvite[2])}`
+          launchUrl=u.toString()
+          buttonText='попасть на событие'
+          intro='вас пригласили на тестовый вечер «насыпатели в кино» 🎬\n\nнажмите кнопку ниже, чтобы открыть событие. у вас будет собственный профиль, а голоса останутся в тестовой комнате. это не билет на 17 октября'
+        }else{
+          launchUrl=''
+          intro='приглашение на тестовый вечер недействительно. попросите организатора отправить новое'
+        }
+      }
       if(payload.startsWith('rehearsal_')&&webAppUrl){
         const token=payload.slice('rehearsal_'.length)
         const hash=await sha256Hex(token)
