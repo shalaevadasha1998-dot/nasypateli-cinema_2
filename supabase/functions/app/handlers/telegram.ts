@@ -119,6 +119,9 @@ export async function handleTelegram(req:Request){
         if(room.error)throw room.error
         if(room.data&&await testInviteMatches(room.data,testInvite[2])){
           const u=new URL(webAppUrl)
+          // Telegram may discard a URL fragment when opening a web_app button.
+          // The query survives and the frontend resolves it into the rehearsal route.
+          u.searchParams.set('test_invite',payload)
           u.hash=`/rehearsal/${room.data.slug}?room=${encodeURIComponent(testInvite[2])}`
           launchUrl=u.toString()
           buttonText='попасть на событие'
