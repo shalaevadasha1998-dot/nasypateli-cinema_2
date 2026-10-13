@@ -1,0 +1,824 @@
+{
+  "summary": {
+    "miniapp": {
+      "requests": 50,
+      "success": 50,
+      "failures": 0,
+      "p50_ms": 307,
+      "p95_ms": 452,
+      "max_ms": 470,
+      "error_examples": []
+    },
+    "api_health": {
+      "requests": 50,
+      "success": 50,
+      "failures": 0,
+      "p50_ms": 290,
+      "p95_ms": 344,
+      "max_ms": 366,
+      "error_examples": []
+    }
+  },
+  "results": [
+    {
+      "target": "miniapp",
+      "user": 0,
+      "status": 200,
+      "ms": 401,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 1,
+      "status": 200,
+      "ms": 383,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 2,
+      "status": 200,
+      "ms": 385,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 3,
+      "status": 200,
+      "ms": 386,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 4,
+      "status": 200,
+      "ms": 470,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 5,
+      "status": 200,
+      "ms": 380,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 6,
+      "status": 200,
+      "ms": 379,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 7,
+      "status": 200,
+      "ms": 374,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 8,
+      "status": 200,
+      "ms": 457,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 9,
+      "status": 200,
+      "ms": 383,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 10,
+      "status": 200,
+      "ms": 452,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 11,
+      "status": 200,
+      "ms": 378,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 12,
+      "status": 200,
+      "ms": 373,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 13,
+      "status": 200,
+      "ms": 361,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 14,
+      "status": 200,
+      "ms": 436,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 15,
+      "status": 200,
+      "ms": 348,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 16,
+      "status": 200,
+      "ms": 350,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 17,
+      "status": 200,
+      "ms": 360,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 18,
+      "status": 200,
+      "ms": 350,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 19,
+      "status": 200,
+      "ms": 348,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 20,
+      "status": 200,
+      "ms": 334,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 21,
+      "status": 200,
+      "ms": 322,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 22,
+      "status": 200,
+      "ms": 319,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 23,
+      "status": 200,
+      "ms": 313,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 24,
+      "status": 200,
+      "ms": 305,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 25,
+      "status": 200,
+      "ms": 295,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 26,
+      "status": 200,
+      "ms": 307,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 27,
+      "status": 200,
+      "ms": 265,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 28,
+      "status": 200,
+      "ms": 270,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 29,
+      "status": 200,
+      "ms": 282,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 30,
+      "status": 200,
+      "ms": 282,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 31,
+      "status": 200,
+      "ms": 279,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 32,
+      "status": 200,
+      "ms": 264,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 33,
+      "status": 200,
+      "ms": 262,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 34,
+      "status": 200,
+      "ms": 353,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 35,
+      "status": 200,
+      "ms": 262,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 36,
+      "status": 200,
+      "ms": 271,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 37,
+      "status": 200,
+      "ms": 257,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 38,
+      "status": 200,
+      "ms": 258,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 39,
+      "status": 200,
+      "ms": 252,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 40,
+      "status": 200,
+      "ms": 292,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 41,
+      "status": 200,
+      "ms": 200,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 42,
+      "status": 200,
+      "ms": 287,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 43,
+      "status": 200,
+      "ms": 195,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 44,
+      "status": 200,
+      "ms": 194,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 45,
+      "status": 200,
+      "ms": 258,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 46,
+      "status": 200,
+      "ms": 169,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 47,
+      "status": 200,
+      "ms": 161,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 48,
+      "status": 200,
+      "ms": 246,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "miniapp",
+      "user": 49,
+      "status": 200,
+      "ms": 157,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 0,
+      "status": 200,
+      "ms": 357,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 1,
+      "status": 200,
+      "ms": 328,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 2,
+      "status": 200,
+      "ms": 302,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 3,
+      "status": 200,
+      "ms": 329,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 4,
+      "status": 200,
+      "ms": 366,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 5,
+      "status": 200,
+      "ms": 306,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 6,
+      "status": 200,
+      "ms": 342,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 7,
+      "status": 200,
+      "ms": 290,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 8,
+      "status": 200,
+      "ms": 312,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 9,
+      "status": 200,
+      "ms": 308,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 10,
+      "status": 200,
+      "ms": 302,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 11,
+      "status": 200,
+      "ms": 297,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 12,
+      "status": 200,
+      "ms": 312,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 13,
+      "status": 200,
+      "ms": 278,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 14,
+      "status": 200,
+      "ms": 317,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 15,
+      "status": 200,
+      "ms": 291,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 16,
+      "status": 200,
+      "ms": 294,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 17,
+      "status": 200,
+      "ms": 290,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 18,
+      "status": 200,
+      "ms": 307,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 19,
+      "status": 200,
+      "ms": 271,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 20,
+      "status": 200,
+      "ms": 292,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 21,
+      "status": 200,
+      "ms": 281,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 22,
+      "status": 200,
+      "ms": 282,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 23,
+      "status": 200,
+      "ms": 290,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 24,
+      "status": 200,
+      "ms": 295,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 25,
+      "status": 200,
+      "ms": 275,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 26,
+      "status": 200,
+      "ms": 273,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 27,
+      "status": 200,
+      "ms": 286,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 28,
+      "status": 200,
+      "ms": 275,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 29,
+      "status": 200,
+      "ms": 304,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 30,
+      "status": 200,
+      "ms": 267,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 31,
+      "status": 200,
+      "ms": 305,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 32,
+      "status": 200,
+      "ms": 262,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 33,
+      "status": 200,
+      "ms": 290,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 34,
+      "status": 200,
+      "ms": 268,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 35,
+      "status": 200,
+      "ms": 257,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 36,
+      "status": 200,
+      "ms": 255,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 37,
+      "status": 200,
+      "ms": 270,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 38,
+      "status": 200,
+      "ms": 268,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 39,
+      "status": 200,
+      "ms": 317,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 40,
+      "status": 200,
+      "ms": 259,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 41,
+      "status": 200,
+      "ms": 274,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 42,
+      "status": 200,
+      "ms": 344,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 43,
+      "status": 200,
+      "ms": 256,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 44,
+      "status": 200,
+      "ms": 285,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 45,
+      "status": 200,
+      "ms": 288,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 46,
+      "status": 200,
+      "ms": 263,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 47,
+      "status": 200,
+      "ms": 301,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 48,
+      "status": 200,
+      "ms": 265,
+      "bytes_sample": 1024,
+      "ok": true
+    },
+    {
+      "target": "api_health",
+      "user": 49,
+      "status": 200,
+      "ms": 269,
+      "bytes_sample": 1024,
+      "ok": true
+    }
+  ]
+}
