@@ -3,13 +3,14 @@
 import concurrent.futures, json, os, statistics, time, urllib.request, urllib.error
 TARGETS = {
   "miniapp": "https://shalaevadasha1998-dot.github.io/nasypateli-cinema_2/",
-  "api_health": "https://vwteokawtqnoiyzmsldj.supabase.co/functions/v1/app",
+  "api_get": "https://vwteokawtqnoiyzmsldj.supabase.co/functions/v1/app",
+  "api_health_post": "https://vwteokawtqnoiyzmsldj.supabase.co/functions/v1/app",
 }
 def check(item):
     kind, number = item
     start=time.monotonic()
     try:
-        request=urllib.request.Request(TARGETS[kind], headers={"User-Agent":"nasypateli-readonly-load-test/1.0","Cache-Control":"no-cache"})
+        request=urllib.request.Request(TARGETS[kind], headers={"User-Agent":"nasypateli-readonly-load-test/1.0","Cache-Control":"no-cache", **({"Content-Type":"application/json"} if kind=="api_health_post" else {})}, data=b'{"action":"health"}' if kind=="api_health_post" else None)
         with urllib.request.urlopen(request, timeout=20) as response:
             body=response.read(1024)
             return {"target":kind,"user":number,"status":response.status,"ms":round((time.monotonic()-start)*1000),"bytes_sample":len(body),"ok":response.status==200}
