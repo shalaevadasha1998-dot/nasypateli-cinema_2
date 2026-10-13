@@ -2371,7 +2371,7 @@ export async function handleApi(req:Request){
     if(action==='admin-test-invite'){
       if(event.settings?.test_room!==true||event.slug!=='test-2026-10-03')return err('Приглашение доступно только для тестового вечера',403)
       const token=await testInviteToken(event)
-      return json({ok:true,url:`https://t.me/nasipateli_v_kinobot?startapp=test_${event.slug}_${token}`})
+      return json({ok:true,url:`https://t.me/nasipateli_v_kinobot?start=t_${token}`})
     }
 
     if(action==='admin-media-sync'){
