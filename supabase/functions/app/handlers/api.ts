@@ -1898,6 +1898,17 @@ export async function handleApi(req:Request){
     if(action==='audio-transcribe'){
       const b64=String(body.audioBase64||'');if(!b64||b64.length>6_500_000)return err('Голосовое слишком большое',413);const raw=Uint8Array.from(atob(b64),c=>c.charCodeAt(0));if(raw.byteLength>4_500_000)return err('Голосовое слишком большое',413);const text=await transcribeAudio(raw,String(body.mimeType||'audio/webm'));return json({ok:true,text})
     }
+    if(action==='encounter-preview'){
+      // The existing encounter token namespace also powers event check-in.
+      // Identify its type without triggering rewards, attendance or stories.
+      const token=String(body.token||'').trim()
+      if(!/^[0-9a-f]{32}$/.test(token))return err('Некорректный qr-код',422)
+      const row=await db.from('encounter_tokens').select('kind,expires_at').eq('token',token).maybeSingle()
+      if(row.error)throw row.error
+      if(!row.data)return err('Этот qr-код больше не действует',404)
+      if(row.data.expires_at&&new Date(row.data.expires_at).getTime()<Date.now())return err('Срок действия qr-кода истёк',410)
+      return json({ok:true,kind:row.data.kind})
+    }
     if(action==='my-encounters'){
       // Read only the signed-in user's recorded animal meetings. No Telegram IDs
       // or dating profile details are exposed to either participant.
