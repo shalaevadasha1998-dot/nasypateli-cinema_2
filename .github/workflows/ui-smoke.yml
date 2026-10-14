@@ -5,6 +5,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  statuses: write
 jobs:
   smoke:
     runs-on: ubuntu-latest
@@ -37,3 +38,21 @@ jobs:
           name: ui-rehearsal-screenshots
           path: web/test-artifacts/*.png
           if-no-files-found: ignore
+      - name: Publish UI smoke result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          node <<'NODE'
+          const state=process.env.JOB_STATUS==='success'?'success':'failure'
+          const payload={
+            state,context:'nasypateli/ui-smoke',
+            description:state==='success'?'Playwright desktop+mobile smoke passed':'Playwright UI smoke failed',
+            target_url:`${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
+          }
+          const response=await fetch(`https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}/statuses/${process.env.GITHUB_SHA}`,{
+            method:'POST',headers:{authorization:`Bearer ${process.env.GH_TOKEN}`,'user-agent':'github-actions','content-type':'application/json'},body:JSON.stringify(payload)
+          })
+          if(!response.ok)throw new Error('Could not publish UI smoke status '+response.status)
+          NODE
