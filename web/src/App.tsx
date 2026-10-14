@@ -457,16 +457,23 @@ function TestRoomHub(){
   const admin=usePrivilegedState('admin',sourceSlug)
   const [busy,setBusy]=useState(false)
   const [message,setMessage]=useState('')
+  const [screenLink,setScreenLink]=useState('')
   if(!admin.data)return <div className="page rehearsal-locked"><div className="eyebrow">для команды</div><h1>служебная репетиция</h1><p>{admin.error||'проверяем доступ администратора…'}</p><Button kind="secondary" onClick={()=>nav('/')}>на главную</Button></div>
   const roomSlug='test-'+admin.data.event.slug
   const opening=(path:string)=>nav(path)
   const openProjector=async()=>{
+    // Keep the new tab within the user's original gesture; mobile WebViews
+    // otherwise block window.open after the asynchronous key request.
+    const tab=window.open('about:blank','_blank')
     setBusy(true);setMessage('')
     try{
       const result=await callAdminApi<{screenUrl:string}>('admin-screen-link',{slug:roomSlug},admin.token)
-      if(result.screenUrl)window.open(result.screenUrl,'_blank','noopener,noreferrer')
-      else setMessage('не получилось открыть проектор')
-    }catch(e:any){setMessage(e.message||'не получилось получить ссылку проектора')}
+      if(result.screenUrl){
+        setScreenLink(result.screenUrl)
+        if(tab)tab.location.replace(result.screenUrl)
+        else setMessage('браузер запретил новое окно. нажми ссылку «открыть проектор» ниже')
+      }else{tab?.close();setMessage('не получилось открыть проектор')}
+    }catch(e:any){tab?.close();setMessage(e.message||'не получилось получить ссылку проектора')}
     finally{setBusy(false)}
   }
   return <div className="page admin-rehearsal-hub">
@@ -482,6 +489,7 @@ function TestRoomHub(){
       <button type="button" disabled={busy} onClick={()=>void openProjector()}><span className="role-number">03</span><span className="role-symbol" aria-hidden="true">▣</span><strong>общий экран</strong><small>анимации, появление животин и сцены на проекторе</small><em>{busy?'открываем…':'показать экран ↗'}</em></button>
     </section>
     {message&&<p className="form-error" role="alert">{message}</p>}
+    {screenLink&&<a className="btn secondary admin-rehearsal-screen-fallback" target="_blank" rel="noreferrer" href={screenLink}>открыть проектор по ссылке ↗</a>}
     <section className="admin-rehearsal-foot"><div><b>репетиция изолирована</b><p>доступ получает только аккаунт администратора. гостям вкладка «тест» не показывается и вход по прямой ссылке закрыт</p></div><Button kind="secondary" onClick={()=>nav('/admin/'+sourceSlug)}>назад в пульт события</Button></section>
   </div>
 }
