@@ -126,6 +126,13 @@ try{
     await stableLinkPage.waitForFunction(()=>location.hash.startsWith('#/rehearsal/test-2026-10-03'),{timeout:15000})
     console.log('PASS stable-test-telegram-deeplink')
   }finally{await stableLinkPage.close()}
+  // A private full rehearsal must land on the real ticket page, not the test room.
+  const privatePage=await newPage({viewport:{width:390,height:844}})
+  try{
+    await privatePage.goto(base+'?tgWebAppStartParam=private_private-live-20261014-7c2f4a9b',{waitUntil:'domcontentloaded'})
+    await privatePage.waitForFunction(()=>location.hash.startsWith('#/private/private-live-20261014-7c2f4a9b'),null,{timeout:15000})
+    console.log('PASS telegram-private-live-ticket-deeplink')
+  }finally{await privatePage.close()}
   // Verify Telegram's compact deep link stays inside the isolated test route.
   const invitePage=await newPage({viewport:{width:390,height:844}})
   try{
