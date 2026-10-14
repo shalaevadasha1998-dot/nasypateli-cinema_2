@@ -1,5 +1,6 @@
 export const TEST_EVENT_SLUG='test-2026-10-03'
 export function telegramStartPath(start:string){
+  if(start==='test')return `/rehearsal/${TEST_EVENT_SLUG}`
   const invite=/^t_([0-9a-f]{32})$/.exec(start)
   if(invite)return `/rehearsal/${TEST_EVENT_SLUG}?room=${invite[1]}`
   const admin=/^admin_(test-[a-z0-9-]+)$/.exec(start)
