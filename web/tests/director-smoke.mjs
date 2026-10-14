@@ -5,6 +5,14 @@ import { mkdir } from 'node:fs/promises'
 const origin='http://127.0.0.1:4175/nasypateli-cinema_2/'
 const server=spawn('./node_modules/.bin/vite',['preview','--host','127.0.0.1','--port','4175','--strictPort','--base=/nasypateli-cinema_2/'],{stdio:'inherit'})
 let browser
+async function newPage(options){
+  const page=await browser.newPage(options)
+  // The remote, parser-blocking Telegram SDK may stall GitHub-hosted Chromium.
+  // UI smoke does not validate Telegram credentials: keep that in a real-device test.
+  await page.route('**/telegram-web-app.js*',route=>route.fulfill({status:200,contentType:'application/javascript',body:'/* telegram sdk skipped in browser-only ui smoke */'}))
+  return page
+}
+
 
 const blocks=[
   ['arrival','arrival','сбор гостей',60],
@@ -33,7 +41,7 @@ async function ready(){
   throw Error('Preview failed to start')
 }
 async function director(viewport,label,status='idle',test=true){
-  const page=await browser.newPage({viewport})
+  const page=await newPage({viewport})
   const errors=[]
   page.on('pageerror',e=>errors.push(e.message))
   await page.addInitScript(value=>{localStorage.setItem('nasypateli-cinema-demo-v3',JSON.stringify(value))},fakeShow(status,test))
