@@ -8,6 +8,7 @@ let browser
 let state=structuredClone(initialDemoState)
 state.profile.completed=true;state.onboardingComplete=true;state.creature.born=true;state.registration='attended';state.isAdmin=true
 state.event.slug='test-2026-10-17'
+state.show={runtime:{},program:{blocks:[],roundsTarget:1,rewards:{join:0,vote:0,round:0,finale:0}},audio:{state:{status:'stopped',mode:'auto'},assets:[],screen:{online:false,unlocked:false}}}
 state.show.runtime={...state.show.runtime,runStatus:'running',currentBlockId:'arrival',currentBlockIndex:0,currentBlock:{id:'arrival',type:'arrival',title:'сбор гостей'}}
 state.show.program.blocks=[{id:'arrival',type:'arrival',title:'сбор гостей'},{id:'intro',type:'creature_intro',title:'знакомство'}]
 state.projector={state:'arrival',payload:{},revision:1}
