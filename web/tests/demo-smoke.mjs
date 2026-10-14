@@ -1,4 +1,4 @@
-import { chromium } from 'playwright'
+import { chromium, devices } from 'playwright'
 import { spawn } from 'node:child_process'
 import { mkdir } from 'node:fs/promises'
 
@@ -36,5 +36,27 @@ try{
   await check({width:390,height:844},'phone-390')
   await check({width:320,height:640},'phone-320')
   await check({width:1440,height:900},'desktop-1440')
+  const android=await browser.newContext({...devices['Pixel 7']})
+  const page=await android.newPage()
+  const problems=[]
+  page.on('pageerror',e=>problems.push(e.message))
+  try{
+    await page.goto(origin+'#/test',{waitUntil:'domcontentloaded'})
+    await page.locator('.test-room-hub').waitFor({state:'visible',timeout:14000})
+    for(const label of ['войти как участник','открыть тестовый пульт','открыть тестовый экран','скопировать ссылку']){
+      if(!await page.getByRole('button',{name:label}).isVisible())throw Error('Missing rehearsal action '+label)
+    }
+    const geometry=await page.evaluate(()=>{
+      const e=document.querySelector('.bottom-nav')
+      return {screen:innerWidth,scroll:document.documentElement.scrollWidth,navClient:e?.clientWidth,navScroll:e?.scrollWidth}
+    })
+    if(geometry.scroll>geometry.screen+5)throw Error('Android document overflows '+JSON.stringify(geometry))
+    if(geometry.navScroll<=geometry.navClient)throw Error('Android nav is not horizontally scrollable '+JSON.stringify(geometry))
+    await page.screenshot({path:'test-artifacts/android-pixel-7-rehearsal.png',fullPage:true})
+    await page.getByRole('button',{name:'войти как участник'}).click()
+    await page.waitForURL('**/#/rehearsal/test-2026-10-03')
+    if(problems.length)throw Error('Android javascript errors: '+problems.join('; '))
+    console.log('PASS Android Pixel 7 test hub, navigation and participant route '+JSON.stringify(geometry))
+  }finally{await android.close()}
 }catch(e){console.error(e);process.exitCode=1}
 finally{if(browser)await browser.close();server.kill('SIGTERM')}
