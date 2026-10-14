@@ -123,6 +123,24 @@ export async function handleTelegram(req:Request){
         buttonText='войти в тестовую комнату'
         intro='это отдельная репетиция «насыпателей в кино». нажмите кнопку ниже: здесь можно проверить механики, не затрагивая событие 17 октября'
       }
+      // Private real-ticket rehearsal: invitees still complete the normal free
+      // ticket flow, not the test room's automatic attendance shortcut.
+      const privateInvite=/^private_(private-[a-z0-9-]{8,72})$/.exec(payload)
+      if(privateInvite&&webAppUrl){
+        const room=await db.from('events').select('slug,title,settings').eq('slug',privateInvite[1]).maybeSingle()
+        if(room.error)throw room.error
+        if(room.data?.settings?.private_rehearsal===true){
+          const u=new URL(webAppUrl)
+          u.searchParams.set('tgWebAppStartParam',payload)
+          u.hash='/private/'+room.data.slug
+          launchUrl=u.toString()
+          buttonText='получить бесплатный билет'
+          intro='приглашаем на закрытый прогон «насыпателей в кино». здесь обычный билет, qr на входе и настоящая программа вечера. стоимость 0 ₽. событие 17 октября не затрагивается'
+        }else{
+          launchUrl=''
+          intro='это приглашение на закрытый прогон больше не действует'
+        }
+      }
       const testInvite=/^t_([0-9a-f]{32})$/.exec(payload)
       if(testInvite&&webAppUrl){
         const room=await db.from('events').select('id,slug,title,settings').eq('slug','test-2026-10-03').maybeSingle()
