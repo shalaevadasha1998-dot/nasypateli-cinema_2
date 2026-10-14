@@ -18,7 +18,7 @@ async function caseRun(label,path,viewport,expected){
   const page=await browser.newPage({viewport,deviceScaleFactor:1})
   page.on('pageerror',e=>issues.push(label+': '+e.message))
   try{
-    const response=await page.goto(base+path,{waitUntil:'domcontentloaded',timeout:25000})
+    const response=await page.goto(base+path,{waitUntil:'commit',timeout:25000})
     if(!response?.ok())throw Error('HTTP '+response?.status())
     const element=page.locator(expected)
     try{await element.waitFor({state:'visible',timeout:30000})}
