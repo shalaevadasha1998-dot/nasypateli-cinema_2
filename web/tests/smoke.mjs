@@ -110,6 +110,8 @@ try{
     try{
       await page.goto(base+'#/screen/test-2026-10-03?token=ci-screen',{waitUntil:'domcontentloaded'})
       await page.locator('.screen-round-intro').waitFor({state:'visible',timeout:13000})
+      await page.evaluate(()=>document.fonts.ready)
+      await page.waitForTimeout(1700)
       const geometry=await page.evaluate(()=>{
         const rect=selector=>{const {top,right,bottom,left}=document.querySelector(selector).getBoundingClientRect();return {top,right,bottom,left}}
         return {header:rect('.screen-header'),notices:rect('.screen-notices'),body:rect('.screen-content'),footer:rect('.screen-footer'),
@@ -119,6 +121,9 @@ try{
       if(geometry.header.bottom>geometry.notices.top+2||geometry.notices.bottom>geometry.body.top+2||geometry.body.bottom>geometry.footer.top+2){
         throw Error('Projector header/notice/body overlap '+JSON.stringify(geometry))
       }
+      const titleFits=await page.locator('.cinematic-round-title h1').evaluate(e=>e.scrollWidth<=e.clientWidth+2)
+      if(!titleFits)throw Error('Monospace title overflows its column')
+      if(await page.locator('.cinematic-round-period').count())throw Error('Decorative period remains')
       await page.screenshot({path:'test-artifacts/projector-intro-'+width+'x'+height+'.png',fullPage:true})
       console.log('PASS projector-intro '+width+'x'+height+' '+JSON.stringify({scrollWidth:geometry.scrollWidth,scrollHeight:geometry.scrollHeight}))
     }finally{await page.close()}

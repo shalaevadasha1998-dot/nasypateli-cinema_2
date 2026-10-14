@@ -1,3 +1,4 @@
+import { ProjectorMedia } from './components/ProjectorMedia'
 import { ConnectionStatus } from './components/ConnectionStatus'
 import { ApiError, resetBootstrapRetry } from './lib/api'
 import { rememberReturnPath, pendingReturnPath, consumeReturnPath } from './lib/returnPath'
@@ -349,6 +350,8 @@ function ParticipantShow({data,reload}:{data:DemoState;reload:(fresh?:boolean)=>
   </section>
 }
 
+function participantInProgram(data:DemoState){const r=data.show?.runtime;return data.registration==='attended'&&!!r&&['running','paused','finished'].includes(r.runStatus)&&!!r.currentBlock&&r.currentBlock.type!=='arrival'}
+
 function Home({eventSlug=''}:{eventSlug?:string}={}){
   const {data,error,reload}=useStateData(true,eventSlug);const nav=useNavigate();const [buyError,setBuyError]=useState('');const [buyNotice,setBuyNotice]=useState('');const [buyBusy,setBuyBusy]=useState(false);const [claimBusy,setClaimBusy]=useState(false);const [claimError,setClaimError]=useState('');const [cancelBusy,setCancelBusy]=useState(false);const [cancelError,setCancelError]=useState('');const [ticketOpen,setTicketOpen]=useState(false);const [encounterMsg,setEncounterMsg]=useState('');const [now,setNow]=useState(()=>Date.now());useEffect(()=>{if(!data?.creature?.born)return;const u=new URL(location.href);const token=u.searchParams.get('encounter');if(!token)return;u.searchParams.delete('encounter');history.replaceState({},'',u.toString());callApi<{kind:string}>('encounter-preview',{token}).then(async preview=>{
     if(preview.kind==='rabbit'){setEncounterMsg('qr знакомства животин больше не используется. для входа ведущий сканирует qr билета');return}
@@ -370,7 +373,7 @@ function Home({eventSlug=''}:{eventSlug?:string}={}){
     const rebuyStatus=data.registration==='refunded'?'билет возвращён':data.registration==='cancelled'?'билет отменён':''
   return <div className="page home-page cinematic-page">
     <FilmMissionCards data={data} onOpen={id=>nav('/mission/'+id)}/>
-    <section className="home-event-hero">
+    {!participantInProgram(data)&&<section className="home-event-hero">
       <div className="home-event-date"><div className="eyebrow">ближайший вечер</div><h1>{eventDate(e.startsAt)}</h1><p>{eventTime(e.startsAt)}. {e.venueName?e.venueName:'место объявим позже'}. москва{e.venueAddress&&<><br/>{e.venueAddress}</>}</p></div>
       <div className="home-event-ticket">
         <div className="home-ticket-head"><div><span>{e.title}</span><strong>{freeEntry?'вход по регистрации':`${e.ticketPriceRub} ₽`}</strong></div><Pill>{left} свободно</Pill></div>
@@ -384,7 +387,7 @@ function Home({eventSlug=''}:{eventSlug?:string}={}){
         {data.registration==='no_show'&&<div className="muted">вечер завершён без отметки о посещении</div>}
         {buyNotice&&<div className="success">{buyNotice}</div>}{buyError&&<div className="form-error">{buyError}</div>}{claimError&&<div className="form-error">{claimError}</div>}{cancelError&&<div className="form-error">{cancelError}</div>}
       </div>
-    </section>
+    </section>}
     {data.show?.runtime.currentBlock?.type==='cinema_rounds'
       ?<FilmLiveParticipant data={data} reload={reload}/>
       :<ParticipantShow data={data} reload={reload}/>} 
@@ -539,17 +542,17 @@ function RehearsalPage(){
   </div>
   if(slug!==data.event.slug)return <div className="page"><Empty>такой репетиции нет</Empty><Button kind="secondary" onClick={()=>nav('/test/'+String(slug||'').replace(/^test-/,''))}>назад</Button></div>
   return <div className="page home-page rehearsal-page">
-    <section className="admin-rehearsal-ticket" aria-label="тестовый билет и QR входа">
+    {!participantInProgram(data)&&<section className="admin-rehearsal-ticket" aria-label="тестовый билет и QR входа">
       <span className="eyebrow">01 · проверка входа</span>
       {data.registration==='none'?<><h2>сначала билет</h2><p>проверь полный путь гостя: получи бесплатный тестовый билет, открой его qr и отметь вход сканером ведущего. до сканирования животина не появится на проекторе</p><Button disabled={claimBusy} onClick={()=>void claimTestTicket()}>{claimBusy?'выдаём билет…':'получить тестовый билет'}</Button></>:
       data.registration==='paid'?<><h2>билет готов</h2><p>покажи этот qr ведущему или открой сканер на другом устройстве. после сканирования твоя животина появится на проекторе</p><EventPass event={data.event} registrationId={data.registrationId}/><Button kind="secondary" onClick={()=>nav('/admin/checkin/'+data.event.slug)}>открыть сканер ведущего</Button></>:
       data.registration==='attended'?<><h2>ты в зале</h2><p>билет проверен. теперь можно проходить задания и голосования</p><div className="success">животина отмечена на входе</div></>:
       <><h2>проверяем билет</h2><p>статус: {data.registration}. обнови данные или обратись к организатору</p><Button kind="secondary" onClick={()=>void reload(true)}>обновить билет</Button></>}
       {claimError&&<p className="form-error" role="alert">{claimError}</p>}
-    </section>
-    <Card><div className="eyebrow">тестовый вечер</div><h2>{data.profile.displayName||'ваш личный профиль'}</h2><p>ваши ответы сохраняются отдельно. тест не меняет билеты и голоса настоящего события.</p>
+    </section>}
+    {!participantInProgram(data)&&<Card><div className="eyebrow">тестовый вечер</div><h2>{data.profile.displayName||'ваш личный профиль'}</h2><p>ваши ответы сохраняются отдельно. тест не меняет билеты и голоса настоящего события.</p>
     {data.show?.runtime.runStatus==='idle'&&<div className="rehearsal-waiting"><p>ведущий ещё не запустил репетицию. открой пульт, чтобы начать вечер</p>{data.isAdmin&&<Button kind="secondary" onClick={()=>nav('/admin/'+slug)}>открыть пульт ведущего</Button>}</div>}
-    </Card>
+    </Card>}
     {data.show?.runtime.currentBlock?.type==='cinema_rounds'
       ?<FilmLiveParticipant data={data} reload={reload}/>
       :<ParticipantShow data={data} reload={reload}/>}
@@ -1576,33 +1579,6 @@ function ShowVoteResults({data}:{data:DemoState}){
   return <div className="screen-results">{results.map((x,i)=><div key={i}><div className="screen-result-label"><span>{answerText(x.answer)}</span><b>{x.count} · {Math.round(Number(x.count||0)/total*100)}%</b></div><div className="screen-result-bar"><i style={{width:`${Math.round(Number(x.count||0)/total*100)}%`}}/></div></div>)}</div>
 }
 
-function DirectVideoPlayer({src,title,startSec=0,endSec}:{src:string;title:string;startSec?:number;endSec?:number}){
-  const ref=useRef<HTMLVideoElement|null>(null)
-  const [qualityError,setQualityError]=useState('')
-  const initialized=useRef(false)
-  const start=Math.max(0,Number(startSec||0))
-  const end=endSec&&Number(endSec)>start?Number(endSec):undefined
-  useEffect(()=>{initialized.current=false;setQualityError('')},[src,start])
-  const seekAndPlay=()=>{const el=ref.current;if(!el||initialized.current)return;if(el.videoWidth&&el.videoHeight&&(el.videoWidth<el.videoHeight||el.videoHeight<720)){el.pause();setQualityError('фрагмент отклонён: требуется горизонтальное видео не ниже 720p');initialized.current=true;return}try{el.currentTime=start}catch{}initialized.current=true;void el.play().catch(()=>{})}
-  const stopAtEnd=()=>{const el=ref.current;if(!el||!end)return;if(el.currentTime>=end){el.pause();try{el.currentTime=end}catch{}}}
-  return <div className="screen-video-wrap">{qualityError?<div role="alert" className="screen-message">{qualityError}. выберите другой источник в пульте</div>:null}<video ref={ref} title={title} src={src} autoPlay={false} playsInline controls preload="auto" style={qualityError?{display:'none'}:undefined} onLoadedMetadata={seekAndPlay} onCanPlay={seekAndPlay} onTimeUpdate={stopAtEnd}/></div>
-}
-
-function ProjectorMedia({media,title}:{media:any;title:string}){
-  const start=Math.max(0,Number(media?.startSec||0))
-  const end=media?.endSec&&Number(media.endSec)>start?Number(media.endSec):undefined
-  const platform=String(media?.sourcePlatform||((media?.videoId)?'youtube':''))
-  if(media?.videoId&&(platform==='youtube'||!platform)){
-    const qs=new URLSearchParams({autoplay:'1',controls:'1',rel:'0',modestbranding:'1',playsinline:'1',start:String(start)})
-    if(end)qs.set('end',String(end))
-    return <div className="screen-video-wrap"><iframe title={title} src={`https://www.youtube.com/embed/${encodeURIComponent(String(media.videoId))}?${qs.toString()}`} allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen/></div>
-  }
-  if(media?.sourceUrl&&['internet_archive','wikimedia_commons','direct'].includes(platform)){
-    return <DirectVideoPlayer src={String(media.sourceUrl)} title={title} startSec={start} endSec={end}/>
-  }
-  return null
-}
-
 function ScreenVideo({data}:{data:DemoState}){
   const movie=data.show?.runtime.currentMovie
   const video:any=data.show?.runtime.videoState||{}
@@ -1620,10 +1596,19 @@ function ProjectorCreatureImage({stage,visualVariant}:{stage:string;visualVarian
   const stageSrc=`${import.meta.env.BASE_URL}assets/projector-${stage.replace('_','-')}.webp`
   const fallback=`${import.meta.env.BASE_URL}${projectorCreatureFallback(stage)}`
   const candidates=[variantSrc,stageSrc,fallback].filter(Boolean)
-  const [index,setIndex]=useState(0)
-  useEffect(()=>setIndex(0),[variantSrc,stageSrc,fallback])
-  const src=candidates[Math.min(index,candidates.length-1)]||fallback
-  return <img src={src} alt="" draggable={false} onError={()=>setIndex(i=>Math.min(i+1,candidates.length-1))}/>
+  const [ready,setReady]=useState('')
+  const key=candidates.join('|')
+  useEffect(()=>{
+    let dead=false
+    setReady('')
+    void (async()=>{for(const src of candidates){
+      const img=new Image();img.src=src
+      try{await img.decode();if(!dead)setReady(src);return}catch{}
+    }})()
+    return()=>{dead=true}
+  },[key])
+  return ready?<img className="projector-image-ready" src={ready} alt="" draggable={false}/>:<span className="projector-image-loading" aria-label="загружаем животину"/>
+
 }
 
 function ScreenCreatureWall({data}:{data:DemoState}){
@@ -1693,20 +1678,20 @@ function projectorContent(d:DemoState){
       'животина сравнит ваши прогнозы',
       'самый провидец получит фильм целиком'
     ]
-    return <section className={`screen-round-intro cinematic-round ${review?'cinematic-round--direct':'cinematic-round--guess'}`} key={`intro-${roundNo}-${String(p.updatedAt||'')}`}>
+    return <section className={`screen-round-intro cinematic-round ${review?'cinematic-round--direct':'cinematic-round--guess'}`} key={`intro-${roundNo}`} >
       <div className="cinematic-round-top"><span>насыпатели / формат кино</span><div className="cinematic-round-count">раунд <b>{String(roundNo).padStart(2,'0')}</b></div><span className="cinematic-round-current">{review?'режиссёрский':'режим провидца'}</span></div>
       <div className="cinematic-round-body">
         <div className="cinematic-round-title">
-          <div className="cinematic-round-kicker"><i aria-hidden="true"/> новая механика</div>
-          <h1><span>{review?'снимаем':'угадываем'}</span><span>кино<span className="cinematic-round-period">.</span></span></h1>
-          <p>{review?'одна выдумка — один настоящий фильм — одна животина':'никто не знает, что произойдёт дальше. даже животина'}</p>
+          <div className="cinematic-round-kicker">новая механика</div>
+          <h1><span>{review?'снимаем':'угадываем'}</span><span>кино</span></h1>
+          <p>{review?'придумываем историю, находим фильм и выбираем, кто досмотрит его целиком':'никто не знает, что произойдёт дальше. даже животина'}</p>
           <div className="cinematic-round-glyph" aria-hidden="true">{review?'✳':'◎'}</div>
         </div>
         <ol className="screen-round-steps cinematic-round-steps" aria-label="правила раунда">
           {steps.map((step,i)=><li key={step} style={{animationDelay:`${0.58+i*0.16}s`}}><span className="cinematic-step-number">{String(i+1).padStart(2,'0')}</span><span className="cinematic-step-label">{step}</span></li>)}
         </ol>
       </div>
-      <div className="cinematic-round-foot"><span>правила сначала. действие — после отсчёта</span><span>сбор названий откроется автоматически <b aria-hidden="true">↗</b></span></div>
+      <div className="cinematic-round-foot"><span>сначала правила, затем сбор названий</span><span>сбор названий откроется автоматически <b aria-hidden="true">↗</b></span></div>
     </section>
   }
   if(p.state==='pitch_collecting')return <div className="screen-pitch-progress"><div className="eyebrow">раунд</div><h1>придумайте фильм,<br/>которого не существует</h1><div className="screen-idea-count"><b>{Number(payload.count||0)}</b><span>из {Number(payload.total||0)||'?'}</span></div><p>название + описание в телефоне</p></div>
@@ -1971,7 +1956,7 @@ function Screen(){
       {testMode&&<div className="screen-message">тест · {data.show?.runtime.runKey||'репетиция'} · не влияет на вечер 17 октября</div>}
       {!animalDemo&&data.screenMessage&&<div className="screen-message">{data.screenMessage}</div>}
     </div>:<div className="screen-notices" aria-hidden/>}
-    <main className="screen-content">{content}</main>
+    <main className="screen-content" key={`${data.show?.runtime.currentBlockId}:${data.projector?.state}:${data.projector?.payload?.roundNo}:${data.projector?.payload?.pitch?.id}:${data.projector?.payload?.position}`}>{content}</main>
     <div className="screen-footer">{animalDemo?'демо · база не меняется':eventDate(data.event.startsAt)+' · насыпатели в кино'}</div>
   </div>
 }
