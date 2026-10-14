@@ -61,6 +61,7 @@ async function check(config,stage){
       await page.getByText('как вам вечер?',{exact:true}).waitFor({timeout:12000})
       await page.locator('.feedback-show textarea').first().fill('больше фильмов и необычных заданий')
       await page.locator('.feedback-show').getByRole('button',{name:'отправить'}).tap()
+      await page.locator('.feedback-show [role="status"]').waitFor({state:'visible',timeout:15000})
       if(!sentFeedback)throw Error('Feedback submit did not reach API')
     }
     const dimensions=await page.evaluate(()=>({scroll:document.documentElement.scrollWidth,viewport:innerWidth,
