@@ -33,6 +33,9 @@ jobs:
       - name: Test desktop and mobile layouts against test room
         working-directory: web
         run: node tests/smoke.mjs
+      - name: Animal QR exchange, privacy and mobile layout tests
+        working-directory: web
+        run: node tests/creature-meet-smoke.mjs
       - name: Android viewport, touch and rehearsal/feedback tests
         working-directory: web
         run: node tests/android-smoke.mjs
