@@ -5,7 +5,7 @@ import { mkdir } from 'node:fs/promises'
 const base='http://127.0.0.1:4173/nasypateli-cinema_2/'
 const issues=[]
 await mkdir('test-artifacts',{recursive:true})
-const server=spawn('./node_modules/.bin/vite',['preview','--host','127.0.0.1','--port','4173','--strictPort'],{stdio:'inherit',env:process.env})
+const server=spawn('./node_modules/.bin/vite',['preview','--host','127.0.0.1','--port','4173','--strictPort','--base=/nasypateli-cinema_2/'],{stdio:'inherit',env:process.env})
 let browser
 async function ready(){
   for(let i=0;i<30;i++){
@@ -32,8 +32,8 @@ try{
   await ready()
   browser=await chromium.launch({headless:true,args:['--no-sandbox']})
   await caseRun('projector-arrival','#/screen/test-2026-10-03',{width:1920,height:1080},'.screen-creature-wall')
-  await caseRun('mobile-telegram-entry','',{width:390,height:844},'body')
-  await caseRun('compact-mobile-entry','',{width:320,height:640},'body')
+  await caseRun('mobile-telegram-entry','',{width:390,height:844},'.telegram-gate')
+  await caseRun('compact-mobile-entry','',{width:320,height:640},'.telegram-gate')
   if(issues.length)throw Error('Uncaught browser errors: '+issues.join(' | '))
   console.log('UI smoke passed: projector arrival, mobile & compact mobile')
 }catch(e){console.error(e);process.exitCode=1}
