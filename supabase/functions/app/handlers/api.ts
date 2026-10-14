@@ -1715,14 +1715,8 @@ export async function handleApi(req:Request){
         return json({user,profile,event:null,onboardingComplete:profile.completed,creature})
       }
       await maybeAutoAdvanceShow(db,event)
-      if(testParticipantAccess&&event?.settings?.test_room===true&&Number(user?.telegram_id||0)>0){
-        const admitted=await db.from('registrations').upsert({
-          event_id:event.id,user_id:user.id,status:'attended',queue_position:null,payment_provider:'test_room',
-          provider_payment_id:null,telegram_payment_charge_id:null,amount_rub:0,photo_video_consent:false,
-          paid_at:new Date().toISOString(),reservation_expires_at:null
-        },{onConflict:'event_id,user_id'})
-        if(admitted.error)throw admitted.error
-      }
+      // A rehearsal must simulate the real ticket flow. Do not silently mark
+      // a participant as attended while the admin is trying to test QR check-in.
       if(event.status==='SALES_OPEN'){const promoted=await db.rpc('promote_event_waitlist',{p_event_id:event.id});if(promoted.error)throw promoted.error}
       if(event.status!=='CLOSED'){
         const presence=await db.from('event_presence').upsert({event_id:event.id,user_id:user.id,last_seen_at:new Date().toISOString()},{onConflict:'event_id,user_id'})
