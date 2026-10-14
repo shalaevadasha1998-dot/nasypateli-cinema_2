@@ -2951,7 +2951,7 @@ export async function handleApi(req:Request){
           const rawEnd=rawFragment.endSec==null?null:Number(rawFragment.endSec)
           fragment={...rawFragment,startSec:start,endSec:rawEnd&&rawEnd>start?Math.min(rawEnd,start+600):start+600}
         }
-        state='film_intro';payload={filmTitle:pack.data.title_snapshot,fragment}
+        state='film_intro';payload={filmTitle:pack.data.title_snapshot,fragment,reason:String(pack.data.match_data?.reason||'')}
       }else if(op==='one_word_open'){
         state='one_word_collecting';payload={filmTitle:pack.data.title_snapshot,prompt:'одно слово. что это за фильм?'}
       }else if(op==='one_word_results'){
