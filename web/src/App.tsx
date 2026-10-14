@@ -1454,8 +1454,8 @@ function projectorContent(d:DemoState){
   if(p.state==='pitch_randomizing')return <div className="screen-assignment-random"><div className="eyebrow">рандом</div><h1>выбираю одну идею</h1><div className="random-rabbits">{[0,1,2,3,4,5,6].map(i=><img key={i} src={import.meta.env.BASE_URL+'assets/rabbit-full.webp'} alt="" draggable={false}/>)}</div></div>
   if(p.state==='pitch_selected'){const pitch=payload.pitch||{};return <><div className="eyebrow">выбрано</div><h1>{String(pitch.title||'без названия')}</h1><p>{String(pitch.description||'')}</p></>}
   if(p.state==='movie_searching')return <><div className="eyebrow">gpt · web search · youtube</div><h1>ищем реальный фильм<br/>в интернете</h1><p>сразу ищем воспроизводимый фрагмент</p></>
-  if(p.state==='movie_found')return <><div className="eyebrow">нашли</div><h1>{String(payload.filmTitle||'фильм')}</h1>{payload.year&&<h2>{String(payload.year)}</h2>}</>
-  if(p.state==='film_intro')return <ProjectorFragment fragment={payload.fragment} title={String(payload.filmTitle||'фильм')}/>
+  if(p.state==='movie_found')return <><div className="eyebrow">нашли фильм</div><h1>{String(payload.filmTitle||'фильм')}</h1>{payload.year&&<h2>{String(payload.year)}</h2>}{payload.reason&&<p>почему он подходит: {String(payload.reason)}</p>}</>
+  if(p.state==='film_intro')return <><ProjectorFragment fragment={payload.fragment} title={String(payload.filmTitle||'фильм')}/>{payload.reason&&<div className="screen-reveal-overlay"><small>почему этот фильм</small><span>{String(payload.reason)}</span></div>}</>
   if(p.state==='one_word_collecting')return <><div className="eyebrow">рецензия одним словом</div><h1>что это за фильм?</h1><ScreenWordWall groups={Array.isArray(payload.wordGroups)?payload.wordGroups:[]} collecting/></>
   if(p.state==='one_word_results')return <><div className="eyebrow">рецензия зала</div><ScreenWordWall groups={Array.isArray(payload.wordGroups)?payload.wordGroups:[]}/></>
   if(p.state==='question_open')return <><div className="eyebrow">вопрос {Number(payload.position||0)}/{Number(payload.totalQuestions||3)}</div><h1>{String(payload.prompt||'что будет дальше?')}</h1><p>напишите свой вариант в телефоне</p></>
@@ -1545,9 +1545,9 @@ function ProjectorAudio({data,screenToken}:{data:DemoState;screenToken:string}){
   const runtime=data.show?.runtime
   const block=runtime?.currentBlock
   const projectorState=String(data.projector?.state||'')
-  const filmActive=['film_intro','playing_clip','question_open','question_results','question_reveal'].includes(projectorState)
+  const filmActive=['film_intro','playing_clip','question_reveal'].includes(projectorState)
   const livePerformance=block?.type==='music_live'
-  const blockCutoffAt=runtime?.blockStartedAt&&block?.durationMin
+  const blockCutoffAt=runtime?.blockStartedAt&&block?.durationMin&&block?.autoAdvance
     ?new Date(runtime.blockStartedAt).getTime()+Number(block.durationMin)*60_000
     :0
   const clockNow=runtime?.runStatus==='paused'&&runtime.pausedAt?new Date(runtime.pausedAt).getTime():Date.now()
@@ -1679,7 +1679,7 @@ function ProjectorAudio({data,screenToken}:{data:DemoState;screenToken:string}){
     }
   }
   return <>
-    <audio ref={background} onEnded={()=>{setAudioTick(x=>x+1);if(asset?.key)void callScreenApi('screen-audio-ended',{slug:data.event.slug,trackKey:asset.key,sessionId:sessionId.current},screenToken).catch(()=>{})}}/>
+    <audio ref={background} onEnded={()=>{setAudioTick(x=>x+1);if(state?.mode==='manual'&&asset?.key)void callScreenApi('screen-audio-ended',{slug:data.event.slug,trackKey:asset.key,sessionId:sessionId.current},screenToken).catch(()=>{})}}/>
     <audio ref={cue} onEnded={()=>{setCuePlaying(false);setAudioTick(x=>x+1)}}/>
     {(!armed||needsUnlock)&&<div className="screen-audio-unlock"><button disabled={unlockBusy} onClick={()=>void unlock()}>{unlockBusy?'проверяем звук…':'включить звук и проверить'}</button>{audioError&&<p role="alert">{audioError}</p>}</div>}
   </>
