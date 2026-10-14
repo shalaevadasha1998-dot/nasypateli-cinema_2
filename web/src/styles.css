@@ -3521,3 +3521,42 @@ html.chat-keyboard-open .chat-compose-inline{
 @media(min-width:700px){
   .notification-optin-backdrop{place-items:center}
 }
+
+/* Projector playback: preserve 16:9 video and keep the rationale readable. */
+.screen-video-wrap{display:flex;align-items:center;justify-content:center}
+.screen-video-wrap iframe{
+  width:min(100vw,177.77778vh);
+  height:min(100vh,56.25vw);
+  aspect-ratio:16 / 9;
+  flex:none;
+  background:#000;
+}
+.screen-film-match{
+  width:min(1140px,88vw);
+  display:grid;
+  align-content:center;
+  gap:clamp(18px,2.3vw,42px);
+  text-align:left;
+}
+.screen-film-match h1{
+  font-size:clamp(58px,8.2vw,132px);
+  line-height:.92;
+  overflow-wrap:anywhere;
+  margin:0;
+}
+.screen-film-match p{
+  max-width:980px;
+  font-size:clamp(24px,2.7vw,45px);
+  line-height:1.25;
+  color:var(--paper);
+}
+.screen-film-match small{font-size:clamp(16px,1.7vw,25px);color:#9fa298}
+.screen-audio-unlock{max-width:calc(100vw - 32px);border-radius:24px;text-align:center}
+.screen-audio-unlock button{max-width:100%;white-space:normal}
+.screen-audio-unlock p{font-size:14px;line-height:1.35;margin:8px 0 0}
+@media(max-width:760px){
+  .screen-film-match{width:100%;gap:14px}
+  .screen-film-match h1{font-size:clamp(38px,11vw,78px)}
+  .screen-film-match p{font-size:clamp(18px,5vw,28px)}
+  .screen-video-wrap iframe{width:100vw;height:56.25vw}
+}
