@@ -1,4 +1,4 @@
-import { TEST_EVENT_SLUG, telegramStartPath, testShareUrl } from './lib/testInvite'
+import { telegramStartPath } from './lib/testInvite'
 import { useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import QrScanner from 'qr-scanner'
@@ -350,18 +350,6 @@ function Home({eventSlug='',privateEvent=false}:{eventSlug?:string;privateEvent?
   const cancelTicket=async()=>{if(cancelBusy||data.registration!=='paid'||!freeEntry||!salesOpen)return;if(!window.confirm('отменить билет? место освободится для другого человека'))return;try{setCancelBusy(true);setCancelError('');setClaimError('');setBuyNotice('');await callApi('cancel-event-ticket',{slug:e.slug});setTicketOpen(false);setBuyNotice('билет отменён. место освобождено');await reload(true)}catch(err:any){setCancelError(err.message||'не получилось отменить билет')}finally{setCancelBusy(false)}}
     const rebuyStatus=data.registration==='refunded'?'билет возвращён':data.registration==='cancelled'?'билет отменён':''
   return <div className="page home-page cinematic-page">
-    {privateEvent?<section className="home-test-shortcut"><div><span className="eyebrow">закрытая проверка · реальный билет</span><h2>полноценный прогон вечера</h2><p>это отдельное бесплатное событие с настоящей регистрацией и qr билета. 17 октября остаётся без изменений</p></div><Button kind="secondary" onClick={()=>nav('/admin/'+e.slug)}>пульт ведущего</Button></section>:<section className="home-test-shortcut">
-      <div><span className="eyebrow">репетиция · отдельная комната</span><h2>проверить вечер</h2><p>потренируйся с животиной до 17 октября. билеты и ответы настоящего вечера не меняются</p></div>
-      <Button onClick={()=>nav('/test')}>войти в тестовую комнату</Button>
-    </section>}
-    <section className="home-creature-hero home-creature-static">
-      <div className="home-creature-top"><div><div className="eyebrow">ваша животина</div><span className="home-creature-stage-label">ваша личная животина внутри насыпателей в кино</span></div><button className="micro-link" onClick={()=>nav('/profile')}>открыть профиль ↗</button></div>
-      <button type="button" className="home-creature-static-art" onClick={()=>nav('/profile')} aria-label="открыть профиль животины"><img src={`${import.meta.env.BASE_URL}assets/rabbit-full.webp`} alt={data.creature.name||'животина'} draggable={false}/></button>
-      <div className="home-creature-name">{data.creature.name||'животина'}</div>
-      <p className="home-creature-copy">{data.creature.name||'животина'} знает ваш кинопрофиль и может обсуждать с вами фильмы, вкусы и происходящее в клубе</p>
-      <Button onClick={()=>nav('/zhivotina')}>поговорить с {uiLower(data.creature.name||'животиной')}</Button>
-    </section>
-    {encounterMsg&&<div className="success floating-success" role="status">{encounterMsg}</div>}
     <FilmMissionCards data={data} onOpen={id=>nav('/mission/'+id)}/>
     <section className="home-event-hero">
       <div className="home-event-date"><div className="eyebrow">ближайший вечер</div><h1>{eventDate(e.startsAt)}</h1><p>{eventTime(e.startsAt)}. {e.venueName?e.venueName:'место объявим позже'}. москва{e.venueAddress&&<><br/>{e.venueAddress}</>}</p></div>
@@ -1958,13 +1946,6 @@ function FeedbackSummaryAdmin({busy,run}:{busy:boolean;run:(action:string,payloa
   </details>
 }
 
-function TestInviteCard({adminToken}:{adminToken:string}){
-  const [url,setUrl]=useState(''),[error,setError]=useState(''),[copied,setCopied]=useState(false)
-  useEffect(()=>{let active=true;void callAdminApi<{url:string}>('admin-test-invite',{slug:TEST_EVENT_SLUG},adminToken).then(x=>{if(active)setUrl(x.url)}).catch(e=>{if(active)setError(e.message)});return()=>{active=false}},[adminToken])
-  const share=()=>{try{const shareUrl=testShareUrl(url);const app=telegramWebApp();if(app?.openTelegramLink)app.openTelegramLink(shareUrl);else window.open(shareUrl,'_blank','noopener,noreferrer')}catch(e:any){setError(e.message)}}
-  const copy=async()=>{if(!url)return;try{await navigator.clipboard.writeText(url);setCopied(true);window.setTimeout(()=>setCopied(false),3000)}catch{window.prompt('скопируй приглашение',url)}}
-  return <Card id="admin-invites"><div className="section-title">репетиция с друзьями</div><p>каждый входит со своим профилем. тестовые голоса отделены от вечера 17 октября.</p><div className="test-invite-actions"><Button disabled={!url} onClick={copy}>{copied?'ссылка скопирована':'скопировать приглашение'}</Button><Button kind="secondary" disabled={!url} onClick={share}>отправить в Telegram</Button></div>{url&&<><p className="muted">друг открывает приглашение в личном чате с ботом, нажимает «старт», затем «попасть на событие». вход со своим Telegram-профилем</p><p><a href={url} target="_blank" rel="noreferrer">проверить приглашение в боте ↗</a></p></>}<p><a href={`#/admin/${TEST_EVENT_SLUG}`}>пульт тестового вечера</a></p>{error&&<div className="form-error">{error}</div>}</Card>
-}
 
 function TelegramStartRouter({children}:{children:ReactNode}){
   const nav=useNavigate()
