@@ -661,6 +661,8 @@ function ShowControl({data,busy,run}:{data:DemoState;busy:boolean;run:(action:st
       <span className={runtime.runStatus==='running'?'show-live-dot on':'show-live-dot'}>{showRunStatusLabel(runtime.runStatus)}</span>
     </div>
 
+    {!testRoom&&runtime.runStatus==='running'&&block?.id!=='arrival'&&new Date(data.event.startsAt).getTime()>Date.now()&&<div className="show-test-banner">этот экран уже стоит на этапе «{block?.title}». для начала вечера со сбора гостей выбери «сбор» в этапах ниже. гости 17 октября не затронуты</div>}
+
     <div className="show-console-stats"><span><b>{confirmed}</b>в списке</span><span><b>{attended}</b>пришли</span><span><b>{show.onlineCount}</b>online</span><span><b>{waiting}</b>ожидание</span></div>
 
     <div className="show-audio-console">
@@ -716,8 +718,9 @@ function ShowRoundControl({data,busy,run}:{data:DemoState;busy:boolean;run:(acti
   const block=show?.runtime.currentBlock
   const round=show?.currentRound
   const [clock,setClock]=useState(()=>Date.now())
-  const [autoRun,setAutoRun]=useState(()=>{try{return localStorage.getItem('nasypateli-director-mode')!=='manual'}catch{return true}})
-  const toggleAuto=()=>setAutoRun(v=>{const next=!v;try{localStorage.setItem('nasypateli-director-mode',next?'auto':'manual')}catch{};return next})
+  const directorKey='nasypateli-director-mode:'+data.event.slug
+  const [autoRun,setAutoRun]=useState(()=>{try{return localStorage.getItem(directorKey)!=='manual'}catch{return true}})
+  const toggleAuto=()=>setAutoRun(v=>{const next=!v;try{localStorage.setItem(directorKey,next?'auto':'manual')}catch{};return next})
   const autoRef=useRef('')
   useEffect(()=>{const t=window.setInterval(()=>setClock(Date.now()),1000);return()=>window.clearInterval(t)},[])
 
@@ -842,7 +845,7 @@ function ShowRoundControl({data,busy,run}:{data:DemoState;busy:boolean;run:(acti
   const complete=!active&&current>=target
   return <Card className="show-round-card">
     <div className="row spread"><div><div className="section-title">{autoRun?'авторежиссёр включён':'ручное управление'}</div><h2>{active?`раунд ${round?.roundNo} · ${round&&round.roundNo%2===1?'рецензия':'3 прогноза'}`:complete?`${target}/${target} готово`:`готовим раунд ${current+1} из ${target}`}</h2></div><Pill>{autoRun?'auto':'manual'}</Pill></div>
-    <p className="muted">{autoRun?'сценарий переключается сам. для покадрового управления отключи автоматический режим':'автоматические переходы кинораунда остановлены в этом пульте. переключай шаги кнопками ниже'}</p>
+    <p className="muted">{autoRun?'сценарий переключается сам. для покадрового управления отключи автоматический режим':'шаги кинораунда переключай вручную. через 5 минут подача идей откроется автоматически'}</p>
     <Button kind="secondary" onClick={toggleAuto}>{autoRun?'перейти на ручное управление':'вернуть автоматическое переключение'}</Button>
     {!active?complete?<Button kind="secondary" disabled={busy} onClick={()=>run('admin-show-control',{op:'next'})}>форсировать следующий блок</Button>:<Button kind="secondary" disabled={busy||show.runtime.runStatus!=='running'} onClick={()=>run('admin-round-start')}>форсировать старт раунда</Button>:null}
   </Card>
