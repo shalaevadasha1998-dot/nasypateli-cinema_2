@@ -199,6 +199,7 @@ export async function buildShowState(db:any,event:any){
       runKey:raw.event_runs?.run_key||undefined,
       runMode:raw.event_runs?.mode||undefined,
       isTest:raw.event_runs?.mode==='test',
+      roundControlMode:event.settings?.round_manual_mode===true||(event.settings?.private_rehearsal===true&&event.settings?.round_manual_mode!==false)?'manual':'auto',
       runStatus:raw.run_status||'idle',
       currentBlockId:block?.id||raw.current_block_id||'arrival',
       currentBlockIndex:block?.index??blockIndex,
