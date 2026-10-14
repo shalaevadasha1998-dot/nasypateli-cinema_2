@@ -163,7 +163,7 @@ function TicketQr({slug,registrationId,attended=false}:{slug:string;registration
   },[slug,registrationId])
   return <div className={attended?'event-pass-qr attended':'event-pass-qr'}>
     {src?<img src={src} alt="qr-код билета"/>:<div className="event-pass-qr-loading">создаём qr…</div>}
-    <div><b>{attended?'вход уже отмечен':'покажи qr координатору на входе'}</b><small>один qr = один билет</small></div>
+    <div><b>{attended?'вход уже отмечен':'покажи qr координатору на входе'}</b><small>один qr = один билет. для знакомства животин нужен другой код</small></div>
   </div>
 }
 
@@ -1342,7 +1342,7 @@ function AdminCheckinScanner(){
       <div className="admin-checkin-actions">
         {!cameraOn?<Button disabled={busy} onClick={()=>void startCamera()}>включить камеру</Button>:<Button kind="secondary" disabled={busy} onClick={stopCamera}>выключить камеру</Button>}
       </div>
-      <p className="muted">наведи камеру на qr внутри билета. повторный скан безопасен и второй раз человека не добавит.</p>
+      <p className="muted">наведи камеру на qr внутри билета гостя, а не на qr животины. повторный скан не добавит человека в зал второй раз</p>
       {message&&<div className={lastResult?'success':'form-error'}>{message}</div>}
       {lastResult&&<div className="admin-checkin-result"><div className="admin-checkin-result-creature"><ProjectorCreatureImage stage={String(lastResult.creatureStage||'stage_0')} visualVariant={Number(lastResult.visualVariant||1)}/></div><div><small>{lastResult.alreadyAttended?'уже в зале':'в зал заходит'}</small><b>{lastResult.creatureName||'животина'}</b><span>№ {Number(lastResult.attendeeCount||0)} · {lastResult.displayName||'гость'}</span></div></div>}
     </Card>
