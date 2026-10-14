@@ -10,7 +10,6 @@ import { buyTicket, callAdminApi, callApi, callScreenApi, demoMode } from './lib
 import { initTelegram, telegramStartParam, telegramUser, telegramWebApp } from './lib/telegram'
 import { useVoiceInput } from './hooks/useVoiceInput'
 import { ArchivePage, BirthPage, CreatureProfilePage, DatingPage, NotificationPage, RulesPage } from './ProductPages'
-import EncounterPage from './EncounterPage'
 import './projector-show.css'
 import './manual-director.css'
 import { emptyProfile, stages } from './demo'
@@ -333,7 +332,7 @@ function ParticipantShow({data,reload}:{data:DemoState;reload:(fresh?:boolean)=>
 
 function Home({eventSlug='',privateEvent=false}:{eventSlug?:string;privateEvent?:boolean}={}){
   const {data,error,reload}=useStateData(true,eventSlug);const nav=useNavigate();const [buyError,setBuyError]=useState('');const [buyNotice,setBuyNotice]=useState('');const [buyBusy,setBuyBusy]=useState(false);const [claimBusy,setClaimBusy]=useState(false);const [claimError,setClaimError]=useState('');const [cancelBusy,setCancelBusy]=useState(false);const [cancelError,setCancelError]=useState('');const [ticketOpen,setTicketOpen]=useState(false);const [encounterMsg,setEncounterMsg]=useState('');const [now,setNow]=useState(()=>Date.now());useEffect(()=>{if(!data?.creature?.born)return;const u=new URL(location.href);const token=u.searchParams.get('encounter');if(!token)return;u.searchParams.delete('encounter');history.replaceState({},'',u.toString());callApi<{kind:string}>('encounter-preview',{token}).then(async preview=>{
-    if(preview.kind==='rabbit'){nav('/meet?incoming='+encodeURIComponent(token),{replace:true});return}
+    if(preview.kind==='rabbit'){setEncounterMsg('qr знакомства животин больше не используется. для входа ведущий сканирует qr билета');return}
     if(preview.kind==='event_checkin'){
       const result=await callApi<any>('encounter',{token})
       setEncounterMsg(result.alreadyAttended?'вы уже отметились на входе':'вы внутри. животина запомнила, что вы пришли')
@@ -361,7 +360,6 @@ function Home({eventSlug='',privateEvent=false}:{eventSlug?:string;privateEvent?
       <p className="home-creature-copy">{data.creature.name||'животина'} знает ваш кинопрофиль и может обсуждать с вами фильмы, вкусы и происходящее в клубе</p>
       <Button onClick={()=>nav('/zhivotina')}>поговорить с {uiLower(data.creature.name||'животиной')}</Button>
     </section>
-    <button type="button" className="home-meet-shortcut" onClick={()=>nav('/meet')}><span className="home-meet-mark" aria-hidden="true">⌗</span><span><b>познакомить животин</b><small>показать свой qr или сканировать чужой</small></span><strong aria-hidden="true">↗</strong></button>
     {encounterMsg&&<div className="success floating-success" role="status">{encounterMsg}</div>}
     <FilmMissionCards data={data} onOpen={id=>nav('/mission/'+id)}/>
     <section className="home-event-hero">
@@ -392,7 +390,8 @@ function Home({eventSlug='',privateEvent=false}:{eventSlug?:string;privateEvent?
       </div>
       <Button kind="secondary" onClick={()=>nav('/zhivotina')}>поговорить с {uiLower(data.creature.name||'животиной')}</Button>
     </section>
-    {data.isAdmin&&<button type="button" className="admin-entry-link" onClick={()=>nav(`/admin/event/${e.slug}`)}>админка шоу ↗</button>}
+    {data.isAdmin&&<button type="button" className="admin-entry-link" onClick={()=>nav(`/test/${e.slug}`)}>репетиция · только админам ↗</button>}
+    {data.isAdmin&&<button type="button" className="admin-entry-link" onClick={()=>nav(`/admin/event/${e.slug}`)}>пульт мероприятия ↗</button>}
     {demoMode&&<Card className="dev"><b>демо</b><span>админка: <a href={`${import.meta.env.BASE_URL}#/admin/${e.slug}`}>/admin/{e.slug}</a>. экран: <a href={`${import.meta.env.BASE_URL}#/screen/${e.slug}`}>/screen/{e.slug}</a></span></Card>}
   </div>
 }
@@ -463,31 +462,38 @@ function TasteSummary({taste}:{taste:TasteVector}){const rows:[string,number][]=
 function PrivateLiveEvent(){const {slug}=useParams();return <Home eventSlug={slug||''} privateEvent/>}
 
 function TestRoomHub(){
+  const {slug}=useParams()
+  const sourceSlug=slug||'2026-10-17'
   const nav=useNavigate()
-  const inTelegram=!!telegramWebApp()?.initData
-  const inviteUrl='https://t.me/nasipateli_v_kinobot?start=test'
-  const [copied,setCopied]=useState(false)
-  const copyInvite=async()=>{try{await navigator.clipboard.writeText(inviteUrl);setCopied(true);window.setTimeout(()=>setCopied(false),2800)}catch{window.prompt('скопируйте ссылку',inviteUrl)}}
-  return <div className="page test-room-hub">
-    <header className="test-room-heading">
-      <span className="eyebrow">отдельная репетиция</span>
-      <h1>тестовая<br/>комната</h1>
-      <p>можно проверить весь вечер на своём телефоне. это не мероприятие 17 октября — здесь отдельные ответы и животины</p>
+  const admin=usePrivilegedState('admin',sourceSlug)
+  const [busy,setBusy]=useState(false)
+  const [message,setMessage]=useState('')
+  if(!admin.data)return <div className="page rehearsal-locked"><div className="eyebrow">для команды</div><h1>служебная репетиция</h1><p>{admin.error||'проверяем доступ администратора…'}</p><Button kind="secondary" onClick={()=>nav('/')}>на главную</Button></div>
+  const roomSlug='test-'+admin.data.event.slug
+  const opening=(path:string)=>nav(path)
+  const openProjector=async()=>{
+    setBusy(true);setMessage('')
+    try{
+      const result=await callAdminApi<{screenUrl:string}>('admin-screen-link',{slug:roomSlug},admin.token)
+      if(result.screenUrl)window.open(result.screenUrl,'_blank','noopener,noreferrer')
+      else setMessage('не получилось открыть проектор')
+    }catch(e:any){setMessage(e.message||'не получилось получить ссылку проектора')}
+    finally{setBusy(false)}
+  }
+  return <div className="page admin-rehearsal-hub">
+    <header className="admin-rehearsal-header">
+      <span className="eyebrow">только для администраторов · отдельные данные</span>
+      <h1>проверить<br/><span>весь вечер</span></h1>
+      <p>репетиция автоматически создаётся для каждого мероприятия. здесь можно пройти полную программу, не затрагивая гостей, билеты и голоса настоящего события</p>
+      <div className="admin-rehearsal-event">оригинал: <b>{admin.data.event.title}</b></div>
     </header>
-    <div className="test-room-primary">
-      <div className="test-room-step"><span>01 / участник</span><h2>посмотреть, что видят гости</h2><p>зайти, увидеть сбор, получать задания и отправлять ответы. требуется вход через Telegram</p>
-        <Button onClick={()=>nav('/rehearsal/'+TEST_EVENT_SLUG)}>войти как участник</Button></div>
-      <div className="test-room-step"><span>02 / ведущий</span><h2>управлять тестовым вечером</h2><p>запуск, пауза, перелистывание этапов, показ фильма и сброс теста. доступно только администраторам</p>
-        <Button kind="secondary" onClick={()=>nav('/admin/'+TEST_EVENT_SLUG)}>открыть тестовый пульт</Button></div>
-      <div className="test-room-step"><span>03 / большой экран</span><h2>проверить проектор</h2><p>тестовый экран показывает животных и этапы вечера отдельно от основного мероприятия</p>
-        <Button kind="secondary" onClick={()=>window.open(import.meta.env.BASE_URL+'#/screen/'+TEST_EVENT_SLUG,'_blank','noopener,noreferrer')}>открыть тестовый экран</Button></div>
-    </div>
-    <section className="test-room-invite">
-      <div><div className="eyebrow">ссылка без срока действия</div><h2>пригласить на тест</h2><p>отправьте другу эту ссылку. бот сразу покажет кнопку «войти в тестовую комнату»</p></div>
-      <div className="test-room-invite-actions"><Button kind="secondary" onClick={copyInvite}>{copied?'ссылка скопирована':'скопировать ссылку'}</Button><a className="btn secondary" href={inviteUrl} target="_blank" rel="noreferrer">открыть в Telegram ↗</a></div>
+    <section className="admin-rehearsal-roles" aria-label="режимы репетиции">
+      <button type="button" onClick={()=>opening('/rehearsal/'+roomSlug)}><span className="role-number">01</span><span className="role-symbol" aria-hidden="true">◉</span><strong>участник</strong><small>пройди весь вечер с телефона: животина, задания, раунды и финал</small><em>войти как гость →</em></button>
+      <button type="button" onClick={()=>opening('/admin/'+roomSlug)}><span className="role-number">02</span><span className="role-symbol" aria-hidden="true">⌘</span><strong>ведущий</strong><small>пульт, ручная режиссура каждого шага, таймеры, проверка входа</small><em>управлять вечером →</em></button>
+      <button type="button" disabled={busy} onClick={()=>void openProjector()}><span className="role-number">03</span><span className="role-symbol" aria-hidden="true">▣</span><strong>общий экран</strong><small>анимации, появление животин и сцены на проекторе</small><em>{busy?'открываем…':'показать экран ↗'}</em></button>
     </section>
-    {!inTelegram&&!demoMode&&<Card className="test-room-access"><h3>вход участником — через Telegram</h3><p>на компьютере без авторизации можно открыть проектор, но отправка ответов работает только с вашим Telegram-профилем</p><a className="btn secondary" href={inviteUrl}>перейти сразу в тест через бота ↗</a></Card>}
-    <div className="test-room-foot"><p>«творог» остаётся, после него будет короткая обратная связь. всё можно пройти отдельно от живого вечера</p><Button kind="secondary" onClick={()=>nav('/')}>вернуться на главный</Button></div>
+    {message&&<p className="form-error" role="alert">{message}</p>}
+    <section className="admin-rehearsal-foot"><div><b>репетиция изолирована</b><p>доступ получает только аккаунт администратора. гостям вкладка «тест» не показывается и вход по прямой ссылке закрыт</p></div><Button kind="secondary" onClick={()=>nav('/admin/'+sourceSlug)}>назад в пульт события</Button></section>
   </div>
 }
 
@@ -496,25 +502,25 @@ function RehearsalPage(){
   const nav=useNavigate()
   const {data,error,reload}=useStateData(true,slug||'')
   if(!data)return <div className="page rehearsal-access">
-    <Card><div className="eyebrow">отдельная тестовая комната</div>
+    <Card><div className="eyebrow">служебная репетиция · только админам</div>
       <h1>{error?'не получилось подключиться':'подключаем вашу животину…'}</h1>
-      {error?<p>{error.includes('Тестовая комната закрыта')?'откройте ссылку на репетицию через Telegram-бота, а затем нажмите «войти в тестовую комнату»':error}</p>:<p>проверяем вход в репетицию. билеты на 17 октября не затрагиваем</p>}
+      {error?<p>{error}</p>:<p>проверяем права администратора и подключение к репетиции</p>}
       <div className="rehearsal-access-buttons">
-        <Button kind="secondary" onClick={()=>nav('/test')}>назад в тестовую</Button>
+        <Button kind="secondary" onClick={()=>nav('/test/'+String(slug||'').replace(/^test-/,''))}>в выбор ролей</Button>
         <Button onClick={()=>void reload(true)}>повторить подключение</Button>
-        {error&&<a className="btn secondary" href="https://t.me/nasipateli_v_kinobot?start=test">открыть через Telegram ↗</a>}
+
       </div>
     </Card>
   </div>
-  if(slug!==data.event.slug)return <div className="page"><Empty>такой тестовой комнаты нет</Empty><Button kind="secondary" onClick={()=>nav('/test')}>к тестовой комнате</Button></div>
+  if(slug!==data.event.slug)return <div className="page"><Empty>такой репетиции нет</Empty><Button kind="secondary" onClick={()=>nav('/test/'+String(slug||'').replace(/^test-/,''))}>назад</Button></div>
   return <div className="page home-page rehearsal-page">
     <Card><div className="eyebrow">тестовый вечер</div><h2>{data.profile.displayName||'ваш личный профиль'}</h2><p>ваши ответы сохраняются отдельно. тест не меняет билеты и голоса на 17 октября.</p>
-    {data.show?.runtime.runStatus==='idle'&&<div className="rehearsal-waiting"><p>сейчас сбор ещё не запущен. ведущий может нажать «начать тест без звука» в отдельном пульте</p>{data.isAdmin&&<Button kind="secondary" onClick={()=>nav('/admin/'+TEST_EVENT_SLUG)}>запустить тест как ведущий</Button>}</div>}
+    {data.show?.runtime.runStatus==='idle'&&<div className="rehearsal-waiting"><p>ведущий ещё не запустил репетицию. открой пульт, чтобы начать вечер</p>{data.isAdmin&&<Button kind="secondary" onClick={()=>nav('/admin/'+slug)}>открыть пульт ведущего</Button>}</div>}
     </Card>
     {data.show?.runtime.currentBlock?.type==='cinema_rounds'
       ?<FilmLiveParticipant data={data} reload={reload}/>
       :<ParticipantShow data={data} reload={reload}/>}
-    <div className="rehearsal-back"><Button kind="secondary" onClick={()=>location.hash='/test'}>вернуться в тестовую комнату</Button></div>
+    <div className="rehearsal-back"><Button kind="secondary" onClick={()=>nav('/test/'+String(slug||'').replace(/^test-/,''))}>назад в управление репетицией</Button></div>
   </div>
 }
 
@@ -1950,4 +1956,4 @@ function TelegramStartRouter({children}:{children:ReactNode}){
 
 function statusLabel(s:EventStatus){const m:Record<EventStatus,string>={DRAFT:'черновик',SALES_OPEN:'регистрация открыта',CHECKIN:'сбор гостей',IDEAS_OPEN:'идеи открыты',IDEAS_LOCKED:'идеи закрыты',TOP3_READY:'три идеи',IDEA_RANDOMIZED:'идея выбрана',MOVIE_SEARCH:'поиск фильма',MOVIE_FINALISTS:'три фильма',MOVIE_SELECTED:'фильм выбран',PREDICTIONS_OPEN:'прогнозы',PREDICTIONS_LOCKED:'прогнозы закрыты',WATCHING:'просмотр',PREDICTIONS_SCORED:'результаты',DISCUSSION:'реакции',FINAL_REVIEW:'финальная фраза',FEEDBACK:'исследование',CLOSED:'закрыто'};return m[s]}
 
-export default function App(){return <HashRouter><TelegramStartRouter><Routes><Route path="/onboarding" element={<Onboarding/>}/><Route path="/birth" element={<BirthPage/>}/><Route path="/rules" element={<RulesPage/>}/><Route element={<Layout/>}><Route path="/" element={<RequireProfile><Home/></RequireProfile>}/><Route path="/profile" element={<RequireProfile><CreatureProfilePage/></RequireProfile>}/><Route path="/mission/:assignmentId" element={<RequireProfile><FilmMissionPage/></RequireProfile>}/><Route path="/dating" element={<RequireProfile><DatingPage/></RequireProfile>}/><Route path="/meet" element={<RequireProfile><EncounterPage/></RequireProfile>}/><Route path="/private/:slug" element={<RequireProfile><PrivateLiveEvent/></RequireProfile>}/><Route path="/notifications" element={<RequireProfile><NotificationPage/></RequireProfile>}/><Route path="/event/:slug" element={<RequireProfile><EventPage/></RequireProfile>}/><Route path="/archive" element={<RequireProfile><ArchivePage/></RequireProfile>}/><Route path="/test" element={<TestRoomHub/>}/><Route path="/club" element={<Navigate to="/archive" replace/>}/><Route path="/zhivotina" element={<RequireProfile><ZhivotinaPage/></RequireProfile>}/><Route path="/jipitina" element={<Navigate to="/zhivotina" replace/>}/></Route><Route path="/admin/:slug" element={<Admin/>}/><Route path="/admin/event/:slug" element={<Admin/>}/><Route path="/admin/checkin/:slug" element={<AdminCheckinScanner/>}/><Route path="/screen/:slug" element={<Screen/>}/><Route path="/screen/event/:slug" element={<Screen/>}/><Route path="/rehearsal/:slug" element={<RehearsalPage/>}/><Route path="*" element={<Navigate to="/" replace/>}/></Routes></TelegramStartRouter></HashRouter>}
+export default function App(){return <HashRouter><TelegramStartRouter><Routes><Route path="/onboarding" element={<Onboarding/>}/><Route path="/birth" element={<BirthPage/>}/><Route path="/rules" element={<RulesPage/>}/><Route element={<Layout/>}><Route path="/" element={<RequireProfile><Home/></RequireProfile>}/><Route path="/profile" element={<RequireProfile><CreatureProfilePage/></RequireProfile>}/><Route path="/mission/:assignmentId" element={<RequireProfile><FilmMissionPage/></RequireProfile>}/><Route path="/dating" element={<RequireProfile><DatingPage/></RequireProfile>}/><Route path="/private/:slug" element={<RequireProfile><PrivateLiveEvent/></RequireProfile>}/><Route path="/notifications" element={<RequireProfile><NotificationPage/></RequireProfile>}/><Route path="/event/:slug" element={<RequireProfile><EventPage/></RequireProfile>}/><Route path="/archive" element={<RequireProfile><ArchivePage/></RequireProfile>}/><Route path="/test" element={<Navigate to="/test/2026-10-17" replace/>}/><Route path="/test/:slug" element={<TestRoomHub/>}/><Route path="/club" element={<Navigate to="/archive" replace/>}/><Route path="/zhivotina" element={<RequireProfile><ZhivotinaPage/></RequireProfile>}/><Route path="/jipitina" element={<Navigate to="/zhivotina" replace/>}/></Route><Route path="/admin/:slug" element={<Admin/>}/><Route path="/admin/event/:slug" element={<Admin/>}/><Route path="/admin/checkin/:slug" element={<AdminCheckinScanner/>}/><Route path="/screen/:slug" element={<Screen/>}/><Route path="/screen/event/:slug" element={<Screen/>}/><Route path="/rehearsal/:slug" element={<RehearsalPage/>}/><Route path="*" element={<Navigate to="/" replace/>}/></Routes></TelegramStartRouter></HashRouter>}
