@@ -40,8 +40,49 @@ try{
   }
   browser=await chromium.launch({headless:true,args:['--no-sandbox']})
   await caseRun('projector-arrival','#/screen/test-2026-10-03',{width:1920,height:1080},'.screen-creature-wall')
+  await caseRun('projector-arrival-720p','#/screen/test-2026-10-03',{width:1280,height:720},'.screen-creature-wall')
+  await caseRun('projector-arrival-small','#/screen/test-2026-10-03',{width:1024,height:600},'.screen-creature-wall')
   await caseRun('mobile-telegram-entry','',{width:390,height:844},'.telegram-gate, .loading-page, .page')
   await caseRun('compact-mobile-entry','',{width:320,height:640},'.telegram-gate, .loading-page, .page')
+  // Exercise the long intro card without changing server/database state.
+  for(const viewport of [{width:1280,height:720},{width:1024,height:600},{width:390,height:640}]){
+    const page=await browser.newPage({viewport})
+    const width=viewport.width,height=viewport.height
+    await page.route('https://vwteokawtqnoiyzmsldj.supabase.co/functions/v1/app',async route=>{
+      const request=route.request()
+      const action=JSON.parse(request.postData()||'{}').action
+      if(action==='screen-bootstrap'){
+        const mocked={
+          event:{id:'test-event',slug:'test-2026-10-03',status:'CHECKIN',startsAt:'2026-10-17T13:00:00Z'},
+          show:{
+            runtime:{isTest:true,runKey:'test_preview',runStatus:'running',currentBlockId:'cinema_first',
+              currentBlock:{id:'cinema_first',type:'cinema_rounds',title:'снимаем кино',durationMin:75},
+              currentBlockIndex:2,currentRound:1,revision:1,voteState:'closed',resultsVisible:false,videoState:{}},
+            program:{version:1,roundsTarget:4,blocks:[],rewards:{join:1,vote:1,round:1,finale:1}},
+            audio:{state:{mode:'auto',status:'stopped',volume:.2},assets:[],screen:{online:false,unlocked:false}}
+          },
+          projector:{state:'round_intro',revision:2,updatedAt:new Date().toISOString(),payload:{roundNo:1,opensAt:new Date(Date.now()+300000).toISOString()}},
+          screenCreatures:[],screenMessage:''
+        }
+        await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(mocked)})
+      }else await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({ok:true,owner:true})})
+    })
+    try{
+      await page.goto(base+'#/screen/test-2026-10-03',{waitUntil:'domcontentloaded'})
+      await page.locator('.screen-round-intro').waitFor({state:'visible',timeout:13000})
+      const geometry=await page.evaluate(()=>{
+        const rect=selector=>{const {top,right,bottom,left}=document.querySelector(selector).getBoundingClientRect();return {top,right,bottom,left}}
+        return {header:rect('.screen-header'),notices:rect('.screen-notices'),body:rect('.screen-content'),footer:rect('.screen-footer'),
+          scrollWidth:document.documentElement.scrollWidth,viewport:innerWidth,scrollHeight:document.querySelector('.screen-content').scrollHeight}
+      })
+      if(geometry.scrollWidth>geometry.viewport+5)throw Error('Projector horizontal overflow '+JSON.stringify(geometry))
+      if(geometry.header.bottom>geometry.notices.top+2||geometry.notices.bottom>geometry.body.top+2||geometry.body.bottom>geometry.footer.top+2){
+        throw Error('Projector header/notice/body overlap '+JSON.stringify(geometry))
+      }
+      await page.screenshot({path:'test-artifacts/projector-intro-'+width+'x'+height+'.png',fullPage:true})
+      console.log('PASS projector-intro '+width+'x'+height+' '+JSON.stringify({scrollWidth:geometry.scrollWidth,scrollHeight:geometry.scrollHeight}))
+    }finally{await page.close()}
+  }
   // Animate arrivals in an isolated preview. It does not mutate live check-ins.
   const animalsPage=await browser.newPage({viewport:{width:1920,height:1080}})
   try{
