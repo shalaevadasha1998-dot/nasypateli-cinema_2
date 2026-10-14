@@ -1,0 +1,27 @@
+/* Director control: every intra-round transition is a deliberate click in manual mode. */
+.director-round-mode{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;padding:5px;margin:16px 0 12px;background:#161b14;border:1px solid #414a3a;border-radius:13px}
+.director-round-mode button{min-width:0;min-height:49px;border:0;border-radius:9px;background:transparent;color:#adb9a1;font:700 14px/1.2 inherit;cursor:pointer;padding:10px 12px}
+.director-round-mode button.active{background:#c7dbaa;color:#1a2616;box-shadow:0 2px 13px #0005}
+.director-round-mode button:disabled{cursor:wait;opacity:.65}
+.manual-director-flow{border:1px solid #556c49;background:radial-gradient(ellipse at 95% 5%,#7ba46713,transparent 42%),#10150e}
+.manual-director-flow .section-title{color:#b0cb9c}
+.manual-director-flow h2{font-size:clamp(23px,3.5vw,40px);line-height:1.12;margin:8px 0}
+.manual-director-stages{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:20px 0;padding:0}
+.manual-director-stage{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:9px;min-width:0;min-height:92px;padding:13px;border:1px solid #353e35;border-radius:10px;color:#909b8c;background:#151a13;opacity:.78}
+.manual-director-stage span{font:800 19px/1 inherit;font-variant-numeric:tabular-nums;letter-spacing:-.045em}
+.manual-director-stage b{font-size:13px;line-height:1.2;overflow-wrap:anywhere}
+.manual-director-stage small{font-size:10px;line-height:1.2;color:#20321a;background:#d8e9c2;border-radius:4px;padding:5px 6px}
+.manual-director-stage.current{border-color:#bddaa3;background:#293a25;color:#f0f7e7;opacity:1;box-shadow:inset 0 0 0 1px #89a97744}
+.manual-director-stage.current span{color:#d9f4bd}
+.manual-director-stage.done{opacity:.88;border-color:#62785a;color:#b7c9ac}
+.manual-director-stage.done span{color:#9cb58c}
+.manual-director-stage.waiting{opacity:.55}
+.manual-director-description{font-size:14px;line-height:1.5;margin:0 0 20px}
+.manual-director-flow .round-film-navigation{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:10px}
+.manual-director-flow .round-film-navigation .btn{min-height:58px;font-size:15px;white-space:normal;overflow-wrap:anywhere}
+.manual-director-flow .round-film-navigation .btn:last-child{background:#cbdfa9;color:#192416;border-color:#cbdfa9;font-weight:850}
+.manual-director-flow .round-film-navigation .btn:last-child:disabled{opacity:.5}
+.manual-director-help{margin:14px 0 0;color:#d4b39d;font-size:13px;line-height:1.5}
+.director-round-mode button:focus-visible,.manual-director-stage:focus-visible{outline:2px solid #daedbb;outline-offset:3px}
+@media(max-width:800px){.manual-director-stages{grid-template-columns:repeat(2,minmax(0,1fr))}.manual-director-stage{min-height:83px}}
+@media(max-width:430px){.director-round-mode button{font-size:12px}.manual-director-flow .round-film-navigation{grid-template-columns:1fr}.manual-director-stage{min-height:83px;padding:11px}.manual-director-stage b{font-size:12px}}
