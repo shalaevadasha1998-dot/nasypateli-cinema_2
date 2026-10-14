@@ -113,6 +113,16 @@ export async function handleTelegram(req:Request){
     if(msg?.text?.startsWith('/start')){
       const payload=String(msg.text||'').split(/\s+/)[1]||'';let launchUrl=webAppUrl;let buttonText='открыть клуб';let intro='это НАСЫПАТЕЛИ В КИНО. здесь билеты, животина, знакомства и механики вечера'
       if(payload.startsWith('encounter_')&&webAppUrl){const token=payload.slice('encounter_'.length);const t=await db.from('encounter_tokens').select('kind').eq('token',token).maybeSingle();const u=new URL(webAppUrl);u.searchParams.set('encounter',token);launchUrl=u.toString();buttonText=t.data?.kind==='event_checkin'?'отметиться на событии':'встретить животину';intro=t.data?.kind==='event_checkin'?'откройте НАСЫПАТЕЛИ В КИНО, чтобы отметиться на событии':'кажется, ваши животины сейчас встретятся'}
+      // Public rehearsal entry still requires verified Telegram WebApp initData.
+      // It grants participant-only access to the isolated test event.
+      if(payload==='test'&&webAppUrl){
+        const u=new URL(webAppUrl)
+        u.searchParams.set('tgWebAppStartParam','test')
+        u.hash='/rehearsal/test-2026-10-03'
+        launchUrl=u.toString()
+        buttonText='войти в тестовую комнату'
+        intro='это отдельная репетиция «насыпателей в кино». нажмите кнопку ниже: здесь можно проверить механики, не затрагивая событие 17 октября'
+      }
       const testInvite=/^t_([0-9a-f]{32})$/.exec(payload)
       if(testInvite&&webAppUrl){
         const room=await db.from('events').select('id,slug,title,settings').eq('slug','test-2026-10-03').maybeSingle()
