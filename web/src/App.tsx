@@ -637,6 +637,16 @@ function ShowControl({data,busy,run}:{data:DemoState;busy:boolean;run:(action:st
   const activeParticipant=rows.find(x=>x.status==='attended')||rows[0]
   const creatureName=uiLower(activeParticipant?.creatureName||'животина')
   const testRoom=runtime.isTest===true||String(data.event.slug||'').startsWith('test-')
+  const canStart=screenReady||String(data.event.slug||'').startsWith('test-')
+  const navigateBlock=(op:'back'|'next',label:string)=>{
+    if(cinemaRoundActive&&!window.confirm(`идёт кинораунд. перейти ${label}? текущий раунд завершится, несохранённые ответы могут быть потеряны`))return
+    void command(op)
+  }
+  const jumpToBlock=(blockId:string,title:string)=>{
+    if(blockId===runtime.currentBlockId)return
+    if(!window.confirm(`переключить экран и программу на «${title}»? текущий раунд будет закрыт`))return
+    void command('jump',{blockId})
+  }
   let scheduleCursor=0
   const exactSlots=new Map(show.program.blocks.map(b=>{
     const start=scheduleCursor
@@ -645,7 +655,7 @@ function ShowControl({data,busy,run}:{data:DemoState;busy:boolean;run:(action:st
     return [b.id,{start,end}] as const
   }))
   const minuteMark=(value:number)=>`${String(Math.floor(value/60)).padStart(2,'0')}:${String(Math.round(value%60)).padStart(2,'0')}`
-  return <section className={runtime.runStatus==='running'?'show-console live':'show-console'}>
+  return <section id="show-control" className={runtime.runStatus==='running'?'show-console live':'show-console'}>
     <div className="show-console-head">
       <div><div className="eyebrow">{testRoom?`test mode · ${runtime.runKey||'run'} · ${creatureName} · ${attended} из ${Math.max(confirmed,1)}`:finished?'вечер закончен':runtime.runStatus==='idle'?'готово к запуску':runtime.runStatus==='paused'?'шоу на паузе':'шоу идёт'}</div><h1>{block?.title||'мероприятие'}</h1></div>
       <span className={runtime.runStatus==='running'?'show-live-dot on':'show-live-dot'}>{showRunStatusLabel(runtime.runStatus)}</span>
@@ -665,23 +675,24 @@ function ShowControl({data,busy,run}:{data:DemoState;busy:boolean;run:(action:st
 
     {runtime.runStatus==='idle'&&<>
       {runtime.isTest&&<div className="show-test-banner">test mode · {runtime.runKey||'test run'} · постоянные крошки и live-статистика не меняются</div>}
-      <Button disabled={busy||!screenReady} onClick={()=>command('start')}>начать мероприятие + музыку</Button>
+      <Button disabled={busy||!canStart} onClick={()=>command('start')}>{screenReady?'начать сбор гостей + музыку':'начать тест без звука'}</Button>
       <div className="show-secondary-controls">
-        <Button kind="secondary" disabled={busy} onClick={()=>{if(window.confirm('создать новый чистый test run? тестовые голоса и результаты будут отделены от live.'))void command('restart_test')}}>новый test run</Button>
+        {testRoom&&<Button kind="secondary" disabled={busy} onClick={()=>{if(window.confirm('создать новый чистый test run? тестовые голоса и результаты будут отделены от live.'))void command('restart_test')}}>сбросить тест</Button>}
         {runtime.isTest&&!data.event.slug.startsWith('test-')&&<Button kind="secondary" disabled={busy} onClick={()=>{if(window.confirm('создать чистый live run для настоящего мероприятия?'))void command('restart_live')}}>перейти в live</Button>}
       </div>
-      {!screenReady&&<p className="muted">сначала на ноутбуке projector нажми «включить звук и проверить». после этого эта кнопка станет активной.</p>}
+      {!screenReady&&<p className="muted">{testRoom?'тест можно начать без проектора. звук подключится после нажатия «включить звук и проверить» на экране':'для живого мероприятия сначала открой проектор и включи звук на его ноутбуке'}</p>}
     </>}
 
-    {runtime.runStatus==='paused'&&<Button disabled={busy} onClick={()=>command('resume')}>продолжить мероприятие</Button>}
-    {runtime.runStatus==='running'&&!cinemaRoundActive&&<div className="show-primary-controls">
-      <Button kind="secondary" disabled={busy||runtime.currentBlockIndex===0} onClick={()=>command('back')}>← назад</Button>
+    {runtime.runStatus==='paused'&&<Button disabled={busy} onClick={()=>command('resume')}>▶ продолжить мероприятие</Button>}
+    {runtime.runStatus==='running'&&<div className="show-primary-controls" role="group" aria-label="навигация ведущего">
+      <Button kind="secondary" disabled={busy||runtime.currentBlockIndex===0} onClick={()=>navigateBlock('back','назад')}>← предыдущий блок</Button>
       {runtime.currentBlockIndex>=show.program.blocks.length-1
         ?<Button disabled={busy} onClick={()=>{if(window.confirm('закончить мероприятие после музыки?'))void command('end_event')}}>закончить мероприятие</Button>
-        :<Button disabled={busy} onClick={()=>command('next')}>следующий блок →</Button>}
+        :<Button disabled={busy} onClick={()=>navigateBlock('next','вперёд')}>следующий блок →</Button>}
+      <Button kind="secondary" disabled={busy} onClick={()=>command('pause')}>Ⅱ пауза</Button>
     </div>}
 
-    {runtime.runStatus!=='idle'&&!cinemaRoundActive&&<div className="show-timeline">{show.program.blocks.map(b=>{const slot=exactSlots.get(b.id);return <button type="button" disabled={busy} onClick={()=>command('jump',{blockId:b.id})} className={b.id===runtime.currentBlockId?'current':''} key={b.id}><span>{b.index+1}</span><b>{b.title}</b><small>{b.durationMin&&slot?`${minuteMark(slot.start)}–${minuteMark(slot.end)}`:'после эфира'}</small></button>})}</div>}
+    {runtime.runStatus!=='idle'&&<div className="show-timeline" aria-label="быстрый переход по программе">{show.program.blocks.map(b=>{const slot=exactSlots.get(b.id);return <button type="button" disabled={busy} onClick={()=>jumpToBlock(b.id,b.title)} aria-current={b.id===runtime.currentBlockId?'step':undefined} className={b.id===runtime.currentBlockId?'current':''} key={b.id}><span>{b.index+1}</span><b>{b.title}</b><small>{b.durationMin&&slot?`${minuteMark(slot.start)}–${minuteMark(slot.end)}`:'после эфира'}</small></button>})}</div>}
 
     {block?.type==='cinema_rounds'&&<div className="show-live-workspace">
       <ShowRoundControl data={data} busy={busy} run={run}/>
@@ -693,7 +704,7 @@ function ShowControl({data,busy,run}:{data:DemoState;busy:boolean;run:(action:st
     {['running','paused'].includes(runtime.runStatus)&&<details className="show-emergency-controls"><summary>аварийные действия</summary><div className="show-secondary-controls">
       {runtime.runStatus==='running'&&<Button kind="secondary" disabled={busy} onClick={()=>command('pause')}>пауза мероприятия</Button>}
       <Button kind="secondary" disabled={busy} onClick={()=>{if(window.confirm('рестарт мероприятия? текущий run останется в архиве, а состояние шоу начнётся с нуля. билеты, пользователи и постоянные крошки не удалятся.'))void command('restart')}}>рестарт мероприятия</Button>
-      <Button kind="secondary" disabled={busy} onClick={()=>{if(window.confirm('создать новый чистый test run? тестовые голоса и результаты будут отделены от live.'))void command('restart_test')}}>новый test run</Button>
+      {testRoom&&<Button kind="secondary" disabled={busy} onClick={()=>{if(window.confirm('сбросить тест и вернуться к сбору гостей?'))void command('restart_test')}}>сбросить тест</Button>}
       {testRoom&&!data.event.slug.startsWith('test-')&&<Button kind="secondary" disabled={busy} onClick={()=>{if(window.confirm('создать чистый live run? используй это только перед настоящим мероприятием.'))void command('restart_live')}}>перейти в live</Button>}
       {!finished&&<Button kind="danger" disabled={busy} onClick={()=>{if(window.confirm('закончить мероприятие?'))void command('end_event')}}>закончить мероприятие</Button>}
     </div></details>}
@@ -1245,12 +1256,13 @@ function Admin(){
   }
   const runPreflight=async()=>{const [x]=await Promise.all([run('admin-event-preflight'),probeProjectorArt()]);if(x)setPreflight(x)}
   return <div className="admin-page">
+    <nav className="admin-quick-nav" aria-label="разделы пульта"><button type="button" onClick={()=>document.getElementById('show-control')?.scrollIntoView({behavior:'smooth'})}>эфир</button><button type="button" onClick={()=>document.getElementById('admin-projector')?.scrollIntoView({behavior:'smooth'})}>проектор</button><button type="button" onClick={()=>document.getElementById('admin-preflight')?.scrollIntoView({behavior:'smooth'})}>проверка</button><button type="button" onClick={()=>{const el=document.getElementById('admin-support') as HTMLDetailsElement|null;if(el){el.open=true;el.scrollIntoView({behavior:'smooth'})}}}>настройки</button></nav>
     <div className="row spread admin-title-row"><div><div className="eyebrow">админка. экран ведущего</div><h2>{data.event.title}</h2></div><Pill>{data.show?showRunStatusLabel(data.show.runtime.runStatus):statusLabel(data.event.status)}</Pill></div>
     {actionError&&<div className="form-error">{actionError}</div>}
     <TestInviteCard adminToken={privileged.token}/>
     <ShowControl data={data} busy={busy} run={run}/>
-    <Card className="projector-access-card"><div className="section-title">общий экран / проектор</div><p className="muted">откройте эту ссылку на ноутбуке, подключённом к проектору, и разверните браузер на весь экран. экран обновляется сам.</p><div className="inline"><Button kind="secondary" disabled={busy} onClick={async()=>{const x:any=await run('admin-screen-link');if(x?.screenUrl)setProjectorLink(String(x.screenUrl))}}>получить ссылку экрана</Button>{projectorLink&&<><Button onClick={()=>window.open(projectorLink,'_blank','noopener,noreferrer')}>открыть экран ↗</Button><Button kind="secondary" onClick={()=>window.open(projectorLink+'&demo=animals','_blank','noopener,noreferrer')}>репетиция животин ↗</Button><Button kind="secondary" onClick={async()=>{try{await navigator.clipboard.writeText(projectorLink)}catch{window.prompt('скопируйте ссылку',projectorLink)}}}>скопировать</Button></>}</div>{projectorLink&&<input className="share-link" readOnly value={projectorLink}/>}</Card>
-    <Card className="event-preflight-card">
+    <Card id="admin-projector" className="projector-access-card"><div className="section-title">общий экран / проектор</div><p className="muted">откройте эту ссылку на ноутбуке, подключённом к проектору, и разверните браузер на весь экран. экран обновляется сам.</p><div className="inline"><Button kind="secondary" disabled={busy} onClick={async()=>{const x:any=await run('admin-screen-link');if(x?.screenUrl)setProjectorLink(String(x.screenUrl))}}>получить ссылку экрана</Button>{projectorLink&&<><Button onClick={()=>window.open(projectorLink,'_blank','noopener,noreferrer')}>открыть экран ↗</Button><Button kind="secondary" onClick={()=>window.open(projectorLink+'&demo=animals','_blank','noopener,noreferrer')}>репетиция животин ↗</Button><Button kind="secondary" onClick={async()=>{try{await navigator.clipboard.writeText(projectorLink)}catch{window.prompt('скопируйте ссылку',projectorLink)}}}>скопировать</Button></>}</div>{projectorLink&&<input className="share-link" readOnly value={projectorLink}/>}</Card>
+    <Card id="admin-preflight" className="event-preflight-card">
       <div className="row spread"><div><div className="section-title">проверка перед началом</div><h3>{preflight?preflight.ready?'технически готово':'есть блокеры':'проверка одним нажатием'}</h3></div>{preflight&&<Pill>{preflight.summary?.failed?preflight.summary.failed+' блокер(а)':'готово'}</Pill>}</div>
       <p className="muted">проверяет большой экран, telegram, программу, состояние мероприятия, подготовленные фильмы, вопросы, видео, права на источники, площадку и участников.</p>
       <Button disabled={busy} onClick={runPreflight}>{busy?'проверяем…':'проверить вечер'}</Button>
@@ -1260,11 +1272,11 @@ function Admin(){
       </div>}
       {preflight?.checkedAt&&<small className="event-preflight-time">проверено {new Date(preflight.checkedAt).toLocaleString('ru-RU')}</small>}
     </Card>
-    <details className="admin-support"><summary>списки и настройки · не нужны во время эфира</summary>
+    <details id="admin-support" className="admin-support"><summary>списки и настройки · не нужны во время эфира</summary>
       <AdminParticipants data={data} reload={reload} adminToken={privileged.token}/>
       <ReviewQueueAdmin data={data} busy={busy} run={run}/>
       {!['2026-10-03','test-2026-10-03'].includes(data.event.slug)&&<ProgramEditor data={data} busy={busy} run={run}/>}
-      {['2026-10-03','test-2026-10-03'].includes(data.event.slug)&&<Card><div className="section-title">программа вечера</div><p>сбор 15 минут → животина настоящая 5 минут → снимаем кино → перерыв 30 минут → снимаем кино → qr «творог» → музыка</p><p className="muted">каждый раунд начинается с 5 минут объяснения механики, затем сбор названий открывается автоматически.</p></Card>}
+      {['2026-10-03','test-2026-10-03'].includes(data.event.slug)&&<Card><div className="section-title">программа вечера</div><p>сбор 60 минут → животина настоящая 5 минут → снимаем кино → перерыв 30 минут → снимаем кино → qr «творог» → музыка</p><p className="muted">каждый раунд начинается с 5 минут объяснения механики, затем сбор названий открывается автоматически.</p></Card>}
       <MovieCatalogAdmin data={data} busy={busy} run={run}/>
     </details>
     <details className="admin-technical"><summary>технические настройки события</summary><div className="admin-tech-grid">
@@ -1689,10 +1701,11 @@ function ProjectorAudio({data,screenToken}:{data:DemoState;screenToken:string}){
 function Screen(){const {slug}=useParams();const [search]=useSearchParams();const privileged=usePrivilegedState('screen',slug);const {data,error}=privileged;const [now,setNow]=useState(()=>Date.now());useEffect(()=>{const t=window.setInterval(()=>setNow(Date.now()),1000);return()=>window.clearInterval(t)},[]);if(!data)return <Loading error={error}/>;const animalDemo=search.get('demo')==='animals';const projectedFlow=!!data.projector&&!['idle','arrival'].includes(data.projector.state);const content=animalDemo?<ScreenCreatureDemo data={data}/>:screenContent(data);const timer=animalDemo||projectedFlow?'':showTimerText(data,now);const status=animalDemo?'репетиция животин':projectedFlow?projectorStateLabel(data.projector!.state):data.show?.runtime.currentBlock?.type==='arrival'?'сбор гостей':data.show?.runtime.runStatus!=='idle'?data.show?.runtime.currentBlock?.title:statusLabel(data.event.status);const testMode=data.show?.runtime.isTest===true;return <div className="screen-page">{!animalDemo&&<ProjectorAudio data={data} screenToken={privileged.token}/>}<div className="screen-brand">НАСЫПАТЕЛИ В КИНО</div>{testMode&&<div className="screen-message">test mode · {data.show?.runtime.runKey||'test run'} · результаты не попадут в live</div>}<div className="screen-status">{status}{timer&&<b>{timer}</b>}</div>{!animalDemo&&data.screenMessage&&<div className="screen-message">{data.screenMessage}</div>}<div className="screen-content">{content}</div><div className="screen-footer">{animalDemo?'demo · база не меняется':eventDate(data.event.startsAt)+'. НАСЫПАТЕЛИ В КИНО'}</div></div>}
 
 function TestInviteCard({adminToken}:{adminToken:string}){
-  const [url,setUrl]=useState(''),[error,setError]=useState('')
+  const [url,setUrl]=useState(''),[error,setError]=useState(''),[copied,setCopied]=useState(false)
   useEffect(()=>{let active=true;void callAdminApi<{url:string}>('admin-test-invite',{slug:TEST_EVENT_SLUG},adminToken).then(x=>{if(active)setUrl(x.url)}).catch(e=>{if(active)setError(e.message)});return()=>{active=false}},[adminToken])
   const share=()=>{try{const shareUrl=testShareUrl(url);const app=telegramWebApp();if(app?.openTelegramLink)app.openTelegramLink(shareUrl);else window.open(shareUrl,'_blank','noopener,noreferrer')}catch(e:any){setError(e.message)}}
-  return <Card><div className="section-title">репетиция с друзьями</div><p>каждый входит со своим профилем. тестовые голоса отделены от вечера 17 октября.</p><Button disabled={!url} onClick={share}>пригласить на тестовый вечер</Button>{url&&<p><a href={url} target="_blank" rel="noreferrer">войти участником теста</a></p>}<p><a href={`#/admin/${TEST_EVENT_SLUG}`}>пульт тестового вечера</a></p>{error&&<div className="form-error">{error}</div>}</Card>
+  const copy=async()=>{if(!url)return;try{await navigator.clipboard.writeText(url);setCopied(true);window.setTimeout(()=>setCopied(false),3000)}catch{window.prompt('скопируй приглашение',url)}}
+  return <Card><div className="section-title">репетиция с друзьями</div><p>каждый входит со своим профилем. тестовые голоса отделены от вечера 17 октября.</p><div className="test-invite-actions"><Button disabled={!url} onClick={copy}>{copied?'ссылка скопирована':'скопировать приглашение'}</Button><Button kind="secondary" disabled={!url} onClick={share}>отправить в Telegram</Button></div>{url&&<><p className="muted">друг открывает приглашение в личном чате с ботом, нажимает «старт», затем «попасть на событие». вход со своим Telegram-профилем</p><p><a href={url} target="_blank" rel="noreferrer">проверить приглашение в боте ↗</a></p></>}<p><a href={`#/admin/${TEST_EVENT_SLUG}`}>пульт тестового вечера</a></p>{error&&<div className="form-error">{error}</div>}</Card>
 }
 
 function TelegramStartRouter({children}:{children:ReactNode}){
