@@ -419,6 +419,12 @@ async function maybeAutoOpenRoundPitches(db:any,event:any){
 }
 
 async function maybeAutoAdvanceShow(db:any,event:any){
+  // Never progress a production event before its actual date.
+  // Rehearsals live in a separate test_room event.
+  if(event?.settings?.test_room!==true&&event?.starts_at){
+    const opening=new Date(String(event.starts_at)).getTime()
+    if(Number.isFinite(opening)&&Date.now()<opening-2*60*60*1000)return false
+  }
   try{
     await maybeAutoOpenRoundPitches(db,event)
     const [programR,runtimeR]=await Promise.all([
@@ -3375,6 +3381,10 @@ export async function handleApi(req:Request){
         const now=new Date().toISOString()
 
         if(op==='start'){
+          if(event.settings?.test_room!==true&&event.starts_at){
+            const opening=new Date(String(event.starts_at)).getTime()
+            if(Number.isFinite(opening)&&Date.now()<opening-2*60*60*1000)return err('боевой вечер ещё не наступил. для репетиции используйте вкладку «тест»',409)
+          }
           const screen=await db.from('event_screen_status').select('audio_unlocked,last_seen_at').eq('event_id',event.id).maybeSingle()
           if(screen.error)throw screen.error
           if(event.settings?.test_room!==true&&(!screen.data?.audio_unlocked||Date.now()-new Date(screen.data.last_seen_at||0).getTime()>20000))return err('сначала включите звук на экране ноутбука',409)
