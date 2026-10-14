@@ -63,9 +63,11 @@ try{
     console.log('PASS audio-resource '+filename+' '+response.headers.get('content-type'))
   }
   browser=await chromium.launch({headless:true,args:['--no-sandbox']})
-  await caseRun('projector-arrival','#/screen/test-2026-10-03',{width:1920,height:1080},'.screen-creature-wall')
-  await caseRun('projector-arrival-720p','#/screen/test-2026-10-03',{width:1280,height:720},'.screen-creature-wall')
-  await caseRun('projector-arrival-small','#/screen/test-2026-10-03',{width:1024,height:600},'.screen-creature-wall')
+  // The live test room may currently show a round, not arrival. Verify screen readiness
+  // regardless of its state; arrivals are tested with ?demo=animals below.
+  await caseRun('projector-arrival','#/screen/test-2026-10-03',{width:1920,height:1080},'.screen-page .screen-content')
+  await caseRun('projector-arrival-720p','#/screen/test-2026-10-03',{width:1280,height:720},'.screen-page .screen-content')
+  await caseRun('projector-arrival-small','#/screen/test-2026-10-03',{width:1024,height:600},'.screen-page .screen-content')
   await caseRun('mobile-telegram-entry','',{width:390,height:844},'.telegram-gate, .loading-page, .page')
   await caseRun('compact-mobile-entry','',{width:320,height:640},'.telegram-gate, .loading-page, .page')
   // Exercise the long intro card without changing server/database state.
