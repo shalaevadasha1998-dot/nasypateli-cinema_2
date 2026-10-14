@@ -1359,11 +1359,12 @@ function Admin(){
   }
   const runPreflight=async()=>{const [x]=await Promise.all([run('admin-event-preflight'),probeProjectorArt()]);if(x)setPreflight(x)}
   return <div className="admin-page">
-    <nav className="admin-quick-nav" aria-label="разделы пульта"><button type="button" onClick={()=>document.getElementById('show-control')?.scrollIntoView({behavior:'smooth'})}>эфир</button><button type="button" onClick={()=>document.getElementById('admin-invites')?.scrollIntoView({behavior:'smooth'})}>приглашения</button><button type="button" onClick={()=>document.getElementById('admin-projector')?.scrollIntoView({behavior:'smooth'})}>проектор</button><button type="button" onClick={()=>document.getElementById('admin-preflight')?.scrollIntoView({behavior:'smooth'})}>проверка</button><button type="button" onClick={()=>{const el=document.getElementById('admin-support') as HTMLDetailsElement|null;if(el){el.open=true;el.scrollIntoView({behavior:'smooth'})}}}>настройки</button></nav>
+    <nav className="admin-quick-nav" aria-label="разделы пульта"><button type="button" onClick={()=>document.getElementById('show-control')?.scrollIntoView({behavior:'smooth'})}>эфир</button><button type="button" onClick={()=>document.getElementById('admin-invites')?.scrollIntoView({behavior:'smooth'})}>приглашения</button><button type="button" onClick={()=>document.getElementById('admin-projector')?.scrollIntoView({behavior:'smooth'})}>проектор</button><button type="button" onClick={()=>document.getElementById('admin-preflight')?.scrollIntoView({behavior:'smooth'})}>проверка</button><button type="button" onClick={()=>{const el=document.getElementById('admin-feedback') as HTMLDetailsElement|null;if(el){el.open=true;el.scrollIntoView({behavior:'smooth'})}}}>отзывы</button><button type="button" onClick={()=>{const el=document.getElementById('admin-support') as HTMLDetailsElement|null;if(el){el.open=true;el.scrollIntoView({behavior:'smooth'})}}}>настройки</button></nav>
     <div className="row spread admin-title-row"><div><div className="eyebrow">админка. экран ведущего</div><h2>{data.event.title}</h2></div><Pill>{data.show?showRunStatusLabel(data.show.runtime.runStatus):statusLabel(data.event.status)}</Pill></div>
     {actionError&&<div className="form-error">{actionError}</div>}
     <ShowControl data={data} busy={busy} run={run}/>
     <TestInviteCard adminToken={privileged.token}/>
+    <FeedbackSummaryAdmin busy={busy} run={run}/>
     <Card id="admin-projector" className="projector-access-card"><div className="section-title">общий экран / проектор</div><p className="muted">откройте эту ссылку на ноутбуке, подключённом к проектору, и разверните браузер на весь экран. экран обновляется сам.</p><div className="inline"><Button kind="secondary" disabled={busy} onClick={async()=>{const x:any=await run('admin-screen-link');if(x?.screenUrl)setProjectorLink(String(x.screenUrl))}}>получить ссылку экрана</Button>{projectorLink&&<><Button onClick={()=>window.open(projectorLink,'_blank','noopener,noreferrer')}>открыть экран ↗</Button><Button kind="secondary" onClick={()=>window.open(projectorLink+'&demo=animals','_blank','noopener,noreferrer')}>репетиция животин ↗</Button><Button kind="secondary" onClick={async()=>{try{await navigator.clipboard.writeText(projectorLink)}catch{window.prompt('скопируйте ссылку',projectorLink)}}}>скопировать</Button></>}</div>{projectorLink&&<input className="share-link" readOnly value={projectorLink}/>}</Card>
     <Card id="admin-preflight" className="event-preflight-card">
       <div className="row spread"><div><div className="section-title">проверка перед началом</div><h3>{preflight?preflight.ready?'технически готово':'есть блокеры':'проверка одним нажатием'}</h3></div>{preflight&&<Pill>{preflight.summary?.failed?preflight.summary.failed+' блокер(а)':'готово'}</Pill>}</div>
@@ -1830,6 +1831,22 @@ function Screen(){
     <div className="screen-footer">{animalDemo?'демо · база не меняется':eventDate(data.event.startsAt)+' · насыпатели в кино'}</div>
   </div>
 }
+function FeedbackSummaryAdmin({busy,run}:{busy:boolean;run:(action:string,payload?:Record<string,unknown>)=>Promise<any>}){
+  const [summary,setSummary]=useState<{total:number;byIntent:Record<string,number>;comments:{good:string;improve:string}[]}|null>(null)
+  const load=async()=>{const result=await run('admin-feedback-summary');if(result?.ok)setSummary(result)}
+  return <details id="admin-feedback" className="admin-feedback">
+    <summary>обратная связь · отзывы гостей</summary>
+    <div className="admin-feedback-inner"><p className="muted">животина сохраняет ответы отдельно для каждого события. доступ к результатам только в пульте ведущего</p>
+    <Button kind="secondary" disabled={busy} onClick={()=>void load()}>{summary?'обновить отзывы':'посмотреть отзывы'}</Button>
+    {summary&&<><h3>{summary.total} ответов</h3>
+      <div className="admin-feedback-counts">{Object.entries(summary.byIntent).map(([key,count])=><span key={key}><b>{count}</b> {key}</span>)}</div>
+      {summary.comments.map((item,index)=><div className="admin-feedback-comment" key={index}>{item.good&&<p><b>понравилось:</b> {item.good}</p>}{item.improve&&<p><b>улучшить:</b> {item.improve}</p>}</div>)}
+      {!summary.comments.length&&<p className="muted">развёрнутых комментариев пока нет</p>}
+    </>}
+    </div>
+  </details>
+}
+
 function TestInviteCard({adminToken}:{adminToken:string}){
   const [url,setUrl]=useState(''),[error,setError]=useState(''),[copied,setCopied]=useState(false)
   useEffect(()=>{let active=true;void callAdminApi<{url:string}>('admin-test-invite',{slug:TEST_EVENT_SLUG},adminToken).then(x=>{if(active)setUrl(x.url)}).catch(e=>{if(active)setError(e.message)});return()=>{active=false}},[adminToken])
