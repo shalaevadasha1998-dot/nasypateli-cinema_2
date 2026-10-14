@@ -44,7 +44,7 @@ async function director(viewport,label,status='idle',test=true){
   const page=await newPage({viewport})
   const errors=[]
   page.on('pageerror',e=>errors.push(e.message))
-  await page.addInitScript(value=>{localStorage.setItem('nasypateli-cinema-demo-v3',JSON.stringify(value))},fakeShow(status,test))
+  await page.addInitScript(value=>{if(!localStorage.getItem('nasypateli-cinema-demo-v3'))localStorage.setItem('nasypateli-cinema-demo-v3',JSON.stringify(value))},fakeShow(status,test))
   try{
     await page.goto(origin+'#/admin/'+(test?'test-2026-10-03':'2026-10-17'),{waitUntil:'domcontentloaded'})
     await page.locator('#show-control').waitFor({state:'visible',timeout:17000})
