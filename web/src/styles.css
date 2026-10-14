@@ -3689,3 +3689,19 @@ html.chat-keyboard-open .chat-compose-inline{
 .round-film-navigation{display:flex;gap:10px;flex-wrap:wrap;align-items:stretch}
 .round-film-navigation .btn{flex:1 1 170px;min-height:48px;white-space:normal}
 @media(max-width:760px){.round-film-navigation .btn{flex:1 1 135px;font-size:13px;padding:10px}}
+
+/* Ensure audio activation and creature arrival never obscure mobile content. */
+.screen-page .screen-creature-arrival-callout{
+  position:sticky;top:0;right:auto;
+  margin:0 0 10px auto;min-width:0;max-width:min(100%,460px);
+}
+@media(max-width:760px){
+  .screen-audio-unlock{
+    left:12px;right:12px;bottom:calc(8px + env(safe-area-inset-bottom));
+    transform:none;padding:9px 12px;border-radius:14px;
+    font-size:13px;box-shadow:0 6px 18px rgba(0,0,0,.5);
+  }
+  .screen-audio-unlock button{font-size:13px;min-height:32px}
+  .screen-audio-unlock p{font-size:11px;margin:4px 0 0}
+  .screen-page > .screen-content{padding-bottom:74px}
+}
