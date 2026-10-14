@@ -692,7 +692,7 @@ function ShowControl({data,busy,run}:{data:DemoState;busy:boolean;run:(action:st
       <Button kind="secondary" disabled={busy} onClick={()=>command('pause')}>Ⅱ пауза</Button>
     </div>}
 
-    {runtime.runStatus!=='idle'&&<div className="show-timeline" aria-label="быстрый переход по программе">{show.program.blocks.map(b=>{const slot=exactSlots.get(b.id);return <button type="button" disabled={busy} onClick={()=>jumpToBlock(b.id,b.title)} aria-current={b.id===runtime.currentBlockId?'step':undefined} className={b.id===runtime.currentBlockId?'current':''} key={b.id}><span>{b.index+1}</span><b>{b.title}</b><small>{b.durationMin&&slot?`${minuteMark(slot.start)}–${minuteMark(slot.end)}`:'после эфира'}</small></button>})}</div>}
+    {runtime.runStatus!=='idle'&&<div className="show-timeline-shell"><div className="show-timeline-guide"><b>этапы вечера · можно листать</b><div><button type="button" title="листать этапы влево" onClick={()=>document.querySelector('.show-timeline')?.scrollBy({left:-450,behavior:'smooth'})}>←</button><button type="button" title="листать этапы вправо" onClick={()=>document.querySelector('.show-timeline')?.scrollBy({left:450,behavior:'smooth'})}>→</button></div></div><div className="show-timeline" aria-label="быстрый переход по программе">{show.program.blocks.map(b=>{const slot=exactSlots.get(b.id);return <button type="button" disabled={busy} onClick={()=>jumpToBlock(b.id,b.title)} aria-current={b.id===runtime.currentBlockId?'step':undefined} className={b.id===runtime.currentBlockId?'current':''} key={b.id}><span>{b.index+1}</span><b>{b.title}</b><small>{b.durationMin&&slot?`${minuteMark(slot.start)}–${minuteMark(slot.end)}`:'после эфира'}</small></button>})}</div></div>}
 
     {block?.type==='cinema_rounds'&&<div className="show-live-workspace">
       <ShowRoundControl data={data} busy={busy} run={run}/>
@@ -1698,8 +1698,34 @@ function ProjectorAudio({data,screenToken}:{data:DemoState;screenToken:string}){
   </>
 }
 
-function Screen(){const {slug}=useParams();const [search]=useSearchParams();const privileged=usePrivilegedState('screen',slug);const {data,error}=privileged;const [now,setNow]=useState(()=>Date.now());useEffect(()=>{const t=window.setInterval(()=>setNow(Date.now()),1000);return()=>window.clearInterval(t)},[]);if(!data)return <Loading error={error}/>;const animalDemo=search.get('demo')==='animals';const projectedFlow=!!data.projector&&!['idle','arrival'].includes(data.projector.state);const content=animalDemo?<ScreenCreatureDemo data={data}/>:screenContent(data);const timer=animalDemo||projectedFlow?'':showTimerText(data,now);const status=animalDemo?'репетиция животин':projectedFlow?projectorStateLabel(data.projector!.state):data.show?.runtime.currentBlock?.type==='arrival'?'сбор гостей':data.show?.runtime.runStatus!=='idle'?data.show?.runtime.currentBlock?.title:statusLabel(data.event.status);const testMode=data.show?.runtime.isTest===true;return <div className="screen-page">{!animalDemo&&<ProjectorAudio data={data} screenToken={privileged.token}/>}<div className="screen-brand">НАСЫПАТЕЛИ В КИНО</div>{testMode&&<div className="screen-message">test mode · {data.show?.runtime.runKey||'test run'} · результаты не попадут в live</div>}<div className="screen-status">{status}{timer&&<b>{timer}</b>}</div>{!animalDemo&&data.screenMessage&&<div className="screen-message">{data.screenMessage}</div>}<div className="screen-content">{content}</div><div className="screen-footer">{animalDemo?'demo · база не меняется':eventDate(data.event.startsAt)+'. НАСЫПАТЕЛИ В КИНО'}</div></div>}
-
+function Screen(){
+  const {slug}=useParams()
+  const [search]=useSearchParams()
+  const privileged=usePrivilegedState('screen',slug)
+  const {data,error}=privileged
+  const [now,setNow]=useState(()=>Date.now())
+  useEffect(()=>{const t=window.setInterval(()=>setNow(Date.now()),1000);return()=>window.clearInterval(t)},[])
+  if(!data)return <Loading error={error}/>
+  const animalDemo=search.get('demo')==='animals'
+  const projectedFlow=!!data.projector&&!['idle','arrival'].includes(data.projector.state)
+  const content=animalDemo?<ScreenCreatureDemo data={data}/>:screenContent(data)
+  const timer=animalDemo||projectedFlow?'':showTimerText(data,now)
+  const status=animalDemo?'репетиция животин':projectedFlow?projectorStateLabel(data.projector!.state):data.show?.runtime.currentBlock?.type==='arrival'?'сбор гостей':data.show?.runtime.runStatus!=='idle'?data.show?.runtime.currentBlock?.title:statusLabel(data.event.status)
+  const testMode=data.show?.runtime.isTest===true
+  return <div className="screen-page">
+    {!animalDemo&&<ProjectorAudio data={data} screenToken={privileged.token}/>}
+    <header className="screen-header">
+      <div className="screen-brand">насыпатели в кино</div>
+      <div className="screen-status"><span>{status}</span>{timer&&<b>{timer}</b>}</div>
+    </header>
+    {(testMode||(!animalDemo&&!!data.screenMessage))?<div className="screen-notices">
+      {testMode&&<div className="screen-message">тест · {data.show?.runtime.runKey||'репетиция'} · не влияет на вечер 17 октября</div>}
+      {!animalDemo&&data.screenMessage&&<div className="screen-message">{data.screenMessage}</div>}
+    </div>:<div className="screen-notices" aria-hidden/>}
+    <main className="screen-content">{content}</main>
+    <div className="screen-footer">{animalDemo?'демо · база не меняется':eventDate(data.event.startsAt)+' · насыпатели в кино'}</div>
+  </div>
+}
 function TestInviteCard({adminToken}:{adminToken:string}){
   const [url,setUrl]=useState(''),[error,setError]=useState(''),[copied,setCopied]=useState(false)
   useEffect(()=>{let active=true;void callAdminApi<{url:string}>('admin-test-invite',{slug:TEST_EVENT_SLUG},adminToken).then(x=>{if(active)setUrl(x.url)}).catch(e=>{if(active)setError(e.message)});return()=>{active=false}},[adminToken])
