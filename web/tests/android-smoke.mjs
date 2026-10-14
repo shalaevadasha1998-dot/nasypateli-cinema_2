@@ -79,6 +79,16 @@ async function check(config,stage){
       await page.locator('.feedback-show [role="status"]').waitFor({state:'visible',timeout:15000})
       if(!sentFeedback)throw Error('Feedback submit did not reach API')
     }
+    const typography=await page.evaluate(async()=>{
+      await document.fonts.ready
+      const loaded=await document.fonts.load('400 16px "IBM Plex Mono"','Широкий экран')
+      const canvas=document.createElement('canvas').getContext('2d')
+      canvas.font='400 16px "IBM Plex Mono"'
+      return {loaded:loaded.length>0,family:getComputedStyle(document.body).fontFamily,
+        narrow:canvas.measureText('iiii').width,wide:canvas.measureText('ШШШШ').width}
+    })
+    if(!typography.loaded||!typography.family.includes('IBM Plex Mono')||Math.abs(typography.narrow-typography.wide)>.1)
+      throw Error('Cyrillic cinematic font did not load: '+JSON.stringify(typography))
     const dimensions=await page.evaluate(()=>({scroll:document.documentElement.scrollWidth,viewport:innerWidth,
       screenScroll:document.body.scrollWidth,touch:'ontouchstart' in window,ua:navigator.userAgent}))
     if(dimensions.scroll>dimensions.viewport+5)throw Error('horizontal overflow: '+JSON.stringify(dimensions))

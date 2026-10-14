@@ -16,6 +16,7 @@ import { emptyProfile, stages } from './demo'
 import type { AdminParticipant, CinemaProfile, DemoState, EventStatus, JipitinaMessage, PostFilmReaction, ScreenCreature, TasteVector } from './types'
 import './styles.css'
 import './product-polish.css'
+import './cinema-type.css'
 
 function downloadText(name:string,text:string,type:string){const blob=new Blob([text],{type});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();window.setTimeout(()=>URL.revokeObjectURL(url),0)}
 function csvCell(value:unknown){const raw=Array.isArray(value)?value.join(' | '):value==null?'':typeof value==='object'?JSON.stringify(value):String(value);return `"${raw.replaceAll('\"','\"\"')}"`}

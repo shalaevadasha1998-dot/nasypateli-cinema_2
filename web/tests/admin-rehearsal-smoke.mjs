@@ -79,6 +79,6 @@ try{
     if(checkins!==2)throw Error('Check-in requests '+checkins)
     await admin.page.screenshot({path:'test-artifacts/admin-ticket-scanner-360.png',fullPage:true})
     console.log('PASS admin 3 roles, gallery ticket QR, one arrival and repeated scan')
-  }finally{await admin.context.close()}
+  }catch(error){console.error(await admin.page.locator('body').innerText());await admin.page.screenshot({path:'test-artifacts/admin-scanner-failure.png',fullPage:true});throw error}finally{await admin.context.close()}
 }catch(e){console.error('ADMIN REHEARSAL SMOKE FAIL',e);process.exitCode=1}
 finally{if(browser)await browser.close();server.kill('SIGTERM')}

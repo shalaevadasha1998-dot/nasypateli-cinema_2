@@ -24,6 +24,7 @@ async function check(viewport,label){
   try{
     await page.goto(origin+'#/onboarding',{waitUntil:'domcontentloaded'})
     await page.locator('.onboarding-page').waitFor({timeout:15000})
+    await page.evaluate(()=>document.fonts.ready)
     const width=await page.evaluate(()=>({scroll:document.documentElement.scrollWidth,viewport:innerWidth}))
     if(width.scroll>width.viewport+5)throw Error('Onboarding width overflow: '+JSON.stringify(width))
     await page.screenshot({path:'test-artifacts/'+label+'-welcome.png',fullPage:true})

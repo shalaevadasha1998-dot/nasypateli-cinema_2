@@ -1,7 +1,9 @@
 name: Production Health
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Deploy Mini App"]
+    types: [completed]
     branches: [main]
   schedule:
     - cron: "17 * * * *"
@@ -16,8 +18,11 @@ concurrency:
 
 jobs:
   health:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    env:
+      EXPECTED_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
 
     steps:
       - name: Check live runtime
@@ -38,10 +43,10 @@ jobs:
           let health={}
           for(let i=0;i<30;i++){
             health=await post({action:'health'})
-            if(health.status===200&&health.data?.ok===true&&health.data?.version==='0.9.0'&&health.data?.release===process.env.GITHUB_SHA)break
+            if(health.status===200&&health.data?.ok===true&&health.data?.version==='0.9.0'&&health.data?.release===process.env.EXPECTED_SHA)break
             await new Promise(resolve=>setTimeout(resolve,5000))
           }
-          if(health.status!==200||health.data?.ok!==true||health.data?.version!=='0.9.0'||health.data?.release!==process.env.GITHUB_SHA){
+          if(health.status!==200||health.data?.ok!==true||health.data?.version!=='0.9.0'||health.data?.release!==process.env.EXPECTED_SHA){
             throw new Error('Production API does not match main: '+JSON.stringify(health))
           }
 
@@ -54,12 +59,12 @@ jobs:
               const refs=[...html.matchAll(/src="([^"]+\.js)"/g)].map(x=>new URL(x[1],pageUrl).href)
               for(const asset of refs){
                 const r=await fetch(asset,{cache:'no-store'})
-                if(r.ok&&(await r.text()).includes(process.env.GITHUB_SHA)){frontendMatches=true;break}
+                if(r.ok&&(await r.text()).includes(process.env.EXPECTED_SHA)){frontendMatches=true;break}
               }
             }
             if(!frontendMatches)await new Promise(resolve=>setTimeout(resolve,5000))
           }
-          if(!frontendMatches)throw new Error('Production frontend does not match main '+process.env.GITHUB_SHA)
+          if(!frontendMatches)throw new Error('Production frontend does not match main '+process.env.EXPECTED_SHA)
 
           const blockers=Object.entries(health.data?.checks||{})
             .filter(([,ok])=>ok!==true)
@@ -81,5 +86,5 @@ jobs:
           if(screen.status!==401)throw new Error('Screen endpoint is not protected')
           if(cron.status!==401)throw new Error('Cron endpoint is not protected')
 
-          console.log('Production frontend, backend, health and auth gates match '+process.env.GITHUB_SHA)
+          console.log('Production frontend, backend, health and auth gates match '+process.env.EXPECTED_SHA)
           NODE
