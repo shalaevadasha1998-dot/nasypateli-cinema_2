@@ -1312,10 +1312,12 @@ function AdminCheckinScanner(){
   const privileged=usePrivilegedState('admin',slug)
   const data=privileged.data,error=privileged.error,reload=privileged.reload
   const videoRef=useRef<HTMLVideoElement>(null)
+  const fileRef=useRef<HTMLInputElement>(null)
   const scannerRef=useRef<QrScanner|null>(null)
   const processing=useRef(false)
   const lastScan=useRef({value:'',at:0})
   const [cameraOn,setCameraOn]=useState(false)
+  const [photoBusy,setPhotoBusy]=useState(false)
   const [busy,setBusy]=useState(false)
   const [message,setMessage]=useState('')
   const [manual,setManual]=useState('')
@@ -1353,6 +1355,20 @@ function AdminCheckinScanner(){
     }
   }
 
+  const scanPhoto=async(image:File|undefined)=>{
+    if(!image)return
+    setPhotoBusy(true);setMessage('')
+    try{
+      if(!image.type.startsWith('image/'))throw new Error('выбери фотографию или скриншот qr')
+      if(image.size>15*1024*1024)throw new Error('размер файла должен быть меньше 15 мб')
+      const result=await QrScanner.scanImage(image,{returnDetailedScanResult:true})
+      await checkin(result.data)
+    }catch(e:any){
+      setLastResult(null)
+      setMessage('qr на изображении не распознан: '+String(e.message||'попробуй другое фото'))
+    }finally{setPhotoBusy(false);if(fileRef.current)fileRef.current.value=''}
+  }
+
   const startCamera=async()=>{
     if(!data||!videoRef.current||scannerRef.current)return
     setMessage('')
@@ -1378,21 +1394,22 @@ function AdminCheckinScanner(){
   return <div className="admin-checkin-page">
     <div className="admin-checkin-head">
       <Button kind="secondary" onClick={()=>nav(`/admin/event/${data.event.slug}`)}>← в админку</Button>
-      <div><div className="eyebrow">координатор · чек-ин</div><h1>сканер билетов</h1><p>{checked} животин уже в зале</p></div>
+      <div><div className="eyebrow">вход · билетный qr</div><h1>впускаем<br/>животин</h1><p>отсканируй билет гостя — его животина появится на проекторе</p><div className="checkin-live-count"><b>{checked}</b><span>уже в зале</span></div></div>
     </div>
     <Card className="admin-checkin-scanner">
-      <div className="admin-checkin-camera"><video ref={videoRef} muted playsInline/></div>
+      <div className={'admin-checkin-camera'+(cameraOn?' camera-active':'')}><video ref={videoRef} muted playsInline/>{!cameraOn&&<div className="admin-scanner-placeholder" aria-hidden="true"><span>⌗</span><b>наведи камеру на билет</b><small>камера выключена</small></div>}</div>
       <div className="admin-checkin-actions">
         {!cameraOn?<Button disabled={busy} onClick={()=>void startCamera()}>включить камеру</Button>:<Button kind="secondary" disabled={busy} onClick={stopCamera}>выключить камеру</Button>}
+        <label className="admin-checkin-upload"><input ref={fileRef} type="file" accept="image/*" aria-label="загрузить qr билета из галереи" disabled={busy||photoBusy} onChange={e=>void scanPhoto(e.target.files?.[0])}/><span>{photoBusy?'читаем qr…':'загрузить qr из галереи'}</span></label>
       </div>
-      <p className="muted">наведи камеру на qr внутри билета. повторный скан безопасен и второй раз человека не добавит.</p>
+      <p className="muted">используй qr из билета участника. сканер работает только у администратора и не создаёт повторный вход</p>
       {message&&<div className={lastResult?'success':'form-error'}>{message}</div>}
       {lastResult&&<div className="admin-checkin-result"><div className="admin-checkin-result-creature"><ProjectorCreatureImage stage={String(lastResult.creatureStage||'stage_0')} visualVariant={Number(lastResult.visualVariant||1)}/></div><div><small>{lastResult.alreadyAttended?'уже в зале':'в зал заходит'}</small><b>{lastResult.creatureName||'животина'}</b><span>№ {Number(lastResult.attendeeCount||0)} · {lastResult.displayName||'гость'}</span></div></div>}
     </Card>
     <Card>
       <div className="section-title">если камера не читает</div>
-      <p className="muted">вставь ticket id из билета или весь текст qr.</p>
-      <div className="admin-checkin-manual"><input value={manual} onChange={e=>setManual(e.target.value)} placeholder="ticket id"/><Button disabled={busy||!manual.trim()} onClick={()=>void checkin(manual)}>отметить вход</Button></div>
+      <p className="muted">можно вставить полный текст билетного qr. код знакомства животин сюда не подходит</p>
+      <div className="admin-checkin-manual"><input value={manual} onChange={e=>setManual(e.target.value)} placeholder="текст билетного qr или id билета" aria-label="код билета вручную"/><Button disabled={busy||!manual.trim()} onClick={()=>void checkin(manual)}>отметить вход</Button></div>
     </Card>
   </div>
 }
