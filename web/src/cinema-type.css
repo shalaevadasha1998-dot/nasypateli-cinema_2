@@ -93,3 +93,31 @@ h1,h2,h3,h4{font-weight:600;line-height:1.08;letter-spacing:-.045em;overflow-wra
 /* Outside Telegram there is no guest session yet; keep the handoff unobstructed. */
 .app-shell:has(.telegram-gate) .bottom-nav{display:none!important}
 .telegram-gate h1{font-size:clamp(36px,9.8vw,72px);line-height:1.06;letter-spacing:-.045em}
+/* Projector typography is sized to its own column, including Cyrillic monospace. */
+.screen-page .cinematic-round-title{container-type:inline-size}
+.screen-page .cinematic-round-title h1{font-size:clamp(40px,15cqw,116px)!important;line-height:1.03!important;letter-spacing:-.065em!important;font-weight:600;margin:24px 0!important}
+.screen-page .cinematic-round-body{grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:clamp(24px,3vw,56px)}
+.screen-page .cinematic-step-label{line-height:1.35;letter-spacing:-.025em;overflow-wrap:normal}
+.screen-page .cinematic-round-glyph{display:none}
+.screen-page .cinematic-round-foot{letter-spacing:.04em;text-transform:none}
+.screen-page .screen-content>h1,.screen-page .screen-content>h2,.screen-page .screen-content>p,.screen-page .screen-content>.eyebrow{animation:projectorTextEnter .65s cubic-bezier(.2,.7,.2,1) both}
+.screen-page .screen-content>p{animation-delay:.15s}
+.projector-image-ready{animation:projectorTextEnter .45s ease-out both}
+.projector-image-loading{display:block;width:74px;height:78px;min-height:0;background:radial-gradient(ellipse,rgba(130,150,106,.12),transparent 65%)}
+@keyframes projectorTextEnter{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
+.youtube-host{position:absolute;inset:0;width:100%;height:100%}
+.projector-media-error{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px;text-align:center;background:#080807}
+.projector-media-error h2{font-size:clamp(24px,4vw,58px);margin:0}
+.projector-media-error p{font-size:clamp(14px,1.7vw,24px)!important;margin:0;max-width:700px}
+.projector-media-error button,.projector-media-backup{font:inherit;border:1px solid #82966a;background:#141810;color:#eae5dc;border-radius:8px;padding:12px 20px;cursor:pointer}
+.projector-media-backup{position:absolute;right:16px;top:16px;z-index:2;font-size:12px;opacity:0;transition:opacity .2s}
+.projector-media:hover .projector-media-backup,.projector-media:focus-within .projector-media-backup{opacity:1}
+@media(hover:none){.projector-media-backup{opacity:1}}
+@media(max-width:840px){.screen-page .cinematic-round-body{grid-template-columns:1fr}.screen-page .cinematic-round-title h1{font-size:clamp(38px,10cqw,72px)!important}.screen-page .cinematic-round-title h1>span{display:block}}
+@media(max-height:700px) and (min-width:841px){.screen-page .screen-content>.cinematic-round{padding:18px 24px;gap:12px;min-height:0}.screen-page .screen-round-steps.cinematic-round-steps li{min-height:88px;padding:12px}.screen-page .cinematic-step-label{font-size:15px;margin-top:8px}.screen-page .cinematic-round-title p{font-size:17px!important}}
+@media(prefers-reduced-motion:reduce){.screen-page .screen-content>*,.projector-image-ready{animation:none!important}}
+/* Remove the dotted print overlay from all screens. */
+body:before,.telegram-gate-noise{display:none!important}
+.screen-audio-unlock button{font:inherit;color:inherit;background:transparent;border:0;border-radius:inherit;padding:0;cursor:pointer}
+.screen-audio-unlock button:disabled{opacity:.55;cursor:wait}
+.screen-audio-unlock p{font-size:13px;line-height:1.4;max-width:480px}

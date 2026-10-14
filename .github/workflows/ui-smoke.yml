@@ -42,6 +42,9 @@ jobs:
       - name: Full guest journey and failure recovery
         working-directory: web
         run: node --experimental-strip-types tests/guest-journey.mjs
+      - name: Verify projector recovery and live guest transition
+        working-directory: web
+        run: node --experimental-strip-types tests/projector-recovery.mjs
       - name: Build isolated demo UI
         working-directory: web
         env:
