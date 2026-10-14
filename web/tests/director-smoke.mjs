@@ -68,13 +68,13 @@ async function director(viewport,label,status='idle',test=true){
       if(after<=before)throw Error('Timeline next button did not scroll')
     }
     if(status==='paused'){
-      const switcher=page.getByRole('button',{name:'перейти на ручное управление'})
+      const switcher=page.getByRole('button',{name:'переключаю сама'})
       await switcher.click()
-      await page.getByRole('button',{name:'вернуть автоматическое переключение'}).waitFor({state:'visible',timeout:10000})
-      const stored=await page.evaluate(()=>localStorage.getItem('nasypateli-director-mode:test-2026-10-03'))
-      if(stored!=='manual')throw Error('Manual director mode was not persisted for the test room')
-      if(await page.evaluate(()=>localStorage.getItem('nasypateli-director-mode:2026-10-17')))throw Error('Test director mode leaked to the live event')
-      console.log('PASS director manual mode isolated by event')
+      await page.waitForFunction(()=>JSON.parse(localStorage.getItem('nasypateli-cinema-demo-v3')||'{}')?.show?.runtime?.roundControlMode==='manual',{timeout:10000})
+      if(await switcher.getAttribute('aria-pressed')!=='true')throw Error('Manual director button was not selected')
+      await page.reload({waitUntil:'domcontentloaded'})
+      await page.getByRole('button',{name:'переключаю сама',pressed:true}).waitFor({state:'visible',timeout:10000})
+      console.log('PASS director manual mode persists across reloads')
     }
     if(errors.length)throw Error('JavaScript errors '+errors.join('; '))
     await page.screenshot({path:'test-artifacts/'+label+'.png',fullPage:true})
