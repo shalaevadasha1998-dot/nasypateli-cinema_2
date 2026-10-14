@@ -42,6 +42,16 @@ try{
   await caseRun('projector-arrival','#/screen/test-2026-10-03',{width:1920,height:1080},'.screen-creature-wall')
   await caseRun('mobile-telegram-entry','',{width:390,height:844},'.telegram-gate, .loading-page, .page')
   await caseRun('compact-mobile-entry','',{width:320,height:640},'.telegram-gate, .loading-page, .page')
+  // Animate arrivals in an isolated preview. It does not mutate live check-ins.
+  const animalsPage=await browser.newPage({viewport:{width:1920,height:1080}})
+  try{
+    await animalsPage.goto(base+'#/screen/test-2026-10-03?demo=animals',{waitUntil:'domcontentloaded'})
+    await animalsPage.waitForFunction(()=>document.querySelectorAll('.screen-creature-card').length===12,null,{timeout:25000})
+    const animals=await animalsPage.locator('.screen-creature-card').count()
+    if(animals!==12)throw Error('Creature preview failed to render all arrivals')
+    await animalsPage.screenshot({path:'test-artifacts/projector-creature-arrivals.png',fullPage:true})
+    console.log('PASS creature-arrivals '+animals+' animated animals')
+  }finally{await animalsPage.close()}
   // Verify Telegram's compact deep link stays inside the isolated test route.
   const invitePage=await browser.newPage({viewport:{width:390,height:844}})
   try{
