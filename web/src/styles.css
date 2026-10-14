@@ -3705,3 +3705,52 @@ html.chat-keyboard-open .chat-compose-inline{
   .screen-audio-unlock p{font-size:11px;margin:4px 0 0}
   .screen-page > .screen-content{padding-bottom:74px}
 }
+
+/* A separate rehearsal destination, reachable even before a test session starts. */
+.bottom-nav{grid-template-columns:repeat(6,minmax(0,1fr))}
+.bottom-nav a{min-width:0;overflow:hidden;white-space:nowrap}
+.home-test-shortcut{
+  display:flex;align-items:center;justify-content:space-between;
+  gap:clamp(12px,3vw,26px);min-width:0;
+  margin:0 0 20px;padding:clamp(16px,3vw,24px);
+  border:1px solid rgba(169,194,142,.42);
+  border-radius:22px;
+  background:linear-gradient(117deg,#1b2118,#10130f 70%);
+  box-shadow:0 12px 38px rgba(0,0,0,.18);
+}
+.home-test-shortcut > div{min-width:0}
+.home-test-shortcut h2{font-size:clamp(25px,5.4vw,40px);line-height:1;letter-spacing:-.05em;margin:7px 0}
+.home-test-shortcut p{font-size:13px;line-height:1.45;color:#c9d0c2;margin:0;max-width:460px}
+.home-test-shortcut .btn{flex:0 1 215px;min-height:52px;white-space:normal}
+.test-room-hub{width:100%;min-height:70dvh}
+.test-room-heading{margin:10px 0 24px}
+.test-room-heading h1{font-size:clamp(52px,13vw,112px);letter-spacing:-.07em;line-height:.86;margin:12px 0 20px;overflow-wrap:anywhere}
+.test-room-heading p{max-width:580px;font-size:clamp(16px,2.5vw,21px);color:#c6c9c1;line-height:1.45}
+.test-room-primary{display:grid;gap:13px;grid-template-columns:minmax(0,1fr)}
+.test-room-step{min-width:0;padding:23px;border:1px solid #373d32;border-radius:20px;background:rgba(17,21,15,.84)}
+.test-room-step:first-child{border-color:#a0b590;background:linear-gradient(145deg,rgba(58,80,51,.3),rgba(18,22,16,.93))}
+.test-room-step>span{color:#a5b995;font-size:12px;letter-spacing:.08em}
+.test-room-step h2{margin:10px 0 8px;font-size:clamp(24px,5.8vw,36px);line-height:1.03;letter-spacing:-.04em;overflow-wrap:anywhere}
+.test-room-step p{font-size:14px;line-height:1.45;color:#b7bcb2;max-width:520px}
+.test-room-step .btn{min-height:50px;margin-top:9px;white-space:normal;width:100%}
+.test-room-access{margin:18px 0}
+.test-room-access .btn{display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
+.test-room-foot{border-top:1px solid #343a30;padding:19px 0 32px;margin-top:22px}
+.test-room-foot p{font-size:13px;color:#babfb3}
+.test-room-foot .btn{margin-top:10px}
+.rehearsal-page{padding-top:18px;min-width:0}
+.rehearsal-page>.card{margin-bottom:14px}
+.rehearsal-page .participant-show{min-width:0}
+.rehearsal-back{margin-top:20px}
+.feedback-show .card{border:none;background:none;padding:12px 0}
+.feedback-show select,.feedback-show input,.feedback-show textarea{max-width:100%;min-width:0}
+@media(max-width:760px){
+  .bottom-nav{padding-inline:3px;grid-template-columns:repeat(6,minmax(0,1fr))}
+  .bottom-nav a{font-size:clamp(8px,2.15vw,10px)}
+  .bottom-nav .nav-icon-wrap{width:24px;height:24px}
+  .home-test-shortcut{align-items:stretch;flex-direction:column;padding:17px;border-radius:17px}
+  .home-test-shortcut .btn{flex:0 0 auto;width:100%;min-height:49px}
+  .test-room-step{padding:18px}
+  .test-room-heading{margin-top:4px}
+  .test-room-heading h1{font-size:clamp(49px,12vw,76px)}
+}
