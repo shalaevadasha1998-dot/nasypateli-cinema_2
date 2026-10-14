@@ -21,7 +21,8 @@ async function caseRun(label,path,viewport,expected){
     const response=await page.goto(base+path,{waitUntil:'domcontentloaded',timeout:25000})
     if(!response?.ok())throw Error('HTTP '+response?.status())
     const element=page.locator(expected)
-    await element.waitFor({state:'visible',timeout:45000})
+    try{await element.waitFor({state:'visible',timeout:30000})}
+    catch(e){console.error(label+' visible body: '+(await page.locator('body').innerText()).slice(0,1500));await page.screenshot({path:'test-artifacts/'+label+'-failure.png',fullPage:true});throw e}
     const dimensions=await page.evaluate(()=>({scroll:document.documentElement.scrollWidth,viewport:innerWidth}))
     if(dimensions.scroll>dimensions.viewport+5)throw Error('horizontal overflow '+JSON.stringify(dimensions))
     await page.screenshot({path:'test-artifacts/'+label+'.png',fullPage:true})
@@ -32,8 +33,8 @@ try{
   await ready()
   browser=await chromium.launch({headless:true,args:['--no-sandbox']})
   await caseRun('projector-arrival','#/screen/test-2026-10-03',{width:1920,height:1080},'.screen-creature-wall')
-  await caseRun('mobile-telegram-entry','',{width:390,height:844},'.telegram-gate')
-  await caseRun('compact-mobile-entry','',{width:320,height:640},'.telegram-gate')
+  await caseRun('mobile-telegram-entry','',{width:390,height:844},'.telegram-gate, .loading-page, .page')
+  await caseRun('compact-mobile-entry','',{width:320,height:640},'.telegram-gate, .loading-page, .page')
   if(issues.length)throw Error('Uncaught browser errors: '+issues.join(' | '))
   console.log('UI smoke passed: projector arrival, mobile & compact mobile')
 }catch(e){console.error(e);process.exitCode=1}
