@@ -42,6 +42,13 @@ try{
   await caseRun('projector-arrival','#/screen/test-2026-10-03',{width:1920,height:1080},'.screen-creature-wall')
   await caseRun('mobile-telegram-entry','',{width:390,height:844},'.telegram-gate, .loading-page, .page')
   await caseRun('compact-mobile-entry','',{width:320,height:640},'.telegram-gate, .loading-page, .page')
+  // Verify Telegram's compact deep link stays inside the isolated test route.
+  const invitePage=await browser.newPage({viewport:{width:390,height:844}})
+  try{
+    await invitePage.goto(base+'?test_invite=t_'+ '0'.repeat(32),{waitUntil:'domcontentloaded'})
+    await invitePage.waitForFunction(()=>location.hash.startsWith('#/rehearsal/test-2026-10-03?room='),{timeout:15000})
+    console.log('PASS test-invite-route: deep link stayed in the test room')
+  }finally{await invitePage.close()}
   if(issues.length)throw Error('Uncaught browser errors: '+issues.join(' | '))
   console.log('UI smoke passed: projector arrival, mobile & compact mobile')
 }catch(e){console.error(e);process.exitCode=1}
