@@ -1015,6 +1015,11 @@ function RoundFilmFlowAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(ac
       await run('admin-film-assign',{filmPackageId:pack.id,roundId:round.id})
     }finally{setStepping(false)}
   }
+  const previous=async()=>{
+    if(blocked)return
+    if(flow==='films_locked'&&previewIndex>0){await run('admin-round-pitch-preview',{index:previewIndex-1})}
+    else if(flow==='playing_clip'&&pack){await project('film_intro')}
+  }
   const next=async()=>{
     if(blocked)return
     if(flow==='round_intro')return
@@ -1061,7 +1066,7 @@ function RoundFilmFlowAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(ac
   return <Card className="round-film-flow-admin">
     <div className="row spread"><div><div className="section-title">раунд {round.roundNo} · {mode==='review'?'одно слово':'открытые вопросы'}</div><h2>{title}</h2></div><Pill>{round.pitchCount||0} идей</Pill></div>
     {detail&&<p className="muted">{detail}</p>}
-    <Button disabled={blocked||!canNext} onClick={()=>void next()}>{blocked?'выполняем…':nextLabel}</Button>
+    <div className="round-film-navigation"><Button kind="secondary" disabled={blocked||!(flow==='films_locked'&&previewIndex>0||flow==='playing_clip'&&!!pack)} onClick={()=>void previous()}>← повторить / назад</Button><Button disabled={blocked||!canNext} onClick={()=>void next()}>{blocked?'выполняем…':nextLabel}</Button></div>
   </Card>
 }
 function FilmMechanicAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(action:string,payload?:Record<string,unknown>)=>Promise<any>}){
@@ -1256,11 +1261,11 @@ function Admin(){
   }
   const runPreflight=async()=>{const [x]=await Promise.all([run('admin-event-preflight'),probeProjectorArt()]);if(x)setPreflight(x)}
   return <div className="admin-page">
-    <nav className="admin-quick-nav" aria-label="разделы пульта"><button type="button" onClick={()=>document.getElementById('show-control')?.scrollIntoView({behavior:'smooth'})}>эфир</button><button type="button" onClick={()=>document.getElementById('admin-projector')?.scrollIntoView({behavior:'smooth'})}>проектор</button><button type="button" onClick={()=>document.getElementById('admin-preflight')?.scrollIntoView({behavior:'smooth'})}>проверка</button><button type="button" onClick={()=>{const el=document.getElementById('admin-support') as HTMLDetailsElement|null;if(el){el.open=true;el.scrollIntoView({behavior:'smooth'})}}}>настройки</button></nav>
+    <nav className="admin-quick-nav" aria-label="разделы пульта"><button type="button" onClick={()=>document.getElementById('show-control')?.scrollIntoView({behavior:'smooth'})}>эфир</button><button type="button" onClick={()=>document.getElementById('admin-invites')?.scrollIntoView({behavior:'smooth'})}>приглашения</button><button type="button" onClick={()=>document.getElementById('admin-projector')?.scrollIntoView({behavior:'smooth'})}>проектор</button><button type="button" onClick={()=>document.getElementById('admin-preflight')?.scrollIntoView({behavior:'smooth'})}>проверка</button><button type="button" onClick={()=>{const el=document.getElementById('admin-support') as HTMLDetailsElement|null;if(el){el.open=true;el.scrollIntoView({behavior:'smooth'})}}}>настройки</button></nav>
     <div className="row spread admin-title-row"><div><div className="eyebrow">админка. экран ведущего</div><h2>{data.event.title}</h2></div><Pill>{data.show?showRunStatusLabel(data.show.runtime.runStatus):statusLabel(data.event.status)}</Pill></div>
     {actionError&&<div className="form-error">{actionError}</div>}
-    <TestInviteCard adminToken={privileged.token}/>
     <ShowControl data={data} busy={busy} run={run}/>
+    <TestInviteCard adminToken={privileged.token}/>
     <Card id="admin-projector" className="projector-access-card"><div className="section-title">общий экран / проектор</div><p className="muted">откройте эту ссылку на ноутбуке, подключённом к проектору, и разверните браузер на весь экран. экран обновляется сам.</p><div className="inline"><Button kind="secondary" disabled={busy} onClick={async()=>{const x:any=await run('admin-screen-link');if(x?.screenUrl)setProjectorLink(String(x.screenUrl))}}>получить ссылку экрана</Button>{projectorLink&&<><Button onClick={()=>window.open(projectorLink,'_blank','noopener,noreferrer')}>открыть экран ↗</Button><Button kind="secondary" onClick={()=>window.open(projectorLink+'&demo=animals','_blank','noopener,noreferrer')}>репетиция животин ↗</Button><Button kind="secondary" onClick={async()=>{try{await navigator.clipboard.writeText(projectorLink)}catch{window.prompt('скопируйте ссылку',projectorLink)}}}>скопировать</Button></>}</div>{projectorLink&&<input className="share-link" readOnly value={projectorLink}/>}</Card>
     <Card id="admin-preflight" className="event-preflight-card">
       <div className="row spread"><div><div className="section-title">проверка перед началом</div><h3>{preflight?preflight.ready?'технически готово':'есть блокеры':'проверка одним нажатием'}</h3></div>{preflight&&<Pill>{preflight.summary?.failed?preflight.summary.failed+' блокер(а)':'готово'}</Pill>}</div>
@@ -1731,7 +1736,7 @@ function TestInviteCard({adminToken}:{adminToken:string}){
   useEffect(()=>{let active=true;void callAdminApi<{url:string}>('admin-test-invite',{slug:TEST_EVENT_SLUG},adminToken).then(x=>{if(active)setUrl(x.url)}).catch(e=>{if(active)setError(e.message)});return()=>{active=false}},[adminToken])
   const share=()=>{try{const shareUrl=testShareUrl(url);const app=telegramWebApp();if(app?.openTelegramLink)app.openTelegramLink(shareUrl);else window.open(shareUrl,'_blank','noopener,noreferrer')}catch(e:any){setError(e.message)}}
   const copy=async()=>{if(!url)return;try{await navigator.clipboard.writeText(url);setCopied(true);window.setTimeout(()=>setCopied(false),3000)}catch{window.prompt('скопируй приглашение',url)}}
-  return <Card><div className="section-title">репетиция с друзьями</div><p>каждый входит со своим профилем. тестовые голоса отделены от вечера 17 октября.</p><div className="test-invite-actions"><Button disabled={!url} onClick={copy}>{copied?'ссылка скопирована':'скопировать приглашение'}</Button><Button kind="secondary" disabled={!url} onClick={share}>отправить в Telegram</Button></div>{url&&<><p className="muted">друг открывает приглашение в личном чате с ботом, нажимает «старт», затем «попасть на событие». вход со своим Telegram-профилем</p><p><a href={url} target="_blank" rel="noreferrer">проверить приглашение в боте ↗</a></p></>}<p><a href={`#/admin/${TEST_EVENT_SLUG}`}>пульт тестового вечера</a></p>{error&&<div className="form-error">{error}</div>}</Card>
+  return <Card id="admin-invites"><div className="section-title">репетиция с друзьями</div><p>каждый входит со своим профилем. тестовые голоса отделены от вечера 17 октября.</p><div className="test-invite-actions"><Button disabled={!url} onClick={copy}>{copied?'ссылка скопирована':'скопировать приглашение'}</Button><Button kind="secondary" disabled={!url} onClick={share}>отправить в Telegram</Button></div>{url&&<><p className="muted">друг открывает приглашение в личном чате с ботом, нажимает «старт», затем «попасть на событие». вход со своим Telegram-профилем</p><p><a href={url} target="_blank" rel="noreferrer">проверить приглашение в боте ↗</a></p></>}<p><a href={`#/admin/${TEST_EVENT_SLUG}`}>пульт тестового вечера</a></p>{error&&<div className="form-error">{error}</div>}</Card>
 }
 
 function TelegramStartRouter({children}:{children:ReactNode}){
