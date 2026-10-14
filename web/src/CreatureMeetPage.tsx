@@ -164,6 +164,7 @@ export default function CreatureMeetPage(){
         </div>
         <div className="meet-creature-name">{name}</div>
         <div className="meet-expire">{expireText(invite?.expiresAt)}</div>
+        <p className="meet-privacy-hint">любой, у кого есть эта ссылка, сможет встретить твою животину. делись кодом только с теми, с кем хочешь</p>
         <div className="meet-actions">
           <Button disabled={!invite||loading} onClick={()=>void share()}>поделиться</Button>
           <Button kind="secondary" disabled={!invite||loading} onClick={()=>void copy()}>скопировать ссылку</Button>
