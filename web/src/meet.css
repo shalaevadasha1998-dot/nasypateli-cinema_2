@@ -1,0 +1,82 @@
+/* animal-to-animal QR journey. intentionally scoped: no changes to the live-show UI. */
+.meet-page{max-width:780px;margin:0 auto;padding:24px 18px calc(112px + env(safe-area-inset-bottom));color:#eae5dc}
+.meet-page *{box-sizing:border-box}
+.meet-back{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:2px 0 32px;color:#898c82;font-size:12px;letter-spacing:.035em}
+.meet-back button{border:0;background:none;color:#c9ccbf;padding:10px 0;font:inherit;cursor:pointer}
+.meet-back button:focus-visible,.meet-page button:focus-visible,.meet-page input:focus-visible{outline:2px solid #d7e1bc;outline-offset:3px}
+.meet-hero{position:relative;padding:12px 0 28px;border-bottom:1px solid #33382e;overflow:hidden}
+.meet-hero:after{content:"";position:absolute;z-index:0;right:-120px;top:0;width:280px;height:280px;background:radial-gradient(circle,#8d9d6022,transparent 65%);pointer-events:none}
+.meet-hero>*{position:relative;z-index:1}
+.meet-hero .eyebrow{color:#a5b48b;font-size:11px;letter-spacing:.12em}
+.meet-hero h1{font-weight:900;letter-spacing:-.085em;line-height:.9;font-size:clamp(55px,11vw,102px);margin:20px 0 22px;text-wrap:balance}
+.meet-hero h1 em{font-style:normal;color:#abbc86}
+.meet-hero>p{font-size:16px;line-height:1.55;color:#c5c6ba;max-width:530px;margin:0 0 28px}
+.meet-steps{display:flex;flex-wrap:wrap;gap:10px}
+.meet-steps span{display:flex;align-items:center;gap:8px;font-size:11px;line-height:1.4;color:#b9bcb1;background:#181c15;border:1px solid #30392d;border-radius:99px;padding:10px 12px}
+.meet-steps b{color:#bfd39d;font-size:12px}
+.meet-switch{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:5px;margin:26px 0 14px;border-radius:15px;background:#1c211a;border:1px solid #394039}
+.meet-switch button{min-height:50px;border:0;border-radius:11px;background:transparent;color:#acb0a5;font-size:15px;font-weight:750;cursor:pointer}
+.meet-switch button.active{color:#1b1f18;background:#d6e4ba;box-shadow:0 3px 15px #0005}
+.meet-panel{border:1px solid #333b30;border-radius:22px;background:linear-gradient(165deg,#151a13 0,#0c0e0b 62%);padding:20px;overflow:hidden}
+.meet-panel-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;color:#d7ddcf;font-size:12px;font-weight:700}
+.meet-panel-head strong{background:#2b3727;border-radius:20px;padding:6px 9px;font-weight:500;color:#b4c59e;font-size:10px}
+.meet-code-stage{position:relative;display:flex;align-items:center;justify-content:center;min-height:288px;margin:18px 0 20px;padding:28px;background:#ebf0de;border-radius:16px;overflow:hidden}
+.meet-code-stage:before{content:"";position:absolute;inset:10px;border:1px solid #b2c2ac;border-radius:10px;pointer-events:none}
+.meet-code-stage img{position:relative;display:block;max-width:100%;width:240px;height:auto;aspect-ratio:1;border-radius:6px}
+.meet-code-corner{position:absolute;width:32px;height:32px;border:3px solid #566e47}
+.meet-code-corner-a{top:16px;left:16px;border-right:0;border-bottom:0}
+.meet-code-corner-b{right:16px;bottom:16px;border-left:0;border-top:0}
+.meet-code-pending{color:#2f372c;font-size:14px;text-align:center}
+.meet-panel h2{font-size:clamp(24px,5.5vw,34px);letter-spacing:-.045em;margin:18px 0 10px;line-height:1.15}
+.meet-panel>p,.meet-confirm>p{color:#b0b5a9;font-size:14px;line-height:1.55;max-width:540px}
+.meet-valid{display:block;margin:14px 0;color:#8ea681}
+.meet-primary-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:24px 0 16px}
+.meet-main-button,.meet-outline-button{display:flex;align-items:center;justify-content:center;width:100%;min-height:54px;text-align:center;padding:12px 16px;border-radius:12px;font:700 14px/1.25 inherit;cursor:pointer}
+.meet-main-button{color:#10150e;background:#c9ddaa;border:1px solid #c9ddaa;font-weight:800}
+.meet-main-button:hover{background:#deedc7}
+.meet-outline-button{color:#d9e7ca;background:transparent;border:1px solid #72856c;font-weight:700}
+.meet-main-button:disabled,.meet-outline-button:disabled{opacity:.5;cursor:not-allowed}
+.meet-share-field{display:block;margin:16px 0 0;color:#a8aea0;font-size:12px}
+.meet-share-field input{display:block;margin-top:8px;border:1px solid #3c4939;border-radius:9px;background:#0a0d08;color:#b7cab0;font-size:12px;padding:12px;width:100%;min-height:44px}
+.meet-camera{height:290px;position:relative;overflow:hidden;margin:20px 0 14px;border:1px solid #647a5d;border-radius:15px;background:radial-gradient(ellipse,#1c2817,#0a0d08 70%)}
+.meet-camera video{width:100%;height:100%;object-fit:cover}
+.meet-camera-prompt{position:absolute;inset:0;display:flex;flex-direction:column;gap:10px;align-items:center;justify-content:center;text-align:center;padding:24px;color:#dfe9d4;pointer-events:none}
+.meet-camera-prompt>span{font-size:64px;line-height:1;color:#b4cb98}
+.meet-camera-prompt b{font-size:17px;max-width:240px;line-height:1.35}
+.meet-camera-prompt small{color:#96a28f}
+.meet-file-row{margin-top:12px}
+.meet-file-row input[type=file]{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}
+.meet-file-row label{cursor:pointer}
+.meet-input{margin:25px 0 8px}
+.meet-input label{display:block;color:#b5bdb0;font-size:12px;margin-bottom:10px}
+.meet-input>div{display:flex;gap:8px;align-items:stretch}
+.meet-input input{width:100%;min-width:0;min-height:52px;padding:10px 12px;color:#e4e9d9;background:#080a07;border:1px solid #414d3d;border-radius:11px;font-size:14px}
+.meet-input button{flex:0 0 auto;padding:0 16px;border-radius:11px;border:0;background:#39472f;color:#e8f2dc;font-size:13px;font-weight:700;cursor:pointer}
+.meet-input button:disabled{opacity:.5}
+.meet-confirm{border:1px solid #617353;border-radius:15px;background:#182115;padding:20px;margin-top:17px}
+.meet-confirm .eyebrow{color:#b5d09d}
+.meet-confirm .meet-main-button{margin-top:20px}
+.meet-text-button{display:block;margin:12px auto 0;padding:10px;border:0;background:none;color:#c5ccbc;font:inherit;cursor:pointer;text-decoration:underline}
+.meet-success{display:flex;gap:16px;padding:17px;border-radius:15px;background:#243320;border:1px solid #779265;margin:17px 0 12px}
+.meet-success-icon{display:flex;flex:none;justify-content:center;align-items:center;width:42px;height:42px;background:#cae7ae;color:#1d3118;border-radius:50%;font-size:23px;font-weight:900}
+.meet-success h2{font-size:24px;margin:0 0 6px}
+.meet-success p{margin:0;color:#d2dbc8;font-size:13px;line-height:1.5}
+.meet-overlap{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.meet-overlap span{padding:7px 9px;background:#36472e;border-radius:8px;font-size:11px;color:#d3e5c3}
+.meet-overlap b{color:#fff}
+.meet-notice{padding:13px 15px;border-radius:11px;background:#32241c;border:1px solid #85573e;color:#ffe1cd;font-size:13px;line-height:1.4}
+.meet-history{margin:35px 0 0}
+.meet-history-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;border-bottom:1px solid #31372e;padding-bottom:15px}
+.meet-history-heading .eyebrow{color:#9aab89;font-size:11px}
+.meet-history h2{font-size:33px;letter-spacing:-.055em;margin:8px 0 0}
+.meet-history-heading>strong{font-size:31px;color:#acc598}
+.meet-history-item{display:grid;grid-template-columns:49px minmax(0,1fr) auto;gap:13px;align-items:center;padding:16px 0;border-bottom:1px solid #2b332b}
+.meet-animal-mark{display:grid;place-items:center;width:47px;height:47px;border-radius:13px;background:#2c3825;color:#c6d8ac;font-size:28px}
+.meet-history-item h3{margin:0 0 6px;font-size:17px;overflow-wrap:anywhere}
+.meet-history-item p{margin:0;color:#9ca798;font-size:12px;line-height:1.3}
+.meet-history-item time{font-size:11px;color:#8e998a;white-space:nowrap}
+.meet-history-empty{padding:28px 22px;border:1px dashed #475442;border-radius:15px;margin-top:18px;color:#d6dfce}
+.meet-history-empty p{font-size:13px;line-height:1.55;color:#a9b2a2;max-width:410px}
+.meet-privacy{color:#99a392;font-size:12px;line-height:1.65;margin:22px 0 0}
+@media(max-width:480px){.meet-page{padding:14px 14px calc(95px + env(safe-area-inset-bottom))}.meet-back{margin-bottom:16px}.meet-hero h1{font-size:clamp(49px,14vw,70px)}.meet-hero>p{font-size:14px}.meet-panel{padding:15px}.meet-code-stage{min-height:256px;padding:16px}.meet-code-stage img{width:220px}.meet-primary-actions{grid-template-columns:1fr}.meet-camera{height:240px}.meet-history-item{grid-template-columns:43px minmax(0,1fr)}.meet-history-item time{grid-column:2}.meet-animal-mark{width:42px;height:42px}}
+@media(prefers-reduced-motion:reduce){.meet-page *, .meet-page *::before, .meet-page *::after{animation:none!important;transition:none!important}}
