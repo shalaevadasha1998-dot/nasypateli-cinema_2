@@ -3947,3 +3947,7 @@ html.chat-keyboard-open .chat-compose-inline{
 .home-encounter-notice>span{width:43px;height:43px;display:grid;place-items:center;background:#4d6842;border-radius:13px;color:#e9f7dd;font-size:31px}
 .home-encounter-notice .eyebrow{color:#a8cb96}
 .home-encounter-notice p{font-size:14px;line-height:1.45;color:#dce8d6;margin:5px 0 0;overflow-wrap:anywhere}
+
+.home-encounter-notice.is-error{background:linear-gradient(100deg,#3b211c,#1b1210);border-color:#965444}
+.home-encounter-notice.is-error>span{background:#743a2f;color:#ffe9e0}
+.home-encounter-notice.is-error .eyebrow{color:#efab99}
