@@ -103,7 +103,7 @@ h1,h2,h3,h4{font-weight:600;line-height:1.08;letter-spacing:-.045em;overflow-wra
 .screen-page .screen-content>h1,.screen-page .screen-content>h2,.screen-page .screen-content>p,.screen-page .screen-content>.eyebrow{animation:projectorTextEnter .65s cubic-bezier(.2,.7,.2,1) both}
 .screen-page .screen-content>p{animation-delay:.15s}
 .projector-image-ready{animation:projectorTextEnter .45s ease-out both}
-.projector-image-loading{display:block;width:100%;height:100%;min-height:80px;background:radial-gradient(ellipse,rgba(130,150,106,.12),transparent 65%)}
+.projector-image-loading{display:block;width:74px;height:78px;min-height:0;background:radial-gradient(ellipse,rgba(130,150,106,.12),transparent 65%)}
 @keyframes projectorTextEnter{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
 .youtube-host{position:absolute;inset:0;width:100%;height:100%}
 .projector-media-error{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px;text-align:center;background:#080807}
