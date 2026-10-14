@@ -54,6 +54,13 @@ async function check(config,stage){
     await page.waitForURL('**/#/test',{timeout:12000})
     const tab=page.locator('.bottom-nav a[href$="/test"]')
     await tab.waitFor({state:'visible'})
+    const stableLink=page.locator('.test-room-invite a[href="https://t.me/nasipateli_v_kinobot?start=test"]')
+    await stableLink.waitFor({state:'visible'})
+    const navGeometry=await page.evaluate(()=>{
+      const links=[...document.querySelectorAll('.bottom-nav a')].map(a=>({text:a.textContent||'',x:a.getBoundingClientRect().x,right:a.getBoundingClientRect().right}))
+      return {links,viewport:innerWidth}
+    })
+    if(navGeometry.links.length!==6||navGeometry.links.some(x=>x.x<0||x.right>navGeometry.viewport+1))throw Error('Android bottom navigation clipped '+JSON.stringify(navGeometry))
     await page.getByRole('button',{name:'войти как участник'}).tap()
     await page.waitForURL('**/#/rehearsal/'+testSlug,{timeout:12000})
     await page.getByText('тестовый вечер',{exact:true}).first().waitFor({timeout:16000})
