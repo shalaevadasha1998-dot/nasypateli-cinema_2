@@ -1,3 +1,4 @@
+import { RutubeVideo, rutubeVideoId } from './RutubeVideo'
 import { useEffect, useRef, useState } from 'react'
 
 let youtubeReady:Promise<any>|undefined
@@ -46,9 +47,11 @@ export function ProjectorMedia({media,title}:{media:any;title:string}){
     const old=localMovies.get(identity);if(old)URL.revokeObjectURL(old)
     const src=encodeURI(URL.createObjectURL(file));localMovies.set(identity,src);setLocal(src);setFailed(false)
   }
+  const platform=String(media?.sourcePlatform||'youtube')
+  const rutubeId=platform==='rutube'?rutubeVideoId(media):''
   const direct=local||(['internet_archive','wikimedia_commons','direct'].includes(media?.sourcePlatform)?String(media?.sourceUrl||''):'')
   return <div className="screen-video-wrap projector-media">
-    {!failed&&(direct?<DirectVideo key={direct+start+retry} src={direct} start={start} end={end} title={title} onError={()=>setFailed(true)}/>:media?.videoId?<YoutubeVideo key={identity+start+retry} id={String(media.videoId)} start={start} end={end} title={title} onError={()=>setFailed(true)}/>:null)}
+    {!failed&&(direct?<DirectVideo key={direct+start+retry} src={direct} start={start} end={end} title={title} onError={()=>setFailed(true)}/>:rutubeId?<RutubeVideo key={rutubeId+start+retry} id={rutubeId} start={start} end={end} title={title} onError={()=>setFailed(true)}/>:platform==='youtube'&&media?.videoId?<YoutubeVideo key={identity+start+retry} id={String(media.videoId)} start={start} end={end} title={title} onError={()=>setFailed(true)}/>:null)}
     {failed&&<div className="projector-media-error" role="alert"><span>фрагмент недоступен</span><h2>{title}</h2><p>источник ограничил показ или не отвечает</p><button onClick={()=>picker.current?.click()}>открыть видео с ноутбука</button><button onClick={()=>{setFailed(false);setRetry(x=>x+1)}}>повторить загрузку</button><p className="muted">выбери тот же фильм и монтаж, чтобы сохранить таймкоды и вопросы</p></div>}
     {!failed&&<button className="projector-media-backup" onClick={()=>picker.current?.click()}>резервное видео</button>}
     <input ref={picker} type="file" accept="video/*,.mkv" aria-label="резервный видеофайл" hidden onChange={e=>{choose(e.target.files?.[0]);e.target.value=''}}/>

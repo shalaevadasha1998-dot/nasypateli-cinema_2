@@ -1,3 +1,4 @@
+import { loadReusableMovieSources } from '../_shared/sourceLibrary.ts'
 import { adminDb } from '../_shared/db.ts'
 import { cors, err, json } from '../_shared/http.ts'
 import { telegramUserFromRequest, isConfiguredAdmin } from '../_shared/telegram.ts'
@@ -69,9 +70,15 @@ async function applyMovieSourceToCandidate(db:any,event:any,movieId:string,prefe
 }
 
 async function discoverAndPersistMovieSources(db:any,event:any,movie:any,fast=false){
-  const discovery=fast?await discoverMovieSourcesFast(movie):await discoverMovieSources(movie)
+  const [fresh,reused]=await Promise.all([fast?discoverMovieSourcesFast(movie):discoverMovieSources(movie),loadReusableMovieSources(db,movie)])
+  const seen=new Set(fresh.candidates.map(x=>x.sourceUrl+'|'+x.startSec+'|'+(x.endSec??'')))
+  const cached=reused.filter(x=>{const key=x.sourceUrl+'|'+x.startSec+'|'+(x.endSec??'');if(seen.has(key))return false;seen.add(key);return true})
+  const discovery={...fresh,candidates:[...fresh.candidates,...cached],trace:{...fresh.trace,cachedCount:cached.length}}
+
   const existing=await db.from('movie_source_candidates').select('*').eq('event_id',event.id).eq('movie_candidate_id',movie.id)
   if(existing.error)throw existing.error
+  const excluded=new Set((existing.data||[]).filter((x:any)=>['dead','blocked'].includes(x.availability_status)).map((x:any)=>String(x.source_url)))
+  discovery.candidates=discovery.candidates.filter(x=>!excluded.has(x.sourceUrl))
   const byKey=new Map((existing.data||[]).map((x:any)=>[
     [String(x.source_url||''),Number(x.start_sec||0),x.end_sec==null?'':Number(x.end_sec)].join('|'),x
   ]))
@@ -107,7 +114,7 @@ async function discoverAndPersistMovieSources(db:any,event:any,movie:any,fast=fa
       availability_status:x.verified===true&&x.embeddable===true&&Number(x.confidence)>=.60?'ready':'candidate',
       confidence:Math.max(0,Math.min(1,Number(x.confidence)||0)),
       metadata,
-      verified_at:x.verified===true?now:null,
+      verified_at:x.verified===true?(x.metadata?.cached_verified_at?String(x.metadata.cached_verified_at):now):null,
       updated_at:now
     }
     if(old?.id){
@@ -1463,7 +1470,7 @@ export async function handleApi(req:Request){
           id:String(s.id),useMode:String(s.use_mode),sourceType:String(s.source_type),sourcePlatform:String(s.source_platform),
           sourceUrl:String(s.source_url),videoId:s.video_id||undefined,title:s.title||undefined,sourceChannel:s.source_channel||undefined,
           startSec:Number(s.start_sec||0),endSec:s.end_sec==null?undefined:Number(s.end_sec),verified:s.verified===true,
-          embeddable:s.embeddable===true,official:s.official===true,rightsStatus:String(s.rights_status),
+          embeddable:s.embeddable===true,official:s.official===true,rightsStatus:String(s.rights_status),availabilityCheck:String(s.metadata?.availabilityCheck||''),countryCheck:String(s.metadata?.countryCheck||''),
           availabilityStatus:String(s.availability_status),confidence:Number(s.confidence||0),discoveredAt:s.discovered_at,
           selected:String(s.source_url)===String(x.source_url||'')&&Number(s.start_sec||0)===Number(x.start_sec||0),
           manualSelected:String(s.metadata?.manual_selected||'false')==='true'
@@ -2567,7 +2574,10 @@ export async function handleApi(req:Request){
               .limit(1)
             if(cachedSources.error)throw cachedSources.error
             const rawSource:any=cachedSources.data?.[0]
-            if(!rawSource)continue
+            // An old embed response cannot prove that a regional video still plays.
+            // Keep the immediate retry path only for recently probed direct files.
+            const checkedAt=Date.parse(String(rawSource?.verified_at||''))
+            if(!rawSource||rawSource.metadata?.availabilityCheck!=='video_bytes'||!Number.isFinite(checkedAt)||Date.now()-checkedAt>24*60*60*1000)continue
             const source:any={
               id:String(rawSource.id),
               useMode:String(rawSource.use_mode||'fragment'),
@@ -2702,8 +2712,8 @@ export async function handleApi(req:Request){
           try{
             const resolved=await discoverAndPersistMovieSources(db,event,movie,true)
             const sourceCandidates=(resolved.discovery?.candidates||[])
-              .filter((x:any)=>x.verified&&x.embeddable&&x.rightsStatus!=='blocked'&&(needsQuestions?!!x.videoId:(!!x.videoId||!!x.sourceUrl)))
-              .sort((x:any,y:any)=>Number(y.confidence||0)-Number(x.confidence||0))
+              .filter((x:any)=>x.verified&&x.embeddable&&x.rightsStatus!=='blocked'&&(needsQuestions?(x.sourcePlatform==='youtube'&&!!x.videoId):(!!x.videoId||!!x.sourceUrl)))
+              .sort((x:any,y:any)=>(x.metadata?.availabilityCheck==='video_bytes'?0:1)-(y.metadata?.availabilityCheck==='video_bytes'?0:1)||Number(y.confidence||0)-Number(x.confidence||0))
             sourceTrace.push({movieId:movie.id,title:movie.title,sources:sourceCandidates.length,roundMode})
             for(const source of sourceCandidates.slice(0,needsQuestions?3:2)){
               try{
@@ -2918,7 +2928,7 @@ export async function handleApi(req:Request){
       }))
       if(fragments.length!==6)return err('для готового киноблока нужно ровно 6 фрагментов',422)
       if(fragments.some((f:any)=>{
-        const playable=(f.sourcePlatform==='youtube'&&!!f.videoId)||(['internet_archive','wikimedia_commons','direct'].includes(f.sourcePlatform)&&!!f.sourceUrl)
+        const playable=(f.sourcePlatform==='youtube'&&!!f.videoId)||(['internet_archive','wikimedia_commons','direct','rutube'].includes(f.sourcePlatform)&&!!f.sourceUrl)
         return !playable||f.endSec===null||f.endSec<=f.startSec
       }))return err('у каждого фрагмента нужен youtube video id или прямой video url и корректные start/end',422)
       const incomingQuestions=Array.isArray(body.questions)?body.questions:[]
@@ -3233,7 +3243,7 @@ export async function handleApi(req:Request){
         if(!fragments.length)return true
         const first:any=fragments[0]||{}
         const platform=String(first?.sourcePlatform||((first?.videoId)?'youtube':''))
-        const playable=(platform==='youtube'&&!!String(first?.videoId||'').trim())||(['internet_archive','wikimedia_commons','direct'].includes(platform)&&!!String(first?.sourceUrl||'').trim())
+        const playable=(platform==='youtube'&&!!String(first?.videoId||'').trim())||(['internet_archive','wikimedia_commons','direct','rutube'].includes(platform)&&!!String(first?.sourceUrl||'').trim())
         const count=qCount.get(String(p.id))||0
         return !playable||count>5
       })
@@ -3675,7 +3685,8 @@ export async function handleApi(req:Request){
       if(endSec!==null&&endSec<=startSec)return err('конец фрагмента должен быть позже начала',422)
       if(endSec!==null&&endSec-startSec>120)return err('фрагмент для шоу не должен быть длиннее 120 секунд',422)
       const videoId=String(body.videoId||'').trim().slice(0,200)||null
-      if(usageStatus==='ready'&&!videoId)return err('для статуса ready нужен подготовленный youtube video id',422)
+      const savePlatform=String(body.sourcePlatform||'youtube')
+      if(usageStatus==='ready'&&!videoId&&!(['internet_archive','wikimedia_commons','direct','rutube'].includes(savePlatform)&&String(body.sourceUrl||'').startsWith('https://')))return err('для статуса ready нужен воспроизводимый источник видео',422)
       const patch:any={
         event_id:event.id,title,
         original_title:String(body.originalTitle||'').trim().slice(0,180)||null,
