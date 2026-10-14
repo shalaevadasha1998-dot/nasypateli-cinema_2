@@ -46,6 +46,8 @@ try{
   await check({width:1440,height:900},'desktop-1440')
   const android=await browser.newContext({...devices['Pixel 7']})
   const page=await android.newPage()
+  // External Telegram SDK is not needed for UI-only Android browser checks.
+  await page.route('**/telegram-web-app.js*',route=>route.fulfill({status:200,contentType:'application/javascript',body:'/* browser smoke stub */'}))
   const problems=[]
   page.on('pageerror',e=>problems.push(e.message))
   try{
@@ -59,7 +61,9 @@ try{
       return {screen:innerWidth,scroll:document.documentElement.scrollWidth,navClient:e?.clientWidth,navScroll:e?.scrollWidth}
     })
     if(geometry.scroll>geometry.screen+5)throw Error('Android document overflows '+JSON.stringify(geometry))
-    if(geometry.navScroll<=geometry.navClient)throw Error('Android nav is not horizontally scrollable '+JSON.stringify(geometry))
+    if(geometry.navScroll>geometry.navClient+3)throw Error('Android six-tab navigation still requires horizontal scrolling '+JSON.stringify(geometry))
+    const tabs=await page.locator('.bottom-nav a').count()
+    if(tabs!==6)throw Error('Android navigation must show six tabs, found '+tabs)
     await page.screenshot({path:'test-artifacts/android-pixel-7-rehearsal.png',fullPage:true})
     await page.getByRole('button',{name:'войти как участник'}).click()
     await page.waitForURL('**/#/rehearsal/test-2026-10-03')
