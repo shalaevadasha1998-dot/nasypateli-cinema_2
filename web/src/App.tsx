@@ -1455,7 +1455,7 @@ function projectorContent(d:DemoState){
   if(p.state==='pitch_selected'){const pitch=payload.pitch||{};return <><div className="eyebrow">выбрано</div><h1>{String(pitch.title||'без названия')}</h1><p>{String(pitch.description||'')}</p></>}
   if(p.state==='movie_searching')return <><div className="eyebrow">gpt · web search · youtube</div><h1>ищем реальный фильм<br/>в интернете</h1><p>сразу ищем воспроизводимый фрагмент</p></>
   if(p.state==='movie_found')return <><div className="eyebrow">нашли фильм</div><h1>{String(payload.filmTitle||'фильм')}</h1>{payload.year&&<h2>{String(payload.year)}</h2>}{payload.reason&&<p>почему он подходит: {String(payload.reason)}</p>}</>
-  if(p.state==='film_intro')return <><ProjectorFragment fragment={payload.fragment} title={String(payload.filmTitle||'фильм')}/>{payload.reason&&<div className="screen-reveal-overlay"><small>почему этот фильм</small><span>{String(payload.reason)}</span></div>}</>
+  if(p.state==='film_intro')return <ProjectorFragment fragment={payload.fragment} title={String(payload.filmTitle||'фильм')}/>
   if(p.state==='one_word_collecting')return <><div className="eyebrow">рецензия одним словом</div><h1>что это за фильм?</h1><ScreenWordWall groups={Array.isArray(payload.wordGroups)?payload.wordGroups:[]} collecting/></>
   if(p.state==='one_word_results')return <><div className="eyebrow">рецензия зала</div><ScreenWordWall groups={Array.isArray(payload.wordGroups)?payload.wordGroups:[]}/></>
   if(p.state==='question_open')return <><div className="eyebrow">вопрос {Number(payload.position||0)}/{Number(payload.totalQuestions||3)}</div><h1>{String(payload.prompt||'что будет дальше?')}</h1><p>напишите свой вариант в телефоне</p></>
