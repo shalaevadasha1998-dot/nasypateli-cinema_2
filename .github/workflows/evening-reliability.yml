@@ -27,17 +27,19 @@ jobs:
           npx playwright install chromium
       - name: Prepare isolated database binaries
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y postgresql-17 postgresql-client-17
+          mkdir -p /tmp/offline-tools/pg-lib
+          docker run --rm -v /tmp/offline-tools:/out postgres:17-bookworm sh -c '
+            cp -a /usr/lib/postgresql/17 /out/postgresql
+            cp -a /usr/share/postgresql/17 /out/pg-share
+            for bin in postgres psql initdb; do
+              ldd /usr/lib/postgresql/17/bin/$bin | awk '\''/=> \/.* \(/ {print $3}'\'' | grep -vE "libc\.so|libm\.so|libpthread|libdl\.so" | xargs -r -I{} cp -L {} /out/pg-lib/
+            done
+          '
       - name: Package offline verification tools
         run: |
-          mkdir -p /tmp/offline-tools/bin /tmp/offline-tools/pg-lib
+          mkdir -p /tmp/offline-tools/bin
           cp "$(command -v deno)" /tmp/offline-tools/bin/deno
           cp "$(command -v supabase)" /tmp/offline-tools/bin/supabase
-          cp -a /usr/lib/postgresql/17 /tmp/offline-tools/postgresql
-          cp -a /usr/share/postgresql/17 /tmp/offline-tools/pg-share
-          ldd /usr/lib/postgresql/17/bin/postgres | awk '/=> \/.* \(/ {print $3}' | xargs -r -I{} cp -L {} /tmp/offline-tools/pg-lib/
-          ldd /usr/lib/postgresql/17/bin/psql | awk '/=> \/.* \(/ {print $3}' | xargs -r -I{} cp -L {} /tmp/offline-tools/pg-lib/
           tar -czf /tmp/offline-tools/node_modules.tar.gz -C web node_modules
           tar -czf /tmp/offline-tools/playwright-browsers.tar.gz -C "$HOME/.cache" ms-playwright
           tar -czf /tmp/offline-verification-tools.tar.gz -C /tmp/offline-tools .
