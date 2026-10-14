@@ -71,6 +71,8 @@ try{
     await admin.page.locator('.admin-checkin-upload input').setInputFiles({name:'ticket.png',mimeType:'image/png',buffer:png})
     await admin.page.getByText('готово. животина появилась на экране').waitFor({timeout:15000})
     await admin.page.getByText('хрюндель').waitFor({timeout:15000})
+    // Scanner intentionally debounces the same QR for 2.5 seconds.
+    await admin.page.waitForTimeout(2700)
     await admin.page.locator('.admin-checkin-manual input').fill(ticket)
     await admin.page.getByRole('button',{name:'отметить вход'}).click()
     await admin.page.getByText('уже отмечен. животина уже на экране').waitFor({timeout:15000})
