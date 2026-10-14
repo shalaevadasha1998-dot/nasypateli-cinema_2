@@ -21,7 +21,7 @@ function fakeShow(status='idle',test=true){
     event:{id:'d5ac9f9c-d0e8-4fd2-9b09-6f914d7ef340',slug:test?'test-2026-10-03':'2026-10-17',title:'насыпатели в кино · репетиция',status:'CHECKIN'},
     show:{
       program:{version:1,roundsTarget:4,rewards:{join:1,vote:1,round:2,finale:3},blocks},
-      runtime:{runKey:'test_002',isTest:test,runStatus:status,currentBlockId:'arrival',currentBlockIndex:0,currentBlock:blocks[0],currentRound:0,voteState:'closed',resultsVisible:false,videoState:{status:'idle'},revision:1},
+      runtime:{runKey:'test_002',isTest:test,runStatus:status,currentBlockId:status==='paused'?'cinema_first':'arrival',currentBlockIndex:status==='paused'?2:0,currentBlock:blocks[status==='paused'?2:0],currentRound:0,voteState:'closed',resultsVisible:false,videoState:{status:'idle'},revision:1},
       currentRound:null,voteResults:[],onlineCount:1,
       audio:{state:{mode:'auto',status:'stopped',volume:.28},assets:[],screen:{online:false,unlocked:false}}
     },
@@ -59,6 +59,15 @@ async function director(viewport,label,status='idle',test=true){
       const after=await rail.evaluate(el=>el.scrollLeft)
       if(after<=before)throw Error('Timeline next button did not scroll')
     }
+    if(status==='paused'){
+      const switcher=page.getByRole('button',{name:'перейти на ручное управление'})
+      await switcher.click()
+      await page.getByRole('button',{name:'вернуть автоматическое переключение'}).waitFor({state:'visible',timeout:10000})
+      const stored=await page.evaluate(()=>localStorage.getItem('nasypateli-director-mode:test-2026-10-03'))
+      if(stored!=='manual')throw Error('Manual director mode was not persisted for the test room')
+      if(await page.evaluate(()=>localStorage.getItem('nasypateli-director-mode:2026-10-17')))throw Error('Test director mode leaked to the live event')
+      console.log('PASS director manual mode isolated by event')
+    }
     if(errors.length)throw Error('JavaScript errors '+errors.join('; '))
     await page.screenshot({path:'test-artifacts/'+label+'.png',fullPage:true})
     console.log('PASS director '+label+' '+JSON.stringify(stats))
@@ -75,6 +84,7 @@ try{
   await director({width:390,height:844},'admin-test-idle-phone')
   await director({width:320,height:640},'admin-test-running-small','running')
   await director({width:1366,height:768},'admin-test-running-desktop','running')
+  await director({width:390,height:844},'admin-test-manual-mode','paused')
   await director({width:390,height:844},'admin-live-idle-requires-audio','idle',false)
 }catch(e){console.error(e);process.exitCode=1}
 finally{if(browser)await browser.close();server.kill('SIGTERM')}
