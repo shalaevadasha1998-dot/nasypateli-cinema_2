@@ -3776,3 +3776,14 @@ html.chat-keyboard-open .chat-compose-inline{
   .feedback-mood button{font-size:12px;min-height:44px;padding:10px}
   .feedback-quick-card{gap:9px}
 }
+
+/* Stable test invitation, separate from production tickets */
+.test-room-invite{
+ display:grid;gap:14px;min-width:0;margin:18px 0;padding:20px;border:1px solid #4b6243;
+ border-radius:20px;background:linear-gradient(120deg,#202d1b,#131712);
+}
+.test-room-invite h2{font-size:clamp(24px,5vw,34px);line-height:1.1;margin:8px 0}
+.test-room-invite p{font-size:14px;line-height:1.45;color:#c8d0c3;margin:0}
+.test-room-invite-actions{display:flex;flex-wrap:wrap;align-items:stretch;gap:10px;min-width:0}
+.test-room-invite-actions .btn{display:inline-flex;justify-content:center;align-items:center;text-decoration:none;min-height:48px;flex:1 1 185px;white-space:normal;text-align:center}
+@media(max-width:370px){.test-room-invite{padding:15px}.test-room-invite-actions{flex-direction:column}.test-room-invite-actions .btn{flex:0 0 auto;width:100%}}
