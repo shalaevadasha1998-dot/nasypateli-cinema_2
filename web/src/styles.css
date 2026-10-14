@@ -3814,3 +3814,13 @@ html.chat-keyboard-open .chat-compose-inline{
 }
 .test-room-step,.test-room-invite,.test-room-hub{overflow-wrap:anywhere}
 .test-room-primary button,.test-room-invite button{touch-action:manipulation}
+
+/* A failed Telegram rehearsal join stays recoverable, not a dead-end loader. */
+.rehearsal-access{padding-top:clamp(20px,6vh,80px);min-height:65dvh}
+.rehearsal-access .card{padding:clamp(18px,4vw,32px);background:linear-gradient(140deg,#1a2016,#11120f)}
+.rehearsal-access h1{font-size:clamp(32px,8vw,56px);line-height:1;letter-spacing:-.06em;margin:16px 0;overflow-wrap:anywhere}
+.rehearsal-access p{color:#c7ccbf;font-size:14px;line-height:1.5;overflow-wrap:anywhere}
+.rehearsal-access-buttons{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch;margin-top:20px}
+.rehearsal-access-buttons .btn{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;flex:1 1 170px;min-height:48px;text-align:center;white-space:normal}
+.rehearsal-waiting{border:1px solid #4a5b42;border-radius:14px;background:#1a2317;padding:14px;margin-top:12px}
+.rehearsal-waiting .btn{margin:8px 0}
