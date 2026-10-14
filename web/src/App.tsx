@@ -331,7 +331,7 @@ function ParticipantShow({data,reload}:{data:DemoState;reload:(fresh?:boolean)=>
   </section>
 }
 
-function Home({eventSlug='',privateEvent=false}:{eventSlug?:string;privateEvent?:boolean}={}){
+function Home({eventSlug=''}:{eventSlug?:string}={}){
   const {data,error,reload}=useStateData(true,eventSlug);const nav=useNavigate();const [buyError,setBuyError]=useState('');const [buyNotice,setBuyNotice]=useState('');const [buyBusy,setBuyBusy]=useState(false);const [claimBusy,setClaimBusy]=useState(false);const [claimError,setClaimError]=useState('');const [cancelBusy,setCancelBusy]=useState(false);const [cancelError,setCancelError]=useState('');const [ticketOpen,setTicketOpen]=useState(false);const [encounterMsg,setEncounterMsg]=useState('');const [now,setNow]=useState(()=>Date.now());useEffect(()=>{if(!data?.creature?.born)return;const u=new URL(location.href);const token=u.searchParams.get('encounter');if(!token)return;u.searchParams.delete('encounter');history.replaceState({},'',u.toString());callApi<{kind:string}>('encounter-preview',{token}).then(async preview=>{
     if(preview.kind==='rabbit'){setEncounterMsg('qr знакомства животин больше не используется. для входа ведущий сканирует qr билета');return}
     if(preview.kind==='event_checkin'){
@@ -448,7 +448,7 @@ function NextAction({data,onOpen,onBuy,onClaim,buyBusy=false,claimBusy=false,res
 function Profile(){const {data,error}=useStateData();const nav=useNavigate();if(!data)return <Loading error={error}/>;return <div className="page"><div className="row spread profile-head"><div><div className="eyebrow">ваш профиль</div><h2>{data.profile.displayName}</h2></div><Button kind="secondary" onClick={()=>nav('/onboarding?edit=1')}>изменить</Button></div><ProfilePreview profile={data.profile}/><div className="stats-grid"><Card><strong>{data.profileStats.eventsAttended}</strong><span>вечеров</span></Card><Card><strong>{data.profileStats.predictionPoints}</strong><span>очков</span></Card><Card><strong>{data.profileStats.ideasSubmitted}</strong><span>идей</span></Card></div><Card><div className="section-title">ваш киноднк</div><TasteSummary taste={data.profile.taste}/><Button kind="secondary" onClick={()=>nav('/zhivotina?mode=taste')}>что {data.creature.name||'животина'} думает о моём вкусе</Button></Card></div>}
 function TasteSummary({taste}:{taste:TasteVector}){const rows:[string,number][]=[['странность',taste.weirdness],['атмосфера',taste.atmosphere],['эксперимент',taste.experimental],['медленность',taste.slowness],['сюрреализм',taste.surrealism]];return <div>{rows.map(([k,v])=><div className="taste-line" key={k}><span>{k}</span><div><i style={{width:`${v}%`}}/></div><b>{v}</b></div>)}</div>}
 
-function PrivateLiveEvent(){const {slug}=useParams();return <Home eventSlug={slug||''} privateEvent/>}
+function PrivateLiveEvent(){const {slug}=useParams();return <Home eventSlug={slug||''}/>}
 
 function TestRoomHub(){
   const {slug}=useParams()
