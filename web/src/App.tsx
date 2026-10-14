@@ -478,11 +478,24 @@ function TestRoomHub(){
 
 function RehearsalPage(){
   const {slug}=useParams()
+  const nav=useNavigate()
   const {data,error,reload}=useStateData(true,slug||'')
-  if(!data)return <Loading error={error}/>
-  if(slug!==data.event.slug)return <div className="page"><Empty>такой тестовой комнаты нет</Empty></div>
+  if(!data)return <div className="page rehearsal-access">
+    <Card><div className="eyebrow">отдельная тестовая комната</div>
+      <h1>{error?'не получилось подключиться':'подключаем вашу животину…'}</h1>
+      {error?<p>{error.includes('Тестовая комната закрыта')?'откройте ссылку на репетицию через Telegram-бота, а затем нажмите «войти в тестовую комнату»':error}</p>:<p>проверяем вход в репетицию. билеты на 17 октября не затрагиваем</p>}
+      <div className="rehearsal-access-buttons">
+        <Button kind="secondary" onClick={()=>nav('/test')}>назад в тестовую</Button>
+        <Button onClick={()=>void reload(true)}>повторить подключение</Button>
+        {error&&<a className="btn secondary" href="https://t.me/nasipateli_v_kinobot?start=test">открыть через Telegram ↗</a>}
+      </div>
+    </Card>
+  </div>
+  if(slug!==data.event.slug)return <div className="page"><Empty>такой тестовой комнаты нет</Empty><Button kind="secondary" onClick={()=>nav('/test')}>к тестовой комнате</Button></div>
   return <div className="page home-page rehearsal-page">
-    <Card><div className="eyebrow">тестовый вечер</div><h2>{data.profile.displayName||'ваш личный профиль'}</h2><p>ваши ответы сохраняются отдельно. тест не меняет билеты и голоса на 17 октября.</p>{data.show?.runtime.runStatus==='idle'&&<p>ждём запуска репетиции ведущей</p>}</Card>
+    <Card><div className="eyebrow">тестовый вечер</div><h2>{data.profile.displayName||'ваш личный профиль'}</h2><p>ваши ответы сохраняются отдельно. тест не меняет билеты и голоса на 17 октября.</p>
+    {data.show?.runtime.runStatus==='idle'&&<div className="rehearsal-waiting"><p>сейчас сбор ещё не запущен. ведущий может нажать «начать тест без звука» в отдельном пульте</p>{data.isAdmin&&<Button kind="secondary" onClick={()=>nav('/admin/'+TEST_EVENT_SLUG)}>запустить тест как ведущий</Button>}</div>}
+    </Card>
     {data.show?.runtime.currentBlock?.type==='cinema_rounds'
       ?<FilmLiveParticipant data={data} reload={reload}/>
       :<ParticipantShow data={data} reload={reload}/>}
