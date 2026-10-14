@@ -209,6 +209,7 @@ async function searchYoutubePublic(movie:any,mode:'fragment'|'trailer'):Promise<
       const title=String(meta?.title||'')
       const match=sourceTitleMatch(title,movie)
       if(match<.42)return null
+      if(/(?:#|\b)(?:shorts?|ytshorts|vertical|reels)(?:\b|$)|вертикальн|короткое видео|9\s*[:хx×]\s*16/i.test(title))return null
       if(mode==='fragment'&&/(trailer|teaser|трейлер|тизер)/i.test(title))return null
       const looksClip=/(official\s+clip|movie\s+clip|film\s+clip|scene|excerpt|fragment|фрагмент|сцена|extrait|escena|szene|scena)/i.test(title)
       const looksTeaser=/(teaser|тизер)/i.test(title)
