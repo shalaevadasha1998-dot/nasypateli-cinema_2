@@ -498,6 +498,15 @@ function RehearsalPage(){
   const {slug}=useParams()
   const nav=useNavigate()
   const {data,error,reload}=useStateData(true,slug||'')
+  const [claimBusy,setClaimBusy]=useState(false)
+  const [claimError,setClaimError]=useState('')
+  const claimTestTicket=async()=>{
+    if(!data||claimBusy)return
+    setClaimBusy(true);setClaimError('')
+    try{await callApi('claim-event-ticket',{slug:data.event.slug});await reload(true)}
+    catch(e:any){setClaimError(e.message||'не получилось получить тестовый билет')}
+    finally{setClaimBusy(false)}
+  }
   if(!data)return <div className="page rehearsal-access">
     <Card><div className="eyebrow">служебная репетиция · только админам</div>
       <h1>{error?'не получилось подключиться':'подключаем вашу животину…'}</h1>
@@ -511,6 +520,14 @@ function RehearsalPage(){
   </div>
   if(slug!==data.event.slug)return <div className="page"><Empty>такой репетиции нет</Empty><Button kind="secondary" onClick={()=>nav('/test/'+String(slug||'').replace(/^test-/,''))}>назад</Button></div>
   return <div className="page home-page rehearsal-page">
+    <section className="admin-rehearsal-ticket" aria-label="тестовый билет и QR входа">
+      <span className="eyebrow">01 · проверка входа</span>
+      {data.registration==='none'?<><h2>сначала билет</h2><p>проверь полный путь гостя: получи бесплатный тестовый билет, открой его qr и отметь вход сканером ведущего. до сканирования животина не появится на проекторе</p><Button disabled={claimBusy} onClick={()=>void claimTestTicket()}>{claimBusy?'выдаём билет…':'получить тестовый билет'}</Button></>:
+      data.registration==='paid'?<><h2>билет готов</h2><p>покажи этот qr ведущему или открой сканер на другом устройстве. после сканирования твоя животина появится на проекторе</p><EventPass event={data.event} registrationId={data.registrationId}/><Button kind="secondary" onClick={()=>nav('/admin/checkin/'+data.event.slug)}>открыть сканер ведущего</Button></>:
+      data.registration==='attended'?<><h2>ты в зале</h2><p>билет проверен. теперь можно проходить задания и голосования</p><div className="success">животина отмечена на входе</div></>:
+      <><h2>проверяем билет</h2><p>статус: {data.registration}. обнови данные или обратись к организатору</p><Button kind="secondary" onClick={()=>void reload(true)}>обновить билет</Button></>}
+      {claimError&&<p className="form-error" role="alert">{claimError}</p>}
+    </section>
     <Card><div className="eyebrow">тестовый вечер</div><h2>{data.profile.displayName||'ваш личный профиль'}</h2><p>ваши ответы сохраняются отдельно. тест не меняет билеты и голоса на 17 октября.</p>
     {data.show?.runtime.runStatus==='idle'&&<div className="rehearsal-waiting"><p>ведущий ещё не запустил репетицию. открой пульт, чтобы начать вечер</p>{data.isAdmin&&<Button kind="secondary" onClick={()=>nav('/admin/'+slug)}>открыть пульт ведущего</Button>}</div>}
     </Card>
