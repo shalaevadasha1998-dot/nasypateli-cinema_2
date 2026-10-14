@@ -93,6 +93,13 @@ try{
     await animalsPage.screenshot({path:'test-artifacts/projector-creature-arrivals.png',fullPage:true})
     console.log('PASS creature-arrivals '+animals+' animated animals')
   }finally{await animalsPage.close()}
+  // One stable Telegram /start test link must route directly to the rehearsal.
+  const stableLinkPage=await browser.newPage({viewport:{width:390,height:844}})
+  try{
+    await stableLinkPage.goto(base+'?tgWebAppStartParam=test',{waitUntil:'domcontentloaded'})
+    await stableLinkPage.waitForFunction(()=>location.hash.startsWith('#/rehearsal/test-2026-10-03'),{timeout:15000})
+    console.log('PASS stable-test-telegram-deeplink')
+  }finally{await stableLinkPage.close()}
   // Verify Telegram's compact deep link stays inside the isolated test route.
   const invitePage=await browser.newPage({viewport:{width:390,height:844}})
   try{
