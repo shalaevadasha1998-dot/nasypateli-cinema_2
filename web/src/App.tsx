@@ -243,7 +243,7 @@ function FilmLiveParticipant({data,reload}:{data:DemoState;reload:(fresh?:boolea
   if(state==='pitch_preview'||state==='pitch_locked')return <section className="participant-show film-live"><div className="eyebrow">идеи собраны</div><h2>смотрим, что придумал зал</h2><p>сейчас ведущий листает фильмы на большом экране.</p></section>
   if(state==='pitch_randomizing')return <section className="participant-show film-live"><div className="eyebrow">рандом</div><h2>выбираем одну идею</h2><p>смотри на большой экран.</p></section>
   if(state==='pitch_selected')return <section className="participant-show film-live"><div className="eyebrow">выбрано</div><h2>{String(live.payload?.pitch?.title||'идея выбрана')}</h2><p>животина ищет самый похожий реальный фильм.</p></section>
-  if(state==='movie_searching')return <section className="participant-show film-live"><div className="eyebrow">gpt + web search</div><h2>ищем реальный фильм в интернете</h2><p>проверяем фильм и сразу ищем фрагмент на youtube.</p></section>
+  if(state==='movie_searching')return <section className="participant-show film-live"><div className="eyebrow">животина ищет</div><h2>ищем реальный фильм в интернете</h2><p>проверяем фильм и сразу ищем фрагмент на youtube.</p></section>
   if(state==='movie_found')return <section className="participant-show film-live"><div className="eyebrow">нашли фильм</div><h2>{String(live.payload?.filmTitle||live.filmTitle||'фильм')}</h2>{live.payload?.reason&&<p>{String(live.payload.reason)}</p>}<p>скоро смотрим фрагмент на большом экране</p></section>
   if(state==='film_intro'||state==='playing_clip')return <section className="participant-show film-live"><div className="eyebrow">фрагмент</div><h2>{live.filmTitle||String(live.payload?.filmTitle||'смотри на экран')}</h2><p>телефон вниз.</p></section>
   if(state==='one_word_collecting')return <section className="participant-show film-live"><div className="eyebrow">рецензия одним словом</div><h2>что это за фильм?</h2><Field label="одно слово"><input maxLength={80} value={word} placeholder="например: тревожный" onChange={e=>{setWord(e.target.value.replace(/\s+/g,''));setMessage('')}}/></Field><Button disabled={busy||word.trim().length<2} onClick={submitWord}>{busy?'отправляем…':'отправить'}</Button>{message&&<div className={message==='слово на экране'?'success':'form-error'}>{message}</div>}</section>
@@ -310,8 +310,9 @@ function ParticipantShow({data,reload}:{data:DemoState;reload:(fresh?:boolean)=>
     const final=show.finalVote
     return <section className="participant-show final-vote"><div className="eyebrow">финальный выбор</div><h2>какой фильм забирает вечер?</h2><p className="muted">можно менять голос до конца таймера</p><div className="final-vote-options">{(final?.options||[]).map(option=><button type="button" disabled={busy||final?.closed} className={final?.myVote===option.id?'selected':''} key={option.id} onClick={()=>void finalVote(option.id)}><b>{option.title}</b>{option.year&&<small>{option.year}</small>}</button>)}</div>{!(final?.options||[]).length&&<p className="muted">ждём фильмы из завершённых раундов</p>}{message&&<div className={message.includes('принят')?'success':'form-error'}>{message}</div>}</section>
   }
-  if(block.type==='creature_intro')return <section className="participant-show"><div className="eyebrow">знакомство</div><h2>животина настоящая</h2><p>5 минут. смотри на большой экран.</p></section>
-  if(block.type==='break')return <section className="participant-show"><div className="eyebrow">перерыв</div><h2>30 минут</h2><p>телефон можно убрать.</p></section>
+  if(block.type==='creature_intro')return <section className="participant-show"><div className="eyebrow">знакомство</div><h2>животина настоящая</h2><p>смотри на большой экран — животина скоро начнёт</p></section>
+  if(block.type==='break')return <section className="participant-show"><div className="eyebrow">перерыв</div><h2>можно отдохнуть</h2><p>телефон можно убрать, животина позовёт обратно</p></section>
+  if(block.type==='feedback')return <section className="participant-show feedback-show"><div className="eyebrow">обратная связь</div><h2>как вам вечер?</h2><p>животина хочет узнать, что понравилось и что сделать лучше</p><FeedbackForm data={data} reload={()=>{void reload(true)}}/></section>
   if(block.type==='final_qr')return <section className="participant-show"><div className="eyebrow">итог вечера</div><h2>вступить в «творог»</h2><a className="btn" href="https://t.me/+CycB09M5MLI0ZWIy" target="_blank" rel="noreferrer">открыть группу</a></section>
   if(block.type==='music_outro'||block.type==='music_live')return <section className="participant-show music"><div className="eyebrow">после</div><h2>музыка</h2><p>телефон можно убрать.</p></section>
   if(block.type==='post_event')return <section className="participant-show"><div className="eyebrow">вечер закончился</div><h2>животина остаётся с вами</h2><p>крошки, история и всё, что случилось сегодня, никуда не исчезнут</p></section>
@@ -337,6 +338,10 @@ function Home(){
   const cancelTicket=async()=>{if(cancelBusy||data.registration!=='paid'||!freeEntry||!salesOpen)return;if(!window.confirm('отменить билет? место освободится для другого человека'))return;try{setCancelBusy(true);setCancelError('');setClaimError('');setBuyNotice('');await callApi('cancel-event-ticket',{slug:e.slug});setTicketOpen(false);setBuyNotice('билет отменён. место освобождено');await reload(true)}catch(err:any){setCancelError(err.message||'не получилось отменить билет')}finally{setCancelBusy(false)}}
     const rebuyStatus=data.registration==='refunded'?'билет возвращён':data.registration==='cancelled'?'билет отменён':''
   return <div className="page home-page cinematic-page">
+    <section className="home-test-shortcut">
+      <div><span className="eyebrow">репетиция · отдельная комната</span><h2>проверить вечер</h2><p>потренируйся с животиной до 17 октября. билеты и ответы настоящего вечера не меняются</p></div>
+      <Button onClick={()=>nav('/test')}>войти в тестовую комнату</Button>
+    </section>
     <section className="home-creature-hero home-creature-static">
       <div className="home-creature-top"><div><div className="eyebrow">ваша животина</div><span className="home-creature-stage-label">ваша личная животина внутри насыпателей в кино</span></div><button className="micro-link" onClick={()=>nav('/profile')}>открыть профиль ↗</button></div>
       <button type="button" className="home-creature-static-art" onClick={()=>nav('/profile')} aria-label="открыть профиль животины"><img src={`${import.meta.env.BASE_URL}assets/rabbit-full.webp`} alt={data.creature.name||'животина'} draggable={false}/></button>
@@ -442,6 +447,28 @@ function NextAction({data,onOpen,onBuy,onClaim,buyBusy=false,claimBusy=false,res
 function Profile(){const {data,error}=useStateData();const nav=useNavigate();if(!data)return <Loading error={error}/>;return <div className="page"><div className="row spread profile-head"><div><div className="eyebrow">ваш профиль</div><h2>{data.profile.displayName}</h2></div><Button kind="secondary" onClick={()=>nav('/onboarding?edit=1')}>изменить</Button></div><ProfilePreview profile={data.profile}/><div className="stats-grid"><Card><strong>{data.profileStats.eventsAttended}</strong><span>вечеров</span></Card><Card><strong>{data.profileStats.predictionPoints}</strong><span>очков</span></Card><Card><strong>{data.profileStats.ideasSubmitted}</strong><span>идей</span></Card></div><Card><div className="section-title">ваш киноднк</div><TasteSummary taste={data.profile.taste}/><Button kind="secondary" onClick={()=>nav('/zhivotina?mode=taste')}>что {data.creature.name||'животина'} думает о моём вкусе</Button></Card></div>}
 function TasteSummary({taste}:{taste:TasteVector}){const rows:[string,number][]=[['странность',taste.weirdness],['атмосфера',taste.atmosphere],['эксперимент',taste.experimental],['медленность',taste.slowness],['сюрреализм',taste.surrealism]];return <div>{rows.map(([k,v])=><div className="taste-line" key={k}><span>{k}</span><div><i style={{width:`${v}%`}}/></div><b>{v}</b></div>)}</div>}
 
+function TestRoomHub(){
+  const nav=useNavigate()
+  const inTelegram=!!telegramWebApp()?.initData
+  return <div className="page test-room-hub">
+    <header className="test-room-heading">
+      <span className="eyebrow">отдельная репетиция</span>
+      <h1>тестовая<br/>комната</h1>
+      <p>можно проверить весь вечер на своём телефоне. это не мероприятие 17 октября — здесь отдельные ответы и животины</p>
+    </header>
+    <div className="test-room-primary">
+      <div className="test-room-step"><span>01 / участник</span><h2>посмотреть, что видят гости</h2><p>зайти, увидеть сбор, получать задания и отправлять ответы. требуется вход через Telegram</p>
+        <Button onClick={()=>nav('/rehearsal/'+TEST_EVENT_SLUG)}>войти как участник</Button></div>
+      <div className="test-room-step"><span>02 / ведущий</span><h2>управлять тестовым вечером</h2><p>запуск, пауза, перелистывание этапов, показ фильма и сброс теста. доступно только администраторам</p>
+        <Button kind="secondary" onClick={()=>nav('/admin/'+TEST_EVENT_SLUG)}>открыть тестовый пульт</Button></div>
+      <div className="test-room-step"><span>03 / большой экран</span><h2>проверить проектор</h2><p>тестовый экран показывает животных и этапы вечера отдельно от основного мероприятия</p>
+        <Button kind="secondary" onClick={()=>window.open(import.meta.env.BASE_URL+'#/screen/'+TEST_EVENT_SLUG,'_blank','noopener,noreferrer')}>открыть тестовый экран</Button></div>
+    </div>
+    {!inTelegram&&!demoMode&&<Card className="test-room-access"><h3>вход для участников — через Telegram</h3><p>для регистрации в тестовой комнате открой приложение внутри бота. на компьютере без Telegram-профиля можно посмотреть проектор, но нельзя отвечать за участника</p><a className="btn secondary" href="https://t.me/nasipateli_v_kinobot">открыть бота ↗</a></Card>}
+    <div className="test-room-foot"><p>«творог» остаётся, после него будет короткая обратная связь. всё можно пройти отдельно от живого вечера</p><Button kind="secondary" onClick={()=>nav('/')}>вернуться на главный</Button></div>
+  </div>
+}
+
 function RehearsalPage(){
   const {slug}=useParams()
   const {data,error,reload}=useStateData(true,slug||'')
@@ -452,6 +479,7 @@ function RehearsalPage(){
     {data.show?.runtime.currentBlock?.type==='cinema_rounds'
       ?<FilmLiveParticipant data={data} reload={reload}/>
       :<ParticipantShow data={data} reload={reload}/>}
+    <div className="rehearsal-back"><Button kind="secondary" onClick={()=>location.hash='/test'}>вернуться в тестовую комнату</Button></div>
   </div>
 }
 
@@ -1083,8 +1111,8 @@ function RoundFilmFlowAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(ac
   else if(flow==='one_word_results'){title='рецензия зала готова';detail='раунд сейчас закроется автоматически';nextLabel='форсировать конец раунда';canNext=true}
   else if(flow==='question_open'){title=`вопрос ${position}/${target}`;detail=currentQuestion?.prompt||'гости отвечают своими словами';nextLabel='дальше → самый близкий ответ';canNext=!!pack}
   else if(flow==='question_results'){title='ближайший ответ выбран';detail='животина сравнила открытые ответы с реальным продолжением';nextLabel='дальше → что было на самом деле';canNext=!!pack}
-  else if(flow==='question_reveal'){title='показано продолжение';detail=position<target?`следующий вопрос ${position+1}/${target}`:'gpt считает самого провидца по трём ответам';nextLabel=position<target?`форсировать вопрос ${position+1}/${target}`:'форсировать выбор провидца';canNext=!!pack}
-  else if(flow==='assignment_randomizing'){title=mode==='questions'?'считаем самого провидца':'выбираем животину';detail=mode==='questions'?'победит тот, чей ответ gpt чаще признавал самым близким':'выбор фиксируется на сервере один раз';canNext=false;nextLabel='считаем…'}
+  else if(flow==='question_reveal'){title='показано продолжение';detail=position<target?`следующий вопрос ${position+1}/${target}`:'животина выбирает самого провидца по трём ответам';nextLabel=position<target?`форсировать вопрос ${position+1}/${target}`:'форсировать выбор провидца';canNext=!!pack}
+  else if(flow==='assignment_randomizing'){title=mode==='questions'?'считаем самого провидца':'выбираем животину';detail=mode==='questions'?'победит тот, чей ответ животина чаще признавала самым близким':'выбор фиксируется на сервере один раз';canNext=false;nextLabel='считаем…'}
   else if(flow==='assignment_selected'){title=mode==='questions'?'самый провидец найден':'фильм назначен';detail=mode==='review'?'5 минут объясняем задание, затем рецензия откроется сама':'5 минут показываем победителя, затем раунд закроется сам';nextLabel=mode==='review'?'форсировать рецензию':'форсировать конец раунда'}
   else {title='раунд идёт';detail='следующий шаг появится автоматически';canNext=false}
 
@@ -1306,7 +1334,7 @@ function Admin(){
       <AdminParticipants data={data} reload={reload} adminToken={privileged.token}/>
       <ReviewQueueAdmin data={data} busy={busy} run={run}/>
       {!['2026-10-03','test-2026-10-03'].includes(data.event.slug)&&<ProgramEditor data={data} busy={busy} run={run}/>}
-      {['2026-10-03','test-2026-10-03'].includes(data.event.slug)&&<Card><div className="section-title">программа вечера</div><p>сбор 60 минут → животина настоящая 5 минут → снимаем кино → перерыв 30 минут → снимаем кино → qr «творог» → музыка</p><p className="muted">каждый раунд начинается с 5 минут объяснения механики, затем сбор названий открывается автоматически.</p></Card>}
+      {['2026-10-03','test-2026-10-03'].includes(data.event.slug)&&<Card><div className="section-title">программа вечера</div><p>сбор 60 минут → животина настоящая → снимаем кино → перерыв → снимаем кино → «творог» → обратная связь → музыка</p><p className="muted">каждый раунд начинается с 5 минут объяснения механики, затем сбор названий открывается автоматически.</p></Card>}
       <MovieCatalogAdmin data={data} busy={busy} run={run}/>
     </details>
     <details className="admin-technical"><summary>технические настройки события</summary><div className="admin-tech-grid">
@@ -1489,14 +1517,14 @@ function projectorContent(d:DemoState){
     const openAt=new Date(String(payload.opensAt||0)).getTime()
     const left=Number.isFinite(openAt)?Math.max(0,Math.ceil((openAt-Date.now())/1000)):300
     const timer=`${Math.floor(left/60)}:${String(left%60).padStart(2,'0')}`
-    return <div className="screen-round-intro"><div className="eyebrow">раунд {roundNo} · 5 минут на механику</div><h1>{review?'снимаем кино':'угадываем кино'}</h1><div className="screen-round-steps">{review?<><p>1. пишем название + описание несуществующего фильма</p><p>2. рандом выбирает одну идею</p><p>3. животина ищет похожий настоящий фильм</p><p>4. смотрим фрагмент до 10 минут</p><p>5. одному человеку достаётся фильм целиком</p><p>6. после объяснения пишем рецензию одним словом</p></>:<><p>1. пишем название + описание несуществующего фильма</p><p>2. рандом выбирает одну идею</p><p>3. смотрим найденный фрагмент до 10 минут</p><p>4. отвечаем на 3 вопроса о продолжении</p><p>5. gpt считает, кто был ближе всех чаще остальных</p><p>6. самый провидец получает фильм целиком</p></>}</div><h2>{timer}</h2><small>после таймера сбор названий откроется автоматически</small></div>
+    return <div className="screen-round-intro"><div className="eyebrow">раунд {roundNo} · объясняем механику</div><h1>{review?'снимаем кино':'угадываем кино'}</h1><div className="screen-round-steps">{review?<><p>1. пишем название + описание несуществующего фильма</p><p>2. рандом выбирает одну идею</p><p>3. животина ищет похожий настоящий фильм</p><p>4. смотрим фрагмент до 10 минут</p><p>5. одному человеку достаётся фильм целиком</p><p>6. после объяснения пишем рецензию одним словом</p></>:<><p>1. пишем название + описание несуществующего фильма</p><p>2. рандом выбирает одну идею</p><p>3. смотрим найденный фрагмент до 10 минут</p><p>4. отвечаем на 3 вопроса о продолжении</p><p>5. животина выбирает того, кто чаще был ближе остальных</p><p>6. самый провидец получает фильм целиком</p></>}</div><small>после отсчёта сбор названий откроется автоматически</small></div>
   }
   if(p.state==='pitch_collecting')return <div className="screen-pitch-progress"><div className="eyebrow">раунд</div><h1>придумайте фильм,<br/>которого не существует</h1><div className="screen-idea-count"><b>{Number(payload.count||0)}</b><span>из {Number(payload.total||0)||'?'}</span></div><p>название + описание в телефоне</p></div>
   if(p.state==='pitch_preview'){const pitch=payload.pitch||{};return <div className="screen-pitch-preview"><div className="eyebrow">идея {Number(payload.index||0)+1}/{Number(payload.total||1)} · id {String(pitch.id||'').slice(0,8)}</div><h1>{String(pitch.title||'без названия')}</h1><p>{String(pitch.description||'')}</p></div>}
   if(p.state==='pitch_locked')return <><div className="eyebrow">идеи собраны</div><h1>смотрим по одной</h1></>
   if(p.state==='pitch_randomizing')return <div className="screen-assignment-random"><div className="eyebrow">рандом</div><h1>выбираю одну идею</h1><div className="random-rabbits">{[0,1,2,3,4,5,6].map(i=><img key={i} src={import.meta.env.BASE_URL+'assets/rabbit-full.webp'} alt="" draggable={false}/>)}</div></div>
   if(p.state==='pitch_selected'){const pitch=payload.pitch||{};return <><div className="eyebrow">выбрано</div><h1>{String(pitch.title||'без названия')}</h1><p>{String(pitch.description||'')}</p></>}
-  if(p.state==='movie_searching')return <><div className="eyebrow">gpt · web search · youtube</div><h1>ищем реальный фильм<br/>в интернете</h1><p>сразу ищем воспроизводимый фрагмент</p></>
+  if(p.state==='movie_searching')return <><div className="eyebrow">животина ищет кино</div><h1>ищем реальный фильм<br/>в интернете</h1><p>сразу ищем воспроизводимый фрагмент</p></>
   if(p.state==='movie_found')return <div className="screen-film-match"><div className="eyebrow">нашли подходящий фильм</div><h1>{String(payload.filmTitle||'фильм')}</h1>{payload.year&&<h2>{String(payload.year)}</h2>}<p>{payload.reason?String(payload.reason):'проверяем совпадение с вашей идеей'}</p><small>скоро покажем фрагмент</small></div>
   if(p.state==='film_intro')return <ProjectorFragment fragment={payload.fragment} title={String(payload.filmTitle||'фильм')}/>
   if(p.state==='one_word_collecting')return <><div className="eyebrow">рецензия одним словом</div><h1>что это за фильм?</h1><ScreenWordWall groups={Array.isArray(payload.wordGroups)?payload.wordGroups:[]} collecting/></>
@@ -1524,8 +1552,9 @@ function screenContent(d:DemoState){
     const block=show.runtime.currentBlock
     if(show.runtime.runStatus==='finished')return <><div className="eyebrow">вечер закончен</div><h1>всё</h1><p>спасибо за вечер</p></>
     if(show.runtime.runStatus==='paused')return <><div className="eyebrow">пауза</div><h1>скоро продолжим</h1></>
-    if(block?.type==='creature_intro')return <><div className="eyebrow">знакомство</div><h1>животина настоящая</h1><p>5 минут</p></>
-    if(block?.type==='break')return <><div className="eyebrow">перерыв</div><h1>30 минут</h1></>
+    if(block?.type==='creature_intro')return <><div className="eyebrow">знакомство</div><h1>животина настоящая</h1><p>сейчас всё объяснит</p></>
+    if(block?.type==='break')return <><div className="eyebrow">перерыв</div><h1>можно отдохнуть</h1></>
+    if(block?.type==='feedback')return <><div className="eyebrow">обратная связь</div><h1>ну как вам?</h1><p>откройте телефоны — животина собирает впечатления</p></>
     if(block?.type==='final_qr')return <div className="screen-final-qr"><div><div className="eyebrow">итог вечера</div><h1>вступить в «творог»</h1><p>наведи камеру</p></div><div className="screen-final-qr-code"><img src={import.meta.env.BASE_URL+'assets/tvorog-qr.svg'} alt="qr-код группы творог"/></div></div>
     if(block?.type==='music_outro')return <><div className="eyebrow">после</div><h1>музыка</h1></>
     if(block?.type==='cinema_rounds')return <><div className="eyebrow">кино</div><h1>{block.title}</h1></>
@@ -1739,7 +1768,7 @@ function Screen(){
   const animalDemo=search.get('demo')==='animals'
   const projectedFlow=!!data.projector&&!['idle','arrival'].includes(data.projector.state)
   const content=animalDemo?<ScreenCreatureDemo data={data}/>:screenContent(data)
-  const timer=animalDemo||projectedFlow?'':showTimerText(data,now)
+  const timer=animalDemo?'':projectedFlow&&data.projector?.state==='round_intro'?(()=>{const ends=new Date(String(data.projector?.payload?.opensAt||'')).getTime();if(!Number.isFinite(ends))return '';const sec=Math.max(0,Math.ceil((ends-now)/1000));return `${Math.floor(sec/60)}:${String(sec%60).padStart(2,'0')}`})():projectedFlow?'':showTimerText(data,now)
   const status=animalDemo?'репетиция животин':projectedFlow?projectorStateLabel(data.projector!.state):data.show?.runtime.currentBlock?.type==='arrival'?'сбор гостей':data.show?.runtime.runStatus!=='idle'?data.show?.runtime.currentBlock?.title:statusLabel(data.event.status)
   const testMode=data.show?.runtime.isTest===true
   return <div className="screen-page">
@@ -1780,4 +1809,4 @@ function TelegramStartRouter({children}:{children:ReactNode}){
 
 function statusLabel(s:EventStatus){const m:Record<EventStatus,string>={DRAFT:'черновик',SALES_OPEN:'регистрация открыта',CHECKIN:'сбор гостей',IDEAS_OPEN:'идеи открыты',IDEAS_LOCKED:'идеи закрыты',TOP3_READY:'три идеи',IDEA_RANDOMIZED:'идея выбрана',MOVIE_SEARCH:'поиск фильма',MOVIE_FINALISTS:'три фильма',MOVIE_SELECTED:'фильм выбран',PREDICTIONS_OPEN:'прогнозы',PREDICTIONS_LOCKED:'прогнозы закрыты',WATCHING:'просмотр',PREDICTIONS_SCORED:'результаты',DISCUSSION:'реакции',FINAL_REVIEW:'финальная фраза',FEEDBACK:'исследование',CLOSED:'закрыто'};return m[s]}
 
-export default function App(){return <HashRouter><TelegramStartRouter><Routes><Route path="/onboarding" element={<Onboarding/>}/><Route path="/birth" element={<BirthPage/>}/><Route path="/rules" element={<RulesPage/>}/><Route element={<Layout/>}><Route path="/" element={<RequireProfile><Home/></RequireProfile>}/><Route path="/profile" element={<RequireProfile><CreatureProfilePage/></RequireProfile>}/><Route path="/mission/:assignmentId" element={<RequireProfile><FilmMissionPage/></RequireProfile>}/><Route path="/dating" element={<RequireProfile><DatingPage/></RequireProfile>}/><Route path="/notifications" element={<RequireProfile><NotificationPage/></RequireProfile>}/><Route path="/event/:slug" element={<RequireProfile><EventPage/></RequireProfile>}/><Route path="/archive" element={<RequireProfile><ArchivePage/></RequireProfile>}/><Route path="/club" element={<Navigate to="/archive" replace/>}/><Route path="/zhivotina" element={<RequireProfile><ZhivotinaPage/></RequireProfile>}/><Route path="/jipitina" element={<Navigate to="/zhivotina" replace/>}/></Route><Route path="/admin/:slug" element={<Admin/>}/><Route path="/admin/event/:slug" element={<Admin/>}/><Route path="/admin/checkin/:slug" element={<AdminCheckinScanner/>}/><Route path="/screen/:slug" element={<Screen/>}/><Route path="/screen/event/:slug" element={<Screen/>}/><Route path="/rehearsal/:slug" element={<RehearsalPage/>}/><Route path="*" element={<Navigate to="/" replace/>}/></Routes></TelegramStartRouter></HashRouter>}
+export default function App(){return <HashRouter><TelegramStartRouter><Routes><Route path="/onboarding" element={<Onboarding/>}/><Route path="/birth" element={<BirthPage/>}/><Route path="/rules" element={<RulesPage/>}/><Route element={<Layout/>}><Route path="/" element={<RequireProfile><Home/></RequireProfile>}/><Route path="/profile" element={<RequireProfile><CreatureProfilePage/></RequireProfile>}/><Route path="/mission/:assignmentId" element={<RequireProfile><FilmMissionPage/></RequireProfile>}/><Route path="/dating" element={<RequireProfile><DatingPage/></RequireProfile>}/><Route path="/notifications" element={<RequireProfile><NotificationPage/></RequireProfile>}/><Route path="/event/:slug" element={<RequireProfile><EventPage/></RequireProfile>}/><Route path="/archive" element={<RequireProfile><ArchivePage/></RequireProfile>}/><Route path="/test" element={<TestRoomHub/>}/><Route path="/club" element={<Navigate to="/archive" replace/>}/><Route path="/zhivotina" element={<RequireProfile><ZhivotinaPage/></RequireProfile>}/><Route path="/jipitina" element={<Navigate to="/zhivotina" replace/>}/></Route><Route path="/admin/:slug" element={<Admin/>}/><Route path="/admin/event/:slug" element={<Admin/>}/><Route path="/admin/checkin/:slug" element={<AdminCheckinScanner/>}/><Route path="/screen/:slug" element={<Screen/>}/><Route path="/screen/event/:slug" element={<Screen/>}/><Route path="/rehearsal/:slug" element={<RehearsalPage/>}/><Route path="*" element={<Navigate to="/" replace/>}/></Routes></TelegramStartRouter></HashRouter>}
