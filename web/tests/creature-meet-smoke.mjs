@@ -28,6 +28,7 @@ async function check(viewport,label){
     })})
     if(body.action==='my-encounter-token')return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({ok:true,token,deepLink:invite,expiresAt:'2026-11-13T13:00:00Z'})})
     if(body.action==='encounter'){
+      if(body.expectedKind!=='rabbit')throw Error('Guest meeting must enforce rabbit-only validation on server')
       encounterCalls++
       if(body.token!==another&&body.token!==photoToken)return route.fulfill({status:403,contentType:'application/json',body:'{"error":"неверный токен"}'})
       return route.fulfill({status:200,contentType:'application/json',body:'{"ok":true,"kind":"rabbit","sharedFavorites":2,"sharedGenres":1}'})
