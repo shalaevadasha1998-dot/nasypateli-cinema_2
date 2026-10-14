@@ -15,6 +15,7 @@ import './manual-director.css'
 import { emptyProfile, stages } from './demo'
 import type { AdminParticipant, CinemaProfile, DemoState, EventStatus, JipitinaMessage, PostFilmReaction, ScreenCreature, TasteVector } from './types'
 import './styles.css'
+import './product-polish.css'
 
 function downloadText(name:string,text:string,type:string){const blob=new Blob([text],{type});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();window.setTimeout(()=>URL.revokeObjectURL(url),0)}
 function csvCell(value:unknown){const raw=Array.isArray(value)?value.join(' | '):value==null?'':typeof value==='object'?JSON.stringify(value):String(value);return `"${raw.replaceAll('\"','\"\"')}"`}
@@ -76,7 +77,7 @@ function usePrivilegedState(kind:'admin'|'screen',slug:string|undefined){
   const roomToken=kind==='admin'?(search.get('room')||''):''
   const queryToken=search.get('token')||roomToken
   const token=queryToken||(typeof sessionStorage!=='undefined'?sessionStorage.getItem(storageKey)||'':'')
-  const tokenlessTestScreen=kind==='screen'&&String(slug||'').startsWith('test-')
+  const tokenlessTestScreen=false // every projector needs an admin-created link
   useEffect(()=>{
     if(!queryToken)return
     sessionStorage.setItem(storageKey,queryToken)
