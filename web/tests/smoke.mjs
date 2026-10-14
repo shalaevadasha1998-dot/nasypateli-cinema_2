@@ -31,6 +31,13 @@ async function caseRun(label,path,viewport,expected){
 }
 try{
   await ready()
+  const audioBase='https://vwteokawtqnoiyzmsldj.supabase.co/storage/v1/object/public/event-media/audio/'
+  const samples=['calm-exactly.mp3','creature-3.wav','energy-talk.mp3']
+  for(const filename of samples){
+    const response=await fetch(audioBase+filename,{method:'HEAD',signal:AbortSignal.timeout(12000)})
+    if(!response.ok)throw Error('Audio file unavailable: '+filename+' HTTP '+response.status)
+    console.log('PASS audio-resource '+filename+' '+response.headers.get('content-type'))
+  }
   browser=await chromium.launch({headless:true,args:['--no-sandbox']})
   await caseRun('projector-arrival','#/screen/test-2026-10-03',{width:1920,height:1080},'.screen-creature-wall')
   await caseRun('mobile-telegram-entry','',{width:390,height:844},'.telegram-gate, .loading-page, .page')
