@@ -1953,7 +1953,7 @@ function Screen(){
       <div className="screen-status"><span>{status}</span>{timer&&<b>{timer}</b>}</div>
     </header>
     {(testMode||(!animalDemo&&!!data.screenMessage))?<div className="screen-notices">
-      {testMode&&<div className="screen-message">тест · {data.show?.runtime.runKey||'репетиция'} · не влияет на вечер 17 октября</div>}
+      {testMode&&<div className="screen-message">тест · {data.show?.runtime.runKey||'репетиция'} · отдельная репетиция</div>}
       {!animalDemo&&data.screenMessage&&<div className="screen-message">{data.screenMessage}</div>}
     </div>:<div className="screen-notices" aria-hidden/>}
     <main className="screen-content" key={`${data.show?.runtime.currentBlockId}:${data.projector?.state}:${data.projector?.payload?.roundNo}:${data.projector?.payload?.pitch?.id}:${data.projector?.payload?.position}`}>{content}</main>

@@ -118,3 +118,6 @@ h1,h2,h3,h4{font-weight:600;line-height:1.08;letter-spacing:-.045em;overflow-wra
 @media(prefers-reduced-motion:reduce){.screen-page .screen-content>*,.projector-image-ready{animation:none!important}}
 /* Remove the dotted print overlay from all screens. */
 body:before,.telegram-gate-noise{display:none!important}
+.screen-audio-unlock button{font:inherit;color:inherit;background:transparent;border:0;border-radius:inherit;padding:0;cursor:pointer}
+.screen-audio-unlock button:disabled{opacity:.55;cursor:wait}
+.screen-audio-unlock p{font-size:13px;line-height:1.4;max-width:480px}
