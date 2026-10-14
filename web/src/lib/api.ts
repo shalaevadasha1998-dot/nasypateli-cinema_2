@@ -245,6 +245,12 @@ function demoAction(action:string,payload:Record<string,unknown>){
       return {ok:true,reply,mode,requestId}
     }
     case 'admin-fix-registration': return mutate(s=>{const fix=String(payload.fix||'');if(fix==='mark_attended'&&['paid','no_show'].includes(s.registration))return {...s,registration:'attended'};if(fix==='undo_attended'&&s.registration==='attended')return {...s,registration:s.event.status==='CLOSED'?'no_show':'paid'};if(fix==='release_hold'&&s.registration==='reserved')return {...s,registration:'cancelled',reservationExpiresAt:undefined,queuePosition:undefined};throw new Error('это действие не подходит текущему статусу')})
+    case 'admin-round-control-mode': {
+      const mode=String(payload.mode||'')
+      if(mode!=='manual'&&mode!=='auto')throw new Error('invalid round control mode')
+      mutate(s=>({...s,show:s.show?{...s.show,runtime:{...s.show.runtime,roundControlMode:mode}}:s.show}))
+      return {ok:true,mode}
+    }
     case 'admin-stage': return mutate(s=>applyStageData(s,payload.status as EventStatus))
     case 'admin-set-mechanic': return mutate(s=>({...s,event:{...s.event,nonexistentFilmEnabled:!!payload.enabled}}))
     case 'admin-event-config': return mutate(s=>({...s,event:{...s.event,startsAt:String(payload.startsAt||s.event.startsAt),ticketPriceRub:Number(payload.ticketPriceRub??s.event.ticketPriceRub),maxMovieRuntimeMin:Number(payload.maxMovieRuntimeMin??s.event.maxMovieRuntimeMin),venueName:String(payload.venueName||''),venueAddress:String(payload.venueAddress||'')}}))
