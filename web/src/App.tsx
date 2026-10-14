@@ -329,8 +329,8 @@ function ParticipantShow({data,reload}:{data:DemoState;reload:(fresh?:boolean)=>
   </section>
 }
 
-function Home(){
-  const {data,error,reload}=useStateData();const nav=useNavigate();const [buyError,setBuyError]=useState('');const [buyNotice,setBuyNotice]=useState('');const [buyBusy,setBuyBusy]=useState(false);const [claimBusy,setClaimBusy]=useState(false);const [claimError,setClaimError]=useState('');const [cancelBusy,setCancelBusy]=useState(false);const [cancelError,setCancelError]=useState('');const [ticketOpen,setTicketOpen]=useState(false);const [encounterMsg,setEncounterMsg]=useState('');const [now,setNow]=useState(()=>Date.now());useEffect(()=>{if(!data?.creature?.born)return;const u=new URL(location.href);const token=u.searchParams.get('encounter');if(!token)return;u.searchParams.delete('encounter');history.replaceState({},'',u.toString());callApi<{kind:string}>('encounter-preview',{token}).then(async preview=>{
+function Home({eventSlug='',privateEvent=false}:{eventSlug?:string;privateEvent?:boolean}={}){
+  const {data,error,reload}=useStateData(true,eventSlug);const nav=useNavigate();const [buyError,setBuyError]=useState('');const [buyNotice,setBuyNotice]=useState('');const [buyBusy,setBuyBusy]=useState(false);const [claimBusy,setClaimBusy]=useState(false);const [claimError,setClaimError]=useState('');const [cancelBusy,setCancelBusy]=useState(false);const [cancelError,setCancelError]=useState('');const [ticketOpen,setTicketOpen]=useState(false);const [encounterMsg,setEncounterMsg]=useState('');const [now,setNow]=useState(()=>Date.now());useEffect(()=>{if(!data?.creature?.born)return;const u=new URL(location.href);const token=u.searchParams.get('encounter');if(!token)return;u.searchParams.delete('encounter');history.replaceState({},'',u.toString());callApi<{kind:string}>('encounter-preview',{token}).then(async preview=>{
     if(preview.kind==='rabbit'){nav('/meet?incoming='+encodeURIComponent(token),{replace:true});return}
     if(preview.kind==='event_checkin'){
       const result=await callApi<any>('encounter',{token})
@@ -348,10 +348,10 @@ function Home(){
   const cancelTicket=async()=>{if(cancelBusy||data.registration!=='paid'||!freeEntry||!salesOpen)return;if(!window.confirm('отменить билет? место освободится для другого человека'))return;try{setCancelBusy(true);setCancelError('');setClaimError('');setBuyNotice('');await callApi('cancel-event-ticket',{slug:e.slug});setTicketOpen(false);setBuyNotice('билет отменён. место освобождено');await reload(true)}catch(err:any){setCancelError(err.message||'не получилось отменить билет')}finally{setCancelBusy(false)}}
     const rebuyStatus=data.registration==='refunded'?'билет возвращён':data.registration==='cancelled'?'билет отменён':''
   return <div className="page home-page cinematic-page">
-    <section className="home-test-shortcut">
+    {privateEvent?<section className="home-test-shortcut"><div><span className="eyebrow">закрытая проверка · реальный билет</span><h2>полноценный прогон вечера</h2><p>это отдельное бесплатное событие с настоящей регистрацией и qr билета. 17 октября остаётся без изменений</p></div><Button kind="secondary" onClick={()=>nav('/admin/'+e.slug)}>пульт ведущего</Button></section>:<section className="home-test-shortcut">
       <div><span className="eyebrow">репетиция · отдельная комната</span><h2>проверить вечер</h2><p>потренируйся с животиной до 17 октября. билеты и ответы настоящего вечера не меняются</p></div>
       <Button onClick={()=>nav('/test')}>войти в тестовую комнату</Button>
-    </section>
+    </section>}
     <section className="home-creature-hero home-creature-static">
       <div className="home-creature-top"><div><div className="eyebrow">ваша животина</div><span className="home-creature-stage-label">ваша личная животина внутри насыпателей в кино</span></div><button className="micro-link" onClick={()=>nav('/profile')}>открыть профиль ↗</button></div>
       <button type="button" className="home-creature-static-art" onClick={()=>nav('/profile')} aria-label="открыть профиль животины"><img src={`${import.meta.env.BASE_URL}assets/rabbit-full.webp`} alt={data.creature.name||'животина'} draggable={false}/></button>
@@ -457,6 +457,8 @@ function NextAction({data,onOpen,onBuy,onClaim,buyBusy=false,claimBusy=false,res
 
 function Profile(){const {data,error}=useStateData();const nav=useNavigate();if(!data)return <Loading error={error}/>;return <div className="page"><div className="row spread profile-head"><div><div className="eyebrow">ваш профиль</div><h2>{data.profile.displayName}</h2></div><Button kind="secondary" onClick={()=>nav('/onboarding?edit=1')}>изменить</Button></div><ProfilePreview profile={data.profile}/><div className="stats-grid"><Card><strong>{data.profileStats.eventsAttended}</strong><span>вечеров</span></Card><Card><strong>{data.profileStats.predictionPoints}</strong><span>очков</span></Card><Card><strong>{data.profileStats.ideasSubmitted}</strong><span>идей</span></Card></div><Card><div className="section-title">ваш киноднк</div><TasteSummary taste={data.profile.taste}/><Button kind="secondary" onClick={()=>nav('/zhivotina?mode=taste')}>что {data.creature.name||'животина'} думает о моём вкусе</Button></Card></div>}
 function TasteSummary({taste}:{taste:TasteVector}){const rows:[string,number][]=[['странность',taste.weirdness],['атмосфера',taste.atmosphere],['эксперимент',taste.experimental],['медленность',taste.slowness],['сюрреализм',taste.surrealism]];return <div>{rows.map(([k,v])=><div className="taste-line" key={k}><span>{k}</span><div><i style={{width:`${v}%`}}/></div><b>{v}</b></div>)}</div>}
+
+function PrivateLiveEvent(){const {slug}=useParams();return <Home eventSlug={slug||''} privateEvent/>}
 
 function TestRoomHub(){
   const nav=useNavigate()
@@ -1582,12 +1584,38 @@ function projectorContent(d:DemoState){
   if(!p||['idle','arrival'].includes(p.state))return null
   const payload:any=p.payload||{}
   if(p.state==='round_intro'){
-    const roundNo=Number(payload.roundNo||0)
+    const roundNo=Math.max(1,Number(payload.roundNo||1))
     const review=roundNo%2===1
-    const openAt=new Date(String(payload.opensAt||0)).getTime()
-    const left=Number.isFinite(openAt)?Math.max(0,Math.ceil((openAt-Date.now())/1000)):300
-    const timer=`${Math.floor(left/60)}:${String(left%60).padStart(2,'0')}`
-    return <div className="screen-round-intro"><div className="eyebrow">раунд {roundNo} · объясняем механику</div><h1>{review?'снимаем кино':'угадываем кино'}</h1><div className="screen-round-steps">{review?<><p>1. пишем название + описание несуществующего фильма</p><p>2. рандом выбирает одну идею</p><p>3. животина ищет похожий настоящий фильм</p><p>4. смотрим фрагмент до 10 минут</p><p>5. одному человеку достаётся фильм целиком</p><p>6. после объяснения пишем рецензию одним словом</p></>:<><p>1. пишем название + описание несуществующего фильма</p><p>2. рандом выбирает одну идею</p><p>3. смотрим найденный фрагмент до 10 минут</p><p>4. отвечаем на 3 вопроса о продолжении</p><p>5. животина выбирает того, кто чаще был ближе остальных</p><p>6. самый провидец получает фильм целиком</p></>}</div><small>после отсчёта сбор названий откроется автоматически</small></div>
+    const steps=review?[
+      'придумай фильм, которого нет',
+      'животина выберет одну идею',
+      'найдём похожий настоящий фильм',
+      'посмотрим фрагмент до 10 минут',
+      'одна животина заберёт фильм целиком',
+      'соберём рецензию одним словом'
+    ]:[
+      'придумай фильм, которого нет',
+      'рандом выберет одну идею',
+      'посмотрим фрагмент до 10 минут',
+      'ответь на 3 вопроса о продолжении',
+      'животина сравнит ваши прогнозы',
+      'самый провидец получит фильм целиком'
+    ]
+    return <section className={`screen-round-intro cinematic-round ${review?'cinematic-round--direct':'cinematic-round--guess'}`} key={`intro-${roundNo}-${String(p.updatedAt||'')}`}>
+      <div className="cinematic-round-top"><span>насыпатели / формат кино</span><div className="cinematic-round-count">раунд <b>{String(roundNo).padStart(2,'0')}</b></div><span className="cinematic-round-current">{review?'режиссёрский':'режим провидца'}</span></div>
+      <div className="cinematic-round-body">
+        <div className="cinematic-round-title">
+          <div className="cinematic-round-kicker"><i aria-hidden="true"/> новая механика</div>
+          <h1><span>{review?'снимаем':'угадываем'}</span><span>кино<span className="cinematic-round-period">.</span></span></h1>
+          <p>{review?'одна выдумка — один настоящий фильм — одна животина':'никто не знает, что произойдёт дальше. даже животина'}</p>
+          <div className="cinematic-round-glyph" aria-hidden="true">{review?'✳':'◎'}</div>
+        </div>
+        <ol className="screen-round-steps cinematic-round-steps" aria-label="правила раунда">
+          {steps.map((step,i)=><li key={step} style={{animationDelay:`${0.58+i*0.16}s`}}><span className="cinematic-step-number">{String(i+1).padStart(2,'0')}</span><span className="cinematic-step-label">{step}</span></li>)}
+        </ol>
+      </div>
+      <div className="cinematic-round-foot"><span>правила сначала. действие — после отсчёта</span><span>сбор названий откроется автоматически <b aria-hidden="true">↗</b></span></div>
+    </section>
   }
   if(p.state==='pitch_collecting')return <div className="screen-pitch-progress"><div className="eyebrow">раунд</div><h1>придумайте фильм,<br/>которого не существует</h1><div className="screen-idea-count"><b>{Number(payload.count||0)}</b><span>из {Number(payload.total||0)||'?'}</span></div><p>название + описание в телефоне</p></div>
   if(p.state==='pitch_preview'){const pitch=payload.pitch||{};return <div className="screen-pitch-preview"><div className="eyebrow">идея {Number(payload.index||0)+1}/{Number(payload.total||1)} · id {String(pitch.id||'').slice(0,8)}</div><h1>{String(pitch.title||'без названия')}</h1><p>{String(pitch.description||'')}</p></div>}
@@ -1895,4 +1923,4 @@ function TelegramStartRouter({children}:{children:ReactNode}){
 
 function statusLabel(s:EventStatus){const m:Record<EventStatus,string>={DRAFT:'черновик',SALES_OPEN:'регистрация открыта',CHECKIN:'сбор гостей',IDEAS_OPEN:'идеи открыты',IDEAS_LOCKED:'идеи закрыты',TOP3_READY:'три идеи',IDEA_RANDOMIZED:'идея выбрана',MOVIE_SEARCH:'поиск фильма',MOVIE_FINALISTS:'три фильма',MOVIE_SELECTED:'фильм выбран',PREDICTIONS_OPEN:'прогнозы',PREDICTIONS_LOCKED:'прогнозы закрыты',WATCHING:'просмотр',PREDICTIONS_SCORED:'результаты',DISCUSSION:'реакции',FINAL_REVIEW:'финальная фраза',FEEDBACK:'исследование',CLOSED:'закрыто'};return m[s]}
 
-export default function App(){return <HashRouter><TelegramStartRouter><Routes><Route path="/onboarding" element={<Onboarding/>}/><Route path="/birth" element={<BirthPage/>}/><Route path="/rules" element={<RulesPage/>}/><Route element={<Layout/>}><Route path="/" element={<RequireProfile><Home/></RequireProfile>}/><Route path="/profile" element={<RequireProfile><CreatureProfilePage/></RequireProfile>}/><Route path="/mission/:assignmentId" element={<RequireProfile><FilmMissionPage/></RequireProfile>}/><Route path="/dating" element={<RequireProfile><DatingPage/></RequireProfile>}/><Route path="/meet" element={<RequireProfile><EncounterPage/></RequireProfile>}/><Route path="/notifications" element={<RequireProfile><NotificationPage/></RequireProfile>}/><Route path="/event/:slug" element={<RequireProfile><EventPage/></RequireProfile>}/><Route path="/archive" element={<RequireProfile><ArchivePage/></RequireProfile>}/><Route path="/test" element={<TestRoomHub/>}/><Route path="/club" element={<Navigate to="/archive" replace/>}/><Route path="/zhivotina" element={<RequireProfile><ZhivotinaPage/></RequireProfile>}/><Route path="/jipitina" element={<Navigate to="/zhivotina" replace/>}/></Route><Route path="/admin/:slug" element={<Admin/>}/><Route path="/admin/event/:slug" element={<Admin/>}/><Route path="/admin/checkin/:slug" element={<AdminCheckinScanner/>}/><Route path="/screen/:slug" element={<Screen/>}/><Route path="/screen/event/:slug" element={<Screen/>}/><Route path="/rehearsal/:slug" element={<RehearsalPage/>}/><Route path="*" element={<Navigate to="/" replace/>}/></Routes></TelegramStartRouter></HashRouter>}
+export default function App(){return <HashRouter><TelegramStartRouter><Routes><Route path="/onboarding" element={<Onboarding/>}/><Route path="/birth" element={<BirthPage/>}/><Route path="/rules" element={<RulesPage/>}/><Route element={<Layout/>}><Route path="/" element={<RequireProfile><Home/></RequireProfile>}/><Route path="/profile" element={<RequireProfile><CreatureProfilePage/></RequireProfile>}/><Route path="/mission/:assignmentId" element={<RequireProfile><FilmMissionPage/></RequireProfile>}/><Route path="/dating" element={<RequireProfile><DatingPage/></RequireProfile>}/><Route path="/meet" element={<RequireProfile><EncounterPage/></RequireProfile>}/><Route path="/private/:slug" element={<RequireProfile><PrivateLiveEvent/></RequireProfile>}/><Route path="/notifications" element={<RequireProfile><NotificationPage/></RequireProfile>}/><Route path="/event/:slug" element={<RequireProfile><EventPage/></RequireProfile>}/><Route path="/archive" element={<RequireProfile><ArchivePage/></RequireProfile>}/><Route path="/test" element={<TestRoomHub/>}/><Route path="/club" element={<Navigate to="/archive" replace/>}/><Route path="/zhivotina" element={<RequireProfile><ZhivotinaPage/></RequireProfile>}/><Route path="/jipitina" element={<Navigate to="/zhivotina" replace/>}/></Route><Route path="/admin/:slug" element={<Admin/>}/><Route path="/admin/event/:slug" element={<Admin/>}/><Route path="/admin/checkin/:slug" element={<AdminCheckinScanner/>}/><Route path="/screen/:slug" element={<Screen/>}/><Route path="/screen/event/:slug" element={<Screen/>}/><Route path="/rehearsal/:slug" element={<RehearsalPage/>}/><Route path="*" element={<Navigate to="/" replace/>}/></Routes></TelegramStartRouter></HashRouter>}
