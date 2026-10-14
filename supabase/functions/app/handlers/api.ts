@@ -380,6 +380,7 @@ function audioStateForBlock(block:any,now=new Date().toISOString()){
 const ROUND_MECHANIC_MS=5*60_000
 
 async function maybeAutoOpenRoundPitches(db:any,event:any){
+  if(event.settings?.round_manual_mode===true||(event.settings?.private_rehearsal===true&&event.settings?.round_manual_mode!==false))return false
   try{
     const runtime=await db.from('event_runtime').select('run_status,current_round_id').eq('event_id',event.id).maybeSingle()
     if(runtime.error)throw runtime.error
@@ -427,6 +428,7 @@ async function maybeAutoAdvanceShow(db:any,event:any){
   }
   try{
     await maybeAutoOpenRoundPitches(db,event)
+    if(event.settings?.round_manual_mode===true||(event.settings?.private_rehearsal===true&&event.settings?.round_manual_mode!==false))return false
     const [programR,runtimeR]=await Promise.all([
       db.from('event_programs').select('config').eq('event_id',event.id).maybeSingle(),
       db.from('event_runtime').select('*').eq('event_id',event.id).maybeSingle()
@@ -3506,6 +3508,18 @@ export async function handleApi(req:Request){
         if(log.error)console.error('show runtime log failed',log.error)
         return json({ok:true,eventStatus:lifecycleStatus,show:await buildShowState(db,{...event,status:lifecycleStatus})})
       })
+    }
+
+    if(action==='admin-round-control-mode'){
+      // Persist the director's choice per event: reloads and multiple admin
+      // devices must not silently turn the five-minute auto timers back on.
+      const mode=String(body.mode||'')
+      if(mode!=='manual'&&mode!=='auto')return err('Выберите ручной или автоматический режим',422)
+      const settings={...(event.settings||{}),round_manual_mode:mode==='manual'}
+      const saved=await db.from('events').update({settings}).eq('id',event.id).select('id').maybeSingle()
+      if(saved.error)throw saved.error
+      if(!saved.data)return err('Не удалось сохранить режим',409)
+      return json({ok:true,mode})
     }
 
     if(action==='admin-round-start'){
