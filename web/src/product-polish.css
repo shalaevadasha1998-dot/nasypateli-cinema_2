@@ -1,7 +1,7 @@
 /* product polish: a single guest navigation; admin features live in admin only */
 html,body,#root{height:auto;min-height:100%;max-width:100%;overflow-x:clip!important}
-html,body{overflow-y:auto!important;-webkit-overflow-scrolling:touch}
-body{overscroll-behavior-y:auto!important;touch-action:pan-y pinch-zoom}
+html:not(.chat-page-open),body:not(.chat-page-open){overflow-y:auto!important;-webkit-overflow-scrolling:touch}
+body:not(.chat-page-open){overscroll-behavior-y:auto!important}
 .app-shell{min-height:100dvh!important;width:100%;max-width:100%;overflow:visible!important;padding-bottom:calc(94px + env(safe-area-inset-bottom))!important}
 .app-shell>main{min-width:0;width:100%;height:auto;min-height:0;overflow:visible}
 .app-shell .page{min-width:0;max-width:min(100%,720px);padding-bottom:calc(105px + env(safe-area-inset-bottom))}
