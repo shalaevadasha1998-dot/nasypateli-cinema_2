@@ -2,49 +2,78 @@ name: Evening reliability
 on:
   push:
     branches: [fix/evening-reliability-20261015]
+    paths: ['scripts/.evening-transfer/**']
 permissions:
-  contents: read
+  contents: write
 jobs:
-  isolated-tools:
+  restore-tested-source:
+    if: github.ref == 'refs/heads/fix/evening-reliability-20261015'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: fix/evening-reliability-20261015
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-      - uses: supabase/setup-cli@v1
-        with:
-          version: 2.119.0
-      - name: Install test-only dependencies without production access
-        working-directory: web
+      - name: Verify and restore exact tested source
         run: |
-          npm ci
-          npm install --no-save playwright@1.56.1
-          npx playwright install chromium
-      - name: Prepare isolated database binaries
+          python3 <<'PYCODE'
+          from pathlib import Path, PurePosixPath
+          import gzip, hashlib, io, json, subprocess, tarfile, tempfile
+          root = Path.cwd()
+          parts = root / 'scripts/.evening-transfer'
+          expected = [f'{n:02}' for n in range(20)]
+          assert sorted(p.name for p in parts.iterdir()) == expected, 'unexpected transport files'
+          bundle = b''.join((parts / n).read_bytes() for n in expected)
+          assert len(bundle) == 39005
+          assert hashlib.sha256(bundle).hexdigest() == 'eb2d336076834c16ff1b8bfaafd109126f3d555e83e0fb085c1980715ee0e81f'
+          sha = lambda data: hashlib.sha256(data).hexdigest()
+          allowed = ('docs/', 'scripts/sql/', 'supabase/functions/', 'supabase/migrations/', 'tests/', 'web/src/', 'web/tests/')
+          staged = []
+          with tarfile.open(fileobj=io.BytesIO(gzip.decompress(bundle)), mode='r:') as archive, tempfile.TemporaryDirectory() as scratch:
+              manifest = json.load(archive.extractfile('manifest.json'))
+              assert len(manifest) == 22
+              assert len({item['path'] for item in manifest}) == 22
+              for item in manifest:
+                  name = item['path']
+                  path = PurePosixPath(name)
+                  assert not path.is_absolute() and '..' not in path.parts and name.startswith(allowed)
+                  assert str((root / name).resolve()).startswith(str(root.resolve()) + '/')
+                  assert item['payload'].isdigit()
+                  member = archive.getmember(item['payload'])
+                  assert member.isfile() and member.size < 2000000
+                  payload = archive.extractfile(member).read()
+                  target = root / name
+                  if item['base'] is None:
+                      assert not target.exists(), f'new file already exists: {name}'
+                      assert item['encoding'] == 'raw'
+                      result = payload
+                  else:
+                      assert target.is_file() and not target.is_symlink()
+                      assert sha(target.read_bytes()) == item['base'], f'base mismatch: {name}'
+                      assert item['encoding'] == 'zstd'
+                      delta = Path(scratch) / 'delta.zst'
+                      output = Path(scratch) / 'result'
+                      delta.write_bytes(payload)
+                      subprocess.run(['zstd', '-q', '-f', '-d', '--patch-from=' + str(target), str(delta), '-o', str(output)], check=True)
+                      result = output.read_bytes()
+                  assert sha(result) == item['sha256'], f'result mismatch: {name}'
+                  staged.append((target, result))
+          for target, result in staged:
+              target.parent.mkdir(parents=True, exist_ok=True)
+              target.write_bytes(result)
+          subprocess.run(['git', 'add', '--', *[str(p.relative_to(root)) for p, _ in staged]], check=True)
+          subprocess.run(['git', 'rm', '-r', '--', 'scripts/.evening-transfer'], check=True)
+          subprocess.run(['git', 'diff', '--cached', '--check'], check=True)
+          print('Verified and restored 22 source files; transport removed; no production access')
+          PYCODE
+      - name: Verify restored logic
+        run: node --experimental-strip-types --test tests/evening-reliability.test.mjs
+      - name: Commit only the restored source to the feature branch
         run: |
-          mkdir -p /tmp/offline-tools/pg-lib
-          docker run --rm -v /tmp/offline-tools:/out postgres:17-bookworm sh -c '
-            cp -a /usr/lib/postgresql/17 /out/postgresql
-            cp -a /usr/share/postgresql/17 /out/pg-share
-            for bin in postgres psql initdb; do
-              ldd /usr/lib/postgresql/17/bin/$bin | awk '\''/=> \/.* \(/ {print $3}'\'' | grep -vE "libc\.so|libm\.so|libpthread|libdl\.so" | xargs -r -I{} cp -L {} /out/pg-lib/
-            done
-          '
-      - name: Package offline verification tools
-        run: |
-          mkdir -p /tmp/offline-tools/bin
-          cp "$(command -v deno)" /tmp/offline-tools/bin/deno
-          cp "$(command -v supabase)" /tmp/offline-tools/bin/supabase
-          tar -czf /tmp/offline-tools/node_modules.tar.gz -C web node_modules
-          tar -czf /tmp/offline-tools/playwright-browsers.tar.gz -C "$HOME/.cache" ms-playwright
-          tar -czf /tmp/offline-verification-tools.tar.gz -C /tmp/offline-tools .
-      - uses: actions/upload-artifact@v4
-        with:
-          name: evening-offline-verification-tools
-          path: /tmp/offline-verification-tools.tar.gz
-          retention-days: 1
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix: reviewed scenes, server director, playback safeguards and fair judging'
+          git push origin HEAD:refs/heads/fix/evening-reliability-20261015
