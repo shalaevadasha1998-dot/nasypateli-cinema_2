@@ -1,3 +1,6 @@
+import { ConnectionStatus } from './components/ConnectionStatus'
+import { ApiError, resetBootstrapRetry } from './lib/api'
+import { rememberReturnPath, pendingReturnPath, consumeReturnPath } from './lib/returnPath'
 import { telegramStartPath } from './lib/testInvite'
 import { useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
@@ -71,33 +74,36 @@ function useStateData(enabled=true,eventSlug=''){
 
 function usePrivilegedState(kind:'admin'|'screen',slug:string|undefined){
   const [search,setSearch]=useSearchParams();const [data,setData]=useState<DemoState|null>(null);const [error,setError]=useState('')
-  const inFlight=useRef(false)
+  const inFlight=useRef('')
+  const [loadedKey,setLoadedKey]=useState('')
   const retryAt=useRef(0)
   const failures=useRef(0)
   const storageKey=`nasypateli-${kind}-token`
   const roomToken=kind==='admin'?(search.get('room')||''):''
   const queryToken=search.get('token')||roomToken
-  const token=queryToken||(typeof sessionStorage!=='undefined'?sessionStorage.getItem(storageKey)||'':'')
+  const token=queryToken||(typeof sessionStorage!=='undefined'?(()=>{try{return sessionStorage.getItem(storageKey)||''}catch{return ''}})():'')
+  const stateKey=kind+':'+slug+':'+token
+  const activeKey=useRef(stateKey);activeKey.current=stateKey
   const tokenlessTestScreen=false // every projector needs an admin-created link
   useEffect(()=>{
     if(!queryToken)return
-    sessionStorage.setItem(storageKey,queryToken)
+    try{sessionStorage.setItem(storageKey,queryToken)}catch{return}
     const next=new URLSearchParams(search)
     next.delete('token')
     if(kind==='admin')next.delete('room')
     setSearch(next,{replace:true})
   },[queryToken,storageKey,kind])
   const reload=(automatic=false)=>{
-    if(inFlight.current||(automatic&&(document.visibilityState!=='visible'||Date.now()<retryAt.current)))return Promise.resolve()
+    if(inFlight.current===stateKey||(automatic&&(document.visibilityState!=='visible'||Date.now()<retryAt.current)))return Promise.resolve()
     if(!slug){setError('не указано событие');return Promise.resolve()}
     if(kind==='screen'&&!token&&!demoMode&&!tokenlessTestScreen){setError('нужен закрытый ключ экрана');return Promise.resolve()}
     const action=kind==='admin'?'admin-bootstrap':'screen-bootstrap'
     const fn=kind==='admin'?callAdminApi:callScreenApi
-    inFlight.current=true
+    inFlight.current=stateKey
     return fn<DemoState>(action,{slug},token)
-      .then(d=>{setData(d);setError('');failures.current=0;retryAt.current=0})
-      .catch(e=>{setError(e.message);failures.current++;retryAt.current=Date.now()+Math.min(60000,5000*2**Math.min(failures.current,4))})
-      .finally(()=>{inFlight.current=false})
+      .then(d=>{if(activeKey.current!==stateKey)return;setData(d);setLoadedKey(stateKey);setError('');failures.current=0;retryAt.current=0})
+      .catch(e=>{if(activeKey.current!==stateKey)return;if(e instanceof ApiError&&[401,403].includes(e.status))setData(null);setError(e.message);failures.current++;retryAt.current=Date.now()+Math.min(60000,5000*2**Math.min(failures.current,4))})
+      .finally(()=>{if(inFlight.current===stateKey)inFlight.current=''})
   }
   useEffect(()=>{
     let dead=false
@@ -117,7 +123,7 @@ function usePrivilegedState(kind:'admin'|'screen',slug:string|undefined){
     })
     return()=>{dead=true;if(timer!==undefined)window.clearTimeout(timer)}
   },[kind,slug,token])
-  return {data,error,reload,token}
+  return {data:loadedKey===stateKey?data:null,error,reload,token}
 }
 
 function RabbitMain({className=''}:{className?:string}){
@@ -147,7 +153,7 @@ function Loading({error}:{error?:string}){
   return <div className="page loading-page"><div className="loading-stage">
     <RabbitLoop kind="splash" className="loading-rabbit"/>
     <div className="loading-brand">насыпатели <span>в кино</span></div>
-    {error?<><div className="loading-error">не загрузилось</div><p>{error}</p><Button kind="secondary" onClick={()=>location.reload()}>попробовать ещё раз</Button></>:<><div className="loading-track"><i/></div><div className="loading-words" aria-live="polite"><span>собираем кинопрофиль</span><span>будим животину</span><span>открываем клуб</span></div></>}
+    {error?<><div className="loading-error" role="alert">не загрузилось</div><p>{error}</p><Button kind="secondary" onClick={()=>{resetBootstrapRetry();window.location.reload()}}>попробовать ещё раз</Button></>:<><div className="loading-track"><i/></div><div className="loading-words" aria-live="polite"><span>собираем кинопрофиль</span><span>будим животину</span><span>открываем клуб</span></div></>}
   </div></div>
 }
 function parseLines(v:string){return v.split(/\n+/).map(x=>x.trim()).filter(Boolean)}
@@ -176,7 +182,7 @@ function Onboarding(){
   const [listDrafts,setListDrafts]=useState({favoriteFilms:'',favoriteGenres:'',avoid:''})
   useEffect(()=>{if(data&&!form){const tg=telegramUser();const p=data.profile||emptyProfile;const initial={...emptyProfile,...p,displayName:p.displayName||tg?.first_name||'',telegramPhotoUrl:p.telegramPhotoUrl||tg?.photo_url||'',taste:{...emptyProfile.taste,...(p.taste||{})},favoriteFilms:Array.isArray(p.favoriteFilms)?p.favoriteFilms:[],favoriteGenres:Array.isArray(p.favoriteGenres)?p.favoriteGenres:[],avoid:Array.isArray(p.avoid)?p.avoid:[],watchReasons:Array.isArray(p.watchReasons)?p.watchReasons:[],clubWants:Array.isArray(p.clubWants)?p.clubWants:[]};setForm(initial);setListDrafts({favoriteFilms:initial.favoriteFilms.join('\n'),favoriteGenres:initial.favoriteGenres.join(', '),avoid:initial.avoid.join('\n')});setStep(editing?1:Math.max(0,Math.min(7,p.onboardingStep||0))) }},[data,form,editing])
   if(!data||!form)return <Loading error={error}/>
-  if(profileIsComplete(data)&&!editing)return <Navigate to="/" replace/>
+  if(profileIsComplete(data)&&!editing)return <Navigate to={data.creature.born?pendingReturnPath():"/birth"} replace/>
   const patch=(p:Partial<CinemaProfile>)=>{setMessage('');setForm(prev=>prev?{...prev,...p}:prev)}
   const patchList=(key:keyof typeof listDrafts,value:string)=>{setMessage('');setListDrafts(prev=>({...prev,[key]:value}));if(key==='favoriteFilms')patch({favoriteFilms:parseLines(value)});else if(key==='favoriteGenres')patch({favoriteGenres:parseCommaList(value)});else patch({avoid:parseLines(value)})}
   const validationMessage=()=>{
@@ -214,7 +220,18 @@ function TasteSliders({value,onChange}:{value:TasteVector;onChange:(v:TasteVecto
 function ProfilePreview({profile}:{profile:CinemaProfile}){return <Card className="profile-preview"><div className="profile-person">{profile.telegramPhotoUrl?<img src={profile.telegramPhotoUrl} alt=""/>:<div className="avatar-fallback">{profile.displayName.slice(0,1).toLowerCase()}</div>}<div><h3>{profile.displayName||'участник'}</h3><p>{profile.city}. 18+</p></div></div><p>{profile.about}</p><div className="tag-row">{profile.favoriteFilms.slice(0,4).map(x=><span key={x}>{x}</span>)}</div></Card>}
 
 function profileIsComplete(data:DemoState){return data.onboardingComplete===true||data.profile?.completed===true}
-function RequireProfile({children}:{children:ReactNode}){const {data,error}=useStateData();if(!data)return <Loading error={error}/>;if(!profileIsComplete(data))return <Navigate to="/onboarding" replace/>;if(data.creature&&!data.creature.born)return <Navigate to="/birth" replace/>;return <>{children}</>}
+function RequireProfile({children}:{children:ReactNode}){
+  const {data,error}=useStateData();const location=useLocation()
+  useEffect(()=>{
+    if(!data)return
+    if(!profileIsComplete(data)||!data.creature.born)rememberReturnPath(location.pathname)
+    else if(pendingReturnPath()===location.pathname)consumeReturnPath()
+  },[data,location.pathname])
+  if(!data)return <Loading error={error}/>
+  if(!profileIsComplete(data))return <Navigate to="/onboarding" replace/>
+  if(data.creature&&!data.creature.born)return <Navigate to="/birth" replace/>
+  return <>{children}</>
+}
 
 function answerText(value:any){if(value===null||value===undefined)return '';if(typeof value==='string'||typeof value==='number'||typeof value==='boolean')return String(value);if(typeof value==='object'&&'label' in value)return String(value.label);try{return JSON.stringify(value)}catch{return String(value)}}
 
@@ -345,6 +362,7 @@ function Home({eventSlug=''}:{eventSlug?:string}={}){
   }).catch(e=>setEncounterMsg(e.message||'не получилось прочитать qr-код'))},[data?.creature?.born]);useEffect(()=>{if(!['reserved','waitlist'].includes(data?.registration||''))return;const timer=window.setInterval(()=>{if(document.visibilityState==='visible')void reload(true)},10000);return()=>window.clearInterval(timer)},[data?.registration]);useEffect(()=>{if(data?.registration!=='reserved'||!data.reservationExpiresAt)return;setNow(Date.now());const tick=window.setInterval(()=>setNow(Date.now()),1000);const remaining=Math.max(0,new Date(data.reservationExpiresAt).getTime()-Date.now());const expiry=window.setTimeout(()=>void reload(true),remaining+250);return()=>{window.clearInterval(tick);window.clearTimeout(expiry)}},[data?.registration,data?.reservationExpiresAt]);useEffect(()=>{if(!data)return;if(['paid','attended'].includes(data.registration)){setBuyNotice('');setBuyError('');return}if(data.registration==='reserved'){setBuyNotice(prev=>prev.includes('листе ожидания')?'':prev)}if(data.registration==='none'){setBuyNotice(prev=>prev.includes('место пока')||prev.includes('резерв')?'резерв истёк. можно оформить билет заново':prev);setBuyError(prev=>prev.includes('место пока')?'резерв истёк. попробуйте оформить билет заново':prev)}},[data?.registration]);
 
   if(!data)return <Loading error={error}/>
+  if(!data.event.slug)return <div className="page home-page"><Card><div className="eyebrow">насыпатели в кино</div><h1>готовим следующий вечер</h1><p>дата и регистрация появятся здесь. пока можно заглянуть к своей животине или в архив</p><Button onClick={()=>nav('/profile')}>моя животина</Button><Button kind="secondary" onClick={()=>nav('/archive')}>прошедшие вечера</Button></Card></div>
   const e=data.event;const held=Number(e.held||0);const left=Math.max(0,e.capacity-e.sold-held);const salesOpen=e.status==='SALES_OPEN';const freeEntry=Number(e.ticketPriceRub)===0;const freeClaimOpen=freeEntry&&['SALES_OPEN','CHECKIN'].includes(e.status);const checkoutAvailable=salesOpen&&e.paymentsAvailable;const reserveSeconds=data.registration==='reserved'&&data.reservationExpiresAt?Math.max(0,Math.ceil((new Date(data.reservationExpiresAt).getTime()-now)/1000)):0;const reserveCountdown=data.registration==='reserved'&&data.reservationExpiresAt?`${Math.floor(reserveSeconds/60)}:${String(reserveSeconds%60).padStart(2,'0')}`:''
   const buy=async()=>{if(buyBusy||!checkoutAvailable)return;try{setBuyBusy(true);setBuyError('');setBuyNotice('');const result:any=await buyTicket(e.slug);if(result?.waitlist){setBuyNotice(result.queuePosition?'вы в листе ожидания. позиция '+result.queuePosition:'вы в листе ожидания');await reload(true);return}const status=String(result?.invoiceStatus||'');if(status==='cancelled'){const latest=await reload(true);setBuyNotice(latest?.registration==='reserved'?'оплата отменена. место пока остаётся в резерве, можно продолжить оплату':'оплата отменена. резерв уже истёк, можно оформить билет заново');return}if(status==='failed'){const latest=await reload(true);setBuyError(latest?.registration==='reserved'?'Telegram не завершил оплату. место пока остаётся в резерве, попробуйте ещё раз':'Telegram не завершил оплату. резерв уже истёк, оформите билет заново');return}if(status==='paid'){setBuyNotice('оплата прошла. подтверждаем билет…');for(const delay of [0,700,1400,2500]){if(delay)await new Promise(resolve=>window.setTimeout(resolve,delay));const latest=await reload(true);if(latest&&['paid','attended'].includes(latest.registration)){setBuyNotice('');return}}setBuyNotice('оплата прошла в Telegram. билет подтверждается, статус обновится автоматически');return}await reload(true)}catch(err:any){setBuyError(err.message||'не получилось открыть оплату')}finally{setBuyBusy(false)}}
   const claimTicket=async()=>{if(claimBusy||!freeClaimOpen)return;try{setClaimBusy(true);setClaimError('');setCancelError('');setBuyNotice('');const result:any=await callApi('claim-event-ticket',{slug:e.slug});if(result?.status==='waitlist'){setBuyNotice(result.queuePosition?`места закончились. вы в листе ожидания. позиция ${result.queuePosition}`:'места закончились. вы в листе ожидания');await reload(true);return}setTicketOpen(true);await reload(true)}catch(err:any){setClaimError(err.message||'не получилось получить билет')}finally{setClaimBusy(false)}}
@@ -529,7 +547,7 @@ function RehearsalPage(){
       <><h2>проверяем билет</h2><p>статус: {data.registration}. обнови данные или обратись к организатору</p><Button kind="secondary" onClick={()=>void reload(true)}>обновить билет</Button></>}
       {claimError&&<p className="form-error" role="alert">{claimError}</p>}
     </section>
-    <Card><div className="eyebrow">тестовый вечер</div><h2>{data.profile.displayName||'ваш личный профиль'}</h2><p>ваши ответы сохраняются отдельно. тест не меняет билеты и голоса на 17 октября.</p>
+    <Card><div className="eyebrow">тестовый вечер</div><h2>{data.profile.displayName||'ваш личный профиль'}</h2><p>ваши ответы сохраняются отдельно. тест не меняет билеты и голоса настоящего события.</p>
     {data.show?.runtime.runStatus==='idle'&&<div className="rehearsal-waiting"><p>ведущий ещё не запустил репетицию. открой пульт, чтобы начать вечер</p>{data.isAdmin&&<Button kind="secondary" onClick={()=>nav('/admin/'+slug)}>открыть пульт ведущего</Button>}</div>}
     </Card>
     {data.show?.runtime.currentBlock?.type==='cinema_rounds'
@@ -777,7 +795,7 @@ function ShowControl({data,busy,run}:{data:DemoState;busy:boolean;run:(action:st
   const cinemaRoundActive=block?.type==='cinema_rounds'&&show.currentRound?.status==='active'
   const activeParticipant=rows.find(x=>x.status==='attended')||rows[0]
   const creatureName=uiLower(activeParticipant?.creatureName||'животина')
-  const testRoom=runtime.isTest===true||String(data.event.slug||'').startsWith('test-')
+  const testRoom=String(data.event.slug||'').startsWith('test-')
   const canStart=screenReady||String(data.event.slug||'').startsWith('test-')
   const navigateBlock=(op:'back'|'next',label:string)=>{
     if(cinemaRoundActive&&!window.confirm(`идёт кинораунд. перейти ${label}? текущий раунд завершится, несохранённые ответы могут быть потеряны`))return
@@ -1453,7 +1471,8 @@ function Admin(){
   return <div className="admin-page">
     <nav className="admin-quick-nav" aria-label="разделы пульта"><button type="button" onClick={()=>document.getElementById('show-control')?.scrollIntoView({behavior:'smooth'})}>эфир</button><button type="button" onClick={()=>nav('/admin/checkin/'+data.event.slug)}>сканер qr</button><button type="button" onClick={()=>nav('/test/'+data.event.slug.replace(/^test-/,''))}>репетиция</button><button type="button" onClick={()=>document.getElementById('admin-projector')?.scrollIntoView({behavior:'smooth'})}>проектор</button><button type="button" onClick={()=>document.getElementById('admin-preflight')?.scrollIntoView({behavior:'smooth'})}>проверка</button><button type="button" onClick={()=>{const el=document.getElementById('admin-feedback') as HTMLDetailsElement|null;if(el){el.open=true;el.scrollIntoView({behavior:'smooth'})}}}>отзывы</button><button type="button" onClick={()=>{const el=document.getElementById('admin-support') as HTMLDetailsElement|null;if(el){el.open=true;el.scrollIntoView({behavior:'smooth'})}}}>настройки</button></nav>
     <div className="row spread admin-title-row"><div><div className="eyebrow">админка. экран ведущего</div><h2>{data.event.title}</h2></div><Pill>{data.show?showRunStatusLabel(data.show.runtime.runStatus):statusLabel(data.event.status)}</Pill></div>
-    {actionError&&<div className="form-error">{actionError}</div>}
+    {error&&<div className="form-error" role="alert">данные не обновились. {error}<Button kind="secondary" onClick={()=>void reload()}>обновить данные</Button></div>}
+    {actionError&&<div className="form-error" role="alert">{actionError}</div>}
     <section id="admin-quick-actions" className="director-action-dock" aria-label="быстрые действия администратора">
       <button type="button" className="director-action-primary" onClick={()=>nav('/admin/checkin/'+data.event.slug)}>
         <span className="director-action-icon" aria-hidden="true">⌗</span><span><strong>сканировать qr билета</strong><small>гость отмечается, животина появляется на экране</small></span><b aria-hidden="true">↗</b>
@@ -1989,4 +2008,4 @@ function TelegramStartRouter({children}:{children:ReactNode}){
 
 function statusLabel(s:EventStatus){const m:Record<EventStatus,string>={DRAFT:'черновик',SALES_OPEN:'регистрация открыта',CHECKIN:'сбор гостей',IDEAS_OPEN:'идеи открыты',IDEAS_LOCKED:'идеи закрыты',TOP3_READY:'три идеи',IDEA_RANDOMIZED:'идея выбрана',MOVIE_SEARCH:'поиск фильма',MOVIE_FINALISTS:'три фильма',MOVIE_SELECTED:'фильм выбран',PREDICTIONS_OPEN:'прогнозы',PREDICTIONS_LOCKED:'прогнозы закрыты',WATCHING:'просмотр',PREDICTIONS_SCORED:'результаты',DISCUSSION:'реакции',FINAL_REVIEW:'финальная фраза',FEEDBACK:'исследование',CLOSED:'закрыто'};return m[s]}
 
-export default function App(){return <HashRouter><TelegramStartRouter><Routes><Route path="/onboarding" element={<Onboarding/>}/><Route path="/birth" element={<BirthPage/>}/><Route path="/rules" element={<RulesPage/>}/><Route element={<Layout/>}><Route path="/" element={<RequireProfile><Home/></RequireProfile>}/><Route path="/profile" element={<RequireProfile><CreatureProfilePage/></RequireProfile>}/><Route path="/mission/:assignmentId" element={<RequireProfile><FilmMissionPage/></RequireProfile>}/><Route path="/dating" element={<RequireProfile><DatingPage/></RequireProfile>}/><Route path="/private/:slug" element={<RequireProfile><PrivateLiveEvent/></RequireProfile>}/><Route path="/notifications" element={<RequireProfile><NotificationPage/></RequireProfile>}/><Route path="/event/:slug" element={<RequireProfile><EventPage/></RequireProfile>}/><Route path="/archive" element={<RequireProfile><ArchivePage/></RequireProfile>}/><Route path="/test" element={<Navigate to="/test/2026-10-17" replace/>}/><Route path="/test/:slug" element={<TestRoomHub/>}/><Route path="/club" element={<Navigate to="/archive" replace/>}/><Route path="/zhivotina" element={<RequireProfile><ZhivotinaPage/></RequireProfile>}/><Route path="/jipitina" element={<Navigate to="/zhivotina" replace/>}/></Route><Route path="/admin/:slug" element={<Admin/>}/><Route path="/admin/event/:slug" element={<Admin/>}/><Route path="/admin/checkin/:slug" element={<AdminCheckinScanner/>}/><Route path="/screen/:slug" element={<Screen/>}/><Route path="/screen/event/:slug" element={<Screen/>}/><Route path="/rehearsal/:slug" element={<RehearsalPage/>}/><Route path="*" element={<Navigate to="/" replace/>}/></Routes></TelegramStartRouter></HashRouter>}
+export default function App(){return <HashRouter><ConnectionStatus/><TelegramStartRouter><Routes><Route path="/onboarding" element={<Onboarding/>}/><Route path="/birth" element={<BirthPage/>}/><Route path="/rules" element={<RulesPage/>}/><Route element={<Layout/>}><Route path="/" element={<RequireProfile><Home/></RequireProfile>}/><Route path="/profile" element={<RequireProfile><CreatureProfilePage/></RequireProfile>}/><Route path="/mission/:assignmentId" element={<RequireProfile><FilmMissionPage/></RequireProfile>}/><Route path="/dating" element={<RequireProfile><DatingPage/></RequireProfile>}/><Route path="/private/:slug" element={<RequireProfile><PrivateLiveEvent/></RequireProfile>}/><Route path="/notifications" element={<RequireProfile><NotificationPage/></RequireProfile>}/><Route path="/event/:slug" element={<RequireProfile><EventPage/></RequireProfile>}/><Route path="/archive" element={<RequireProfile><ArchivePage/></RequireProfile>}/><Route path="/test" element={<Navigate to="/test/2026-10-17" replace/>}/><Route path="/test/:slug" element={<TestRoomHub/>}/><Route path="/club" element={<Navigate to="/archive" replace/>}/><Route path="/zhivotina" element={<RequireProfile><ZhivotinaPage/></RequireProfile>}/><Route path="/jipitina" element={<Navigate to="/zhivotina" replace/>}/></Route><Route path="/admin/:slug" element={<Admin/>}/><Route path="/admin/event/:slug" element={<Admin/>}/><Route path="/admin/checkin/:slug" element={<AdminCheckinScanner/>}/><Route path="/screen/:slug" element={<Screen/>}/><Route path="/screen/event/:slug" element={<Screen/>}/><Route path="/rehearsal/:slug" element={<RehearsalPage/>}/><Route path="*" element={<Navigate to="/" replace/>}/></Routes></TelegramStartRouter></HashRouter>}

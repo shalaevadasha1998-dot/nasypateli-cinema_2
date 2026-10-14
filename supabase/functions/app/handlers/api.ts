@@ -1953,6 +1953,8 @@ export async function handleApi(req:Request){
         if(latest.data?.status==='waitlist')return json({ok:true,status:'waitlist',queuePosition:Number(latest.data?.queue_position||0)||undefined})
         return err('не удалось подтвердить билет. попробуйте ещё раз',409)
       }
+      // Rehearsal tickets must not enqueue a real Telegram ticket message.
+      if(event.settings?.test_room===true)return json({ok:true,status:'paid'})
       const notice=await db.from('notification_queue').upsert({user_id:user.id,kind:'tickets',text:`билет получен. ${new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Moscow'}).format(new Date(event.starts_at))} · ${event.venue_name||'место внутри приложения'}`,send_after:new Date().toISOString(),status:'pending',dedupe_key:`free_ticket:${event.id}`,event_id:event.id,expires_at:event.starts_at},{onConflict:'user_id,dedupe_key'})
       if(notice.error)console.error('free ticket notification enqueue failed',notice.error)
       return json({ok:true,status:'paid'})
@@ -3328,6 +3330,7 @@ export async function handleApi(req:Request){
       const allowed=new Set(['start','next','back','jump','pause','resume','restart','restart_test','restart_live','skip','start_music','end_music','end_event'])
       if(!allowed.has(op))return err('неизвестная команда пульта',422)
       if(event.settings?.test_room===true&&op==='restart_live')return err('Тестовая комната всегда остаётся тестовой',403)
+      if(event.settings?.test_room!==true&&op==='restart_test')return err('Для тестового прогона откройте отдельную репетицию мероприятия',403)
       return await withEventOperation(db,event.id,'show-control',async()=>{
         if(op==='restart'||op==='restart_test'||op==='restart_live'){
           const currentRun=await db.from('event_runtime').select('run_id,event_runs(mode)').eq('event_id',event.id).maybeSingle()

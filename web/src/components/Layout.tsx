@@ -26,7 +26,7 @@ export default function Layout(){
       <div className="topbar-actions">{demoMode && <span className="demo-badge">demo</span>}</div>
     </header>
     <main><Outlet/></main>
-    <nav className="bottom-nav">
+    <nav className="bottom-nav" aria-label="главные разделы">
       <NavLink end className={({isActive})=>isActive?'active':''} to="/"><span className="nav-icon-wrap"><NavIcon name="event"/></span><span>событие</span></NavLink>
       <NavLink className={({isActive})=>isActive?'active':''} to="/zhivotina"><span className="nav-icon-wrap"><NavIcon name="chat"/></span><span>чат</span></NavLink>
       <NavLink className={({isActive})=>isActive?'active':''} to="/dating"><span className="nav-icon-wrap"><NavIcon name="dating"/></span><span>знакомства</span></NavLink>

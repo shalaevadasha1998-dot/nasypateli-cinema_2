@@ -92,3 +92,10 @@ body:not(.chat-page-open){overscroll-behavior-y:auto!important}
 .admin-rehearsal-ticket .event-pass{margin:16px 0}
 .admin-rehearsal-ticket .btn{min-height:54px;margin:14px 0 0}
 .admin-rehearsal-screen-fallback{display:inline-flex;width:auto;min-height:48px;align-items:center;text-align:center;margin:0 0 28px}
+
+/* Keyboard and assistive technology remain usable alongside touch controls. */
+:focus-visible{outline:2px solid #c8e2b2;outline-offset:4px}
+.connection-status{position:fixed;top:env(safe-area-inset-top,0px);left:0;right:0;z-index:1000;padding:10px 16px;background:#48291c;color:#fff0df;font-size:12px;text-align:center;line-height:1.5}
+@media(prefers-reduced-motion:reduce){
+ *,*::before,*::after{animation-duration:.01ms!important;animation-delay:0s!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
+}

@@ -42,6 +42,13 @@ jobs:
             seen[$version]=1
           done
 
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Verify server access boundaries and retired test links
+        run: deno test --allow-env --no-check tests/access-control.test.ts tests/test-invites.test.ts
+
       - name: Setup Node
         uses: actions/setup-node@v7
         with:

@@ -39,6 +39,8 @@ function requestTimeoutMs(action:string){
   return 15000
 }
 
+export class ApiError extends Error { constructor(message:string,public status:number){super(message)} }
+
 async function requestApi<T=unknown>(action:string,payload:Record<string,unknown>={},extraHeaders:Record<string,string>={}):Promise<T>{
   if(demoMode) return demoAction(action,payload) as T
   const controller=new AbortController()
@@ -51,10 +53,11 @@ async function requestApi<T=unknown>(action:string,payload:Record<string,unknown
       signal:controller.signal
     })
     const data=await res.json().catch(()=>({error:'сервер вернул непонятный ответ'}))
-    if(!res.ok) throw new Error(data.error || `ошибка сервера: ${res.status}`)
+    if(!res.ok) throw new ApiError(data.error || `ошибка сервера: ${res.status}`,res.status)
     return data as T
   }catch(e:any){
     if(e?.name==='AbortError') throw new Error('сервер отвечает слишком долго. попробуйте ещё раз')
+    if(e instanceof TypeError)throw new Error('нет связи с сервером. проверьте интернет и попробуйте ещё раз')
     throw e
   }finally{window.clearTimeout(timeout)}
 }
@@ -92,7 +95,8 @@ function normalizeBootstrap(raw:any):DemoState{
   const rc=r.creature&&typeof r.creature==='object'?r.creature:{}
   const rd=r.dating&&typeof r.dating==='object'?r.dating:{}
   const rn=r.notificationPrefs&&typeof r.notificationPrefs==='object'?r.notificationPrefs:{}
-  const re=r.event&&typeof r.event==='object'?r.event:{}
+  const re=r.event&&typeof r.event==='object'?r.event:
+    {id:'',slug:'',title:'',startsAt:'',status:'DRAFT',capacity:0,sold:0,ticketPriceRub:0,paymentsAvailable:false,nonexistentFilmEnabled:false}
   return {
     ...base,...r,
     event:{...base.event,...re},
@@ -118,6 +122,8 @@ function setBootstrapRetryAt(at:number){
   bootstrapRetryAt=at
   try{sessionStorage.setItem('nasypateli-bootstrap-retry-at',String(at))}catch{}
 }
+export function resetBootstrapRetry(){bootstrapFailures=0;setBootstrapRetryAt(0)}
+
 export async function callApi<T=unknown>(action:string,payload:Record<string,unknown>={}):Promise<T>{
   if(action==='bootstrap'){
     const fresh=payload.fresh===true
@@ -136,8 +142,8 @@ export async function callApi<T=unknown>(action:string,payload:Record<string,unk
       bootstrapCache={key,at:Date.now(),value:normalized}
       return normalized
     }).catch(error=>{
-      bootstrapFailures++
-      setBootstrapRetryAt(Date.now()+Math.min(60000,5000*2**Math.min(bootstrapFailures-1,4)))
+      if(error instanceof ApiError&&error.status<500&&error.status!==429){resetBootstrapRetry()}
+      else {bootstrapFailures++;setBootstrapRetryAt(Date.now()+Math.min(60000,5000*2**Math.min(bootstrapFailures-1,4)))}
       throw error
     })
     const promise=run.finally(()=>{if(bootstrapInFlight?.key===key)bootstrapInFlight=null})

@@ -39,6 +39,9 @@ jobs:
       - name: Verify admin-only test roles and ticket QR gallery scanner on Android
         working-directory: web
         run: node tests/admin-rehearsal-smoke.mjs
+      - name: Full guest journey and failure recovery
+        working-directory: web
+        run: node --experimental-strip-types tests/guest-journey.mjs
       - name: Build isolated demo UI
         working-directory: web
         env:
