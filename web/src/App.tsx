@@ -225,7 +225,7 @@ function FilmLiveParticipant({data,reload}:{data:DemoState;reload:(fresh?:boolea
   if(state==='pitch_randomizing')return <section className="participant-show film-live"><div className="eyebrow">рандом</div><h2>выбираем одну идею</h2><p>смотри на большой экран.</p></section>
   if(state==='pitch_selected')return <section className="participant-show film-live"><div className="eyebrow">выбрано</div><h2>{String(live.payload?.pitch?.title||'идея выбрана')}</h2><p>животина ищет самый похожий реальный фильм.</p></section>
   if(state==='movie_searching')return <section className="participant-show film-live"><div className="eyebrow">gpt + web search</div><h2>ищем реальный фильм в интернете</h2><p>проверяем фильм и сразу ищем фрагмент на youtube.</p></section>
-  if(state==='movie_found')return <section className="participant-show film-live"><div className="eyebrow">нашли</div><h2>{String(live.payload?.filmTitle||live.filmTitle||'фильм')}</h2><p>сейчас смотрим фрагмент.</p></section>
+  if(state==='movie_found')return <section className="participant-show film-live"><div className="eyebrow">нашли фильм</div><h2>{String(live.payload?.filmTitle||live.filmTitle||'фильм')}</h2>{live.payload?.reason&&<p>{String(live.payload.reason)}</p>}<p>скоро смотрим фрагмент на большом экране</p></section>
   if(state==='film_intro'||state==='playing_clip')return <section className="participant-show film-live"><div className="eyebrow">фрагмент</div><h2>{live.filmTitle||String(live.payload?.filmTitle||'смотри на экран')}</h2><p>телефон вниз.</p></section>
   if(state==='one_word_collecting')return <section className="participant-show film-live"><div className="eyebrow">рецензия одним словом</div><h2>что это за фильм?</h2><Field label="одно слово"><input maxLength={80} value={word} placeholder="например: тревожный" onChange={e=>{setWord(e.target.value.replace(/\s+/g,''));setMessage('')}}/></Field><Button disabled={busy||word.trim().length<2} onClick={submitWord}>{busy?'отправляем…':'отправить'}</Button>{message&&<div className={message==='слово на экране'?'success':'form-error'}>{message}</div>}</section>
   if(state==='one_word_results')return <section className="participant-show film-live"><div className="eyebrow">рецензия зала</div><h2>слова уже на большом экране</h2><p>дальше животина выберет одного человека, который досмотрит фильм целиком.</p></section>
@@ -770,7 +770,7 @@ function ShowRoundControl({data,busy,run}:{data:DemoState;busy:boolean;run:(acti
     }
     if(flow==='searching_movie')return
     if(flow==='movie_found'){
-      if(pack&&projectorElapsed>=4000)project('film_intro')
+      if(pack&&projectorElapsed>=9000)project('film_intro')
       return
     }
     if(flow==='playing_clip'){
@@ -1455,7 +1455,7 @@ function projectorContent(d:DemoState){
   if(p.state==='pitch_randomizing')return <div className="screen-assignment-random"><div className="eyebrow">рандом</div><h1>выбираю одну идею</h1><div className="random-rabbits">{[0,1,2,3,4,5,6].map(i=><img key={i} src={import.meta.env.BASE_URL+'assets/rabbit-full.webp'} alt="" draggable={false}/>)}</div></div>
   if(p.state==='pitch_selected'){const pitch=payload.pitch||{};return <><div className="eyebrow">выбрано</div><h1>{String(pitch.title||'без названия')}</h1><p>{String(pitch.description||'')}</p></>}
   if(p.state==='movie_searching')return <><div className="eyebrow">gpt · web search · youtube</div><h1>ищем реальный фильм<br/>в интернете</h1><p>сразу ищем воспроизводимый фрагмент</p></>
-  if(p.state==='movie_found')return <><div className="eyebrow">нашли фильм</div><h1>{String(payload.filmTitle||'фильм')}</h1>{payload.year&&<h2>{String(payload.year)}</h2>}{payload.reason&&<p>почему он подходит: {String(payload.reason)}</p>}</>
+  if(p.state==='movie_found')return <div className="screen-film-match"><div className="eyebrow">нашли подходящий фильм</div><h1>{String(payload.filmTitle||'фильм')}</h1>{payload.year&&<h2>{String(payload.year)}</h2>}<p>{payload.reason?String(payload.reason):'проверяем совпадение с вашей идеей'}</p><small>скоро покажем фрагмент</small></div>
   if(p.state==='film_intro')return <ProjectorFragment fragment={payload.fragment} title={String(payload.filmTitle||'фильм')}/>
   if(p.state==='one_word_collecting')return <><div className="eyebrow">рецензия одним словом</div><h1>что это за фильм?</h1><ScreenWordWall groups={Array.isArray(payload.wordGroups)?payload.wordGroups:[]} collecting/></>
   if(p.state==='one_word_results')return <><div className="eyebrow">рецензия зала</div><ScreenWordWall groups={Array.isArray(payload.wordGroups)?payload.wordGroups:[]}/></>
@@ -1680,7 +1680,7 @@ function ProjectorAudio({data,screenToken}:{data:DemoState;screenToken:string}){
     }
   }
   return <>
-    <audio ref={background} onEnded={()=>{setAudioTick(x=>x+1);if(state?.mode==='manual'&&asset?.key)void callScreenApi('screen-audio-ended',{slug:data.event.slug,trackKey:asset.key,sessionId:sessionId.current},screenToken).catch(()=>{})}}/>
+    <audio ref={background} loop={state?.mode==='manual'} onEnded={()=>{setAudioTick(x=>x+1)}} onError={()=>{setAudioError('фоновой трек не загрузился · проверь соединение и повтори включение звука');setNeedsUnlock(true)}}/>
     <audio ref={cue} onEnded={()=>{setCuePlaying(false);setAudioTick(x=>x+1)}}/>
     {(!armed||needsUnlock)&&<div className="screen-audio-unlock"><button disabled={unlockBusy} onClick={()=>void unlock()}>{unlockBusy?'проверяем звук…':'включить звук и проверить'}</button>{audioError&&<p role="alert">{audioError}</p>}</div>}
   </>
