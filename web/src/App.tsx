@@ -459,7 +459,7 @@ function TestRoomHub(){
   const [message,setMessage]=useState('')
   const [screenLink,setScreenLink]=useState('')
   if(!admin.data)return <div className="page rehearsal-locked"><div className="eyebrow">для команды</div><h1>служебная репетиция</h1><p>{admin.error||'проверяем доступ администратора…'}</p><Button kind="secondary" onClick={()=>nav('/')}>на главную</Button></div>
-  const roomSlug='test-'+admin.data.event.slug
+  const roomSlug='test-'+sourceSlug
   const opening=(path:string)=>nav(path)
   const openProjector=async()=>{
     // Keep the new tab within the user's original gesture; mobile WebViews
