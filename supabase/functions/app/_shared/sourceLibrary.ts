@@ -1,3 +1,4 @@
+import { probeDirectVideo } from './videoValidation.ts'
 import type { MovieSourceCandidate } from './movies.ts'
 
 const MAX_AGE_MS = 24 * 60 * 60 * 1000
@@ -39,7 +40,7 @@ function allowedSourceUrl(platform: string, raw: unknown): string | null {
 }
 
 /** Read only. Reuse recent sources for the exact Wikidata entity, never its title. */
-export async function loadReusableMovieSources(db: any, movie: any): Promise<MovieSourceCandidate[]> {
+export async function loadReusableMovieSources(db: any, movie: any, options:{probe?:typeof probeDirectVideo}={}): Promise<MovieSourceCandidate[]> {
   const provider = typeof movie?.provider === 'string' ? movie.provider : ''
   const providerId = typeof movie?.provider_id === 'string' ? movie.provider_id : ''
   if (provider !== 'wikidata' || !/^Q[1-9]\d*$/.test(providerId)) return []
@@ -55,18 +56,19 @@ export async function loadReusableMovieSources(db: any, movie: any): Promise<Mov
       .eq('availability_status', 'ready')
       .neq('rights_status', 'blocked')
       .in('source_platform', SUPPORTED_PLATFORMS)
-      .gte('verified_at', new Date(cutoff).toISOString())
+      .gte('verified_at', new Date(now-365*MAX_AGE_MS).toISOString())
       .lte('verified_at', new Date(now).toISOString())
       .order('verified_at', { ascending: false })
       .limit(20)
     if (result.error || !Array.isArray(result.data)) return []
     const rows: MovieSourceCandidate[] = []
     const seen = new Set<string>()
+    let rechecked=0
     for (const row of result.data.slice(0, 20)) {
       const identity = row?.movie_candidates
       if (!identity || Array.isArray(identity) || identity.provider !== provider || identity.provider_id !== providerId) continue
       const verifiedAt = typeof row.verified_at === 'string' ? Date.parse(row.verified_at) : NaN
-      if (!Number.isFinite(verifiedAt) || verifiedAt < cutoff || verifiedAt > now) continue
+      if (!Number.isFinite(verifiedAt) || verifiedAt > now) continue
       if (row.verified !== true || row.embeddable !== true || row.availability_status !== 'ready' || !RIGHTS.includes(row.rights_status)) continue
       if (!['fragment', 'trailer'].includes(row.use_mode) || !SOURCE_TYPES.includes(row.source_type)) continue
       const sourceUrl = allowedSourceUrl(row.source_platform, row.source_url)
@@ -81,6 +83,14 @@ export async function loadReusableMovieSources(db: any, movie: any): Promise<Mov
         const url = new URL(sourceUrl)
         const urlId = url.searchParams.get('v') || url.pathname.split('/').filter(Boolean).at(-1)
         if (videoId !== urlId) continue
+      }
+      let checkedAt=row.verified_at
+      if(verifiedAt<cutoff){
+        if(!['internet_archive','wikimedia_commons'].includes(row.source_platform)||rechecked>=2)continue
+        rechecked++
+        const check=await (options.probe||probeDirectVideo)(sourceUrl,{timeoutMs:2000})
+        if(!check.ok)continue
+        checkedAt=new Date().toISOString()
       }
       const key = [row.source_platform, sourceUrl, startSec, endSec ?? '', row.use_mode].join('|')
       if (seen.has(key)) continue
@@ -103,7 +113,7 @@ export async function loadReusableMovieSources(db: any, movie: any): Promise<Mov
         official: row.official === true,
         rightsStatus: row.rights_status,
         confidence,
-        metadata: { ...metadata, cached: true, cached_source_id: row.id, cached_verified_at: row.verified_at }
+        metadata: { ...metadata, cached: true, cached_source_id: row.id, cached_verified_at: checkedAt }
       })
     }
     return rows

@@ -95,3 +95,14 @@ Deno.test('source library gracefully handles database errors and respects the ro
   const rows = Array.from({ length: 30 }, (_, index) => row({ id: String(index), start_sec: index, end_sec: index + 60 }))
   check((await loadReusableMovieSources(mockDb(rows), movie)).length === 20, 'in-memory row limit missing')
 })
+
+Deno.test('older direct files are rechecked before reuse rather than forgotten',async()=>{
+ const row={id:'old-file',movie_candidates:{provider:'wikidata',provider_id:'Q123'},source_platform:'wikimedia_commons',source_url:'https://upload.wikimedia.org/wikipedia/commons/a/ab/The_Kid.webm',video_id:null,use_mode:'fragment',source_type:'full_film',start_sec:0,end_sec:75,verified:true,embeddable:true,availability_status:'ready',rights_status:'allowed',confidence:.9,verified_at:new Date(Date.now()-3*86400000).toISOString(),metadata:{availabilityCheck:'video_bytes'}}
+ const db={from:()=>{const q:any={};for(const method of ['select','eq','neq','in','gte','lte','order','limit'])q[method]=()=>q;q.then=(resolve:any)=>Promise.resolve({data:[row]}).then(resolve);return q}}
+ let checks=0
+ const found=await loadReusableMovieSources(db,{provider:'wikidata',provider_id:'Q123'},{probe:async url=>{checks++;return {ok:true,url,bytesRead:8,mimeType:'video/webm'}}})
+ check(checks===1&&found.length===1,'Old known file was not revalidated')
+ check(Date.parse(String(found[0].metadata.cached_verified_at))>Date.parse(row.verified_at),'Stale verification was silently refreshed')
+ const dead=await loadReusableMovieSources(db,{provider:'wikidata',provider_id:'Q123'},{probe:async url=>({ok:false,url,bytesRead:0,reason:'http_error'})})
+ check(dead.length===0,'Dead old video was reused')
+})
