@@ -152,6 +152,14 @@ export function CreatureProfilePage(){
       <Button onClick={()=>nav('/zhivotina')}>поговорить с {creatureName}</Button>
     </section>
 
+    <Card className="creature-meet-entry">
+      <div className="eyebrow">встречи животин</div>
+      <h2>познакомь нас</h2>
+      <p>у твоей животины есть свой qr. покажи его человеку рядом или сканируй чужой, чтобы сохранить встречу в истории обеих животин</p>
+      <Button onClick={()=>nav('/meet')}>мой qr и сканер</Button>
+      <small>это не свайпы и не обмен контактами. для личных знакомств есть отдельная вкладка</small>
+    </Card>
+
     {(data.filmAssignments||[]).length>0&&<Card className="cinema-passport-card">
       <div className="eyebrow">кинопаспорт</div>
       <h2>что животина уже унесла из кино</h2>

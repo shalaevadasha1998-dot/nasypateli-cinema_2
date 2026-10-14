@@ -1905,7 +1905,7 @@ export async function handleApi(req:Request){
       return json({ok:true,token,expiresAt,deepLink:await telegramStartLink(`encounter_${token}`)})
     }
     if(action==='encounter'){
-      const token=String(body.token||'').trim();const t=await db.from('encounter_tokens').select('*').eq('token',token).maybeSingle();if(t.error)throw t.error;if(!t.data)return err('Этот жетон не существует',404);if(t.data.expires_at&&new Date(t.data.expires_at).getTime()<Date.now())return err('Этот жетон уже истёк',410)
+      const token=String(body.token||'').trim();const t=await db.from('encounter_tokens').select('*').eq('token',token).maybeSingle();if(t.error)throw t.error;if(!t.data)return err('Этот жетон не существует',404);if(body.expectedKind==='rabbit'&&t.data.kind!=='rabbit')return err('Это QR другого действия, а не животины',422);if(t.data.expires_at&&new Date(t.data.expires_at).getTime()<Date.now())return err('Этот жетон уже истёк',410)
       if(t.data.kind==='event_checkin'){
         if(!t.data.event_id)return err('У жетона нет события',422)
         const [reg,ev]=await Promise.all([
