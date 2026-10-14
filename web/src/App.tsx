@@ -1,3 +1,4 @@
+import { PlaybackContext, projectorSessionId } from './components/PlaybackContext'
 import { ProjectorMedia } from './components/ProjectorMedia'
 import { ConnectionStatus } from './components/ConnectionStatus'
 import { ApiError, resetBootstrapRetry } from './lib/api'
@@ -271,7 +272,7 @@ function FilmLiveParticipant({data,reload}:{data:DemoState;reload:(fresh?:boolea
   if(state==='one_word_collecting')return <section className="participant-show film-live"><div className="eyebrow">рецензия одним словом</div><h2>что это за фильм?</h2><Field label="одно слово"><input maxLength={80} value={word} placeholder="например: тревожный" onChange={e=>{setWord(e.target.value.replace(/\s+/g,''));setMessage('')}}/></Field><Button disabled={busy||word.trim().length<2} onClick={submitWord}>{busy?'отправляем…':'отправить'}</Button>{message&&<div className={message==='слово на экране'?'success':'form-error'}>{message}</div>}</section>
   if(state==='one_word_results')return <section className="participant-show film-live"><div className="eyebrow">рецензия зала</div><h2>слова уже на большом экране</h2><p>дальше животина выберет одного человека, который досмотрит фильм целиком.</p></section>
   if(state==='question_open')return <section className="participant-show film-live"><div className="row spread participant-show-head"><div><div className="eyebrow">прогноз {Number(live.payload?.position||0)}/{Number(live.payload?.totalQuestions||target)}</div><h2>{String(live.payload?.prompt||'что будет дальше?')}</h2></div></div><Field label="напиши свой вариант"><textarea rows={4} maxLength={700} value={answerDraft} placeholder="своими словами" onChange={e=>{setAnswerDraft(e.target.value);setMessage('')}}/></Field><Button disabled={busy||answerDraft.trim().length<2} onClick={predict}>{busy?'анализируем…':mine?'обновить ответ':'ответить'}</Button>{mine&&<p className="muted">можно изменить, пока ведущий не нажал дальше</p>}{message&&<div className={message==='ответ принят'?'success':'form-error'}>{message}</div>}</section>
-  if(state==='question_results'){const closest:any=live.payload?.closest;return <section className="participant-show film-live"><div className="eyebrow">ближе всех</div><h2>{closest?.animalName||'животина думает'}</h2>{closest?.answer&&<p>«{String(closest.answer)}»</p>}{closest?.comment&&<p className="muted">{String(closest.comment)}</p>}</section>}
+  if(state==='question_results'){const closest:any=live.payload?.closest,judgement=live.payload?.judgement;return <section className="participant-show film-live"><div className="eyebrow">оценка ответов</div><h2>{judgement?.status!=='decided'?'ведущая проверяет ответы':closest?.animalName||'никто не угадал'}</h2>{closest?.answer&&<p>«{String(closest.answer)}»</p>}<p className="muted">{String(judgement?.comment||'баллы ещё не начислены')}</p></section>}
   if(state==='question_reveal')return <section className="participant-show film-live"><div className="eyebrow">что было на самом деле</div><h2>{answerText(live.payload?.correctAnswer)}</h2>{live.payload?.revealText&&<p>{String(live.payload.revealText)}</p>}<p className="muted">продолжение идёт на большом экране.</p></section>
   if(state==='assignment_randomizing')return <section className="participant-show film-live"><div className="eyebrow">рандом</div><h2>кто досмотрит фильм?</h2><p>смотри на большой экран.</p></section>
   if(state==='assignment_winner'){
@@ -879,125 +880,10 @@ function ShowRoundControl({data,busy,run}:{data:DemoState;busy:boolean;run:(acti
   const show=data.show
   const block=show?.runtime.currentBlock
   const round=show?.currentRound
-  const [clock,setClock]=useState(()=>Date.now())
   const autoRun=show?.runtime.roundControlMode!=='manual'
   const toggleAuto=()=>{if(!busy)void run('admin-round-control-mode',{mode:autoRun?'manual':'auto'})}
-  const autoRef=useRef('')
-  useEffect(()=>{const t=window.setInterval(()=>setClock(Date.now()),1000);return()=>window.clearInterval(t)},[])
-
-  const fire=(key:string,action:string,payload:Record<string,unknown>={})=>{
-    if(busy||autoRef.current===key)return
-    autoRef.current=key
-    void run(action,payload).finally(()=>{
-      window.setTimeout(()=>{if(autoRef.current===key)autoRef.current=''},6000)
-    })
-  }
-  useEffect(()=>{
-    if(!autoRun||!show||!block||block.type!=='cinema_rounds'||show.runtime.runStatus!=='running'||busy)return
-    const active=round?.status==='active'
-    const target=Math.max(1,Math.min(20,Number(block.roundsTarget||2)))
-    const current=Math.max(0,Number((show.runtime as any).currentBlockRoundCount||0))
-    const projector:any=data.projector
-    const elapsed=(iso?:string)=>iso?Math.max(0,clock-new Date(iso).getTime()):0
-    const projectorElapsed=elapsed(projector?.updatedAt||round?.updatedAt||round?.startedAt)
-    const attended=Math.max(0,(data.adminParticipants||[]).filter(x=>x.status==='attended').length)
-
-    if(!active){
-      if(current<target){
-        if(projector?.state==='round_finished'&&projectorElapsed<6000)return
-        fire(`auto-start:${block.id}:${current}`,'admin-round-start')
-        return
-      }
-      if(current>=target){
-        if(projector?.state==='round_finished'&&projectorElapsed<8000)return
-        fire(`auto-next-block:${block.id}:${current}`,'admin-show-control',{op:'next'})
-      }
-      return
-    }
-    if(!round)return
-    const flow=round.flowStatus||'round_intro'
-    const mode=round.roundNo%2===1?'review':'questions'
-    const pack=round.movie?(data.filmPackages||[]).find(x=>x.movieCandidateId===round.movie?.id):undefined
-    const project=(op:string,extra:Record<string,unknown>={})=>pack&&fire(`project:${round.id}:${op}:${projector?.revision||0}`,'admin-film-projector',{filmPackageId:pack.id,roundId:round.id,op,...extra})
-    const clipMs=(fragment:any,maxSec:number,defaultSec:number)=>{
-      const start=Math.max(0,Number(fragment?.startSec||0))
-      const rawEnd=fragment?.endSec==null?NaN:Number(fragment.endSec)
-      const sec=Number.isFinite(rawEnd)&&rawEnd>start?rawEnd-start:defaultSec
-      return Math.max(8,Math.min(maxSec,sec))*1000
-    }
-
-    if(flow==='round_intro'){
-      if(projectorElapsed>=305000)fire(`intro-fallback:${round.id}`,'admin-round-pitches-open')
-      return
-    }
-    if(flow==='collecting_films'){
-      const count=Number(round.pitchCount||0)
-      const everyone=attended>0&&count>=attended
-      if((everyone||(projectorElapsed>=300000&&count>0)))fire(`close-pitches:${round.id}:${count}`,'admin-round-pitches-close')
-      return
-    }
-    if(flow==='films_locked'){
-      if(projectorElapsed>=2000)fire(`draw-pitch:${round.id}`,'admin-round-pitch-draw')
-      return
-    }
-    if(flow==='randomizing_submission')return
-    if(flow==='submission_selected'){
-      if(projectorElapsed>=5000)fire(`find-movie:${round.id}`,'admin-round-find-movie')
-      return
-    }
-    if(flow==='searching_movie')return
-    if(flow==='movie_found'){
-      if(pack&&projectorElapsed>=9000)project('film_intro')
-      return
-    }
-    if(flow==='playing_clip'){
-      if(!pack)return
-      const watchMs=clipMs(projector?.payload?.fragment,600,600)
-      if(projectorElapsed<watchMs+2000)return
-      if(mode==='review')fire(`assign-viewer:${round.id}`,'admin-film-assign',{filmPackageId:pack.id,roundId:round.id})
-      else project('question_open',{position:1})
-      return
-    }
-    if(flow==='assignment_selected'){
-      if(!pack||projectorElapsed<300000)return
-      if(mode==='review')project('one_word_open')
-      else fire(`close-seer-round:${round.id}`,'admin-round-close')
-      return
-    }
-    if(flow==='one_word_collecting'){
-      const wordCount=(Array.isArray(projector?.payload?.wordGroups)?projector.payload.wordGroups:[]).reduce((sum:number,x:any)=>sum+Number(x.count||0),0)
-      const everyone=attended>0&&wordCount>=attended
-      if((everyone||(projectorElapsed>=300000&&wordCount>0)))project('one_word_results')
-      return
-    }
-    if(flow==='one_word_results'){
-      if(projectorElapsed>=12000)fire(`close-review-round:${round.id}`,'admin-round-close')
-      return
-    }
-    if(flow==='question_open'){
-      const answerCount=Number(projector?.payload?.answerCount||0)
-      const total=Number(projector?.payload?.totalParticipants||attended||0)
-      const everyone=total>0&&answerCount>=total
-      if((everyone||(projectorElapsed>=120000&&answerCount>0)))project('question_results',{position:Math.max(1,Number(round.questionPosition||1))})
-      return
-    }
-    if(flow==='question_results'){
-      if(projectorElapsed>=10000)project('question_reveal',{position:Math.max(1,Number(round.questionPosition||1))})
-      return
-    }
-    if(flow==='question_reveal'){
-      const revealMs=clipMs(projector?.payload?.revealFragment,180,20)
-      if(projectorElapsed<revealMs+3000)return
-      const pos=Math.max(1,Number(round.questionPosition||1))
-      const qTarget=Math.max(1,Math.min(3,Number(round.questionTarget||3)))
-      if(pos<qTarget)project('question_open',{position:pos+1})
-      else project('assignment_randomizing')
-      return
-    }
-    if(flow==='assignment_randomizing'){
-      if(pack&&projectorElapsed>=2200)fire(`assign-seer:${round.id}`,'admin-film-assign',{filmPackageId:pack.id,roundId:round.id})
-    }
-  },[clock,busy,autoRun,show?.runtime.runStatus,show?.runtime.currentBlockId,show?.runtime.currentBlockRoundCount,round?.id,round?.status,round?.flowStatus,round?.pitchCount,round?.questionPosition,round?.movie?.id,data.projector?.revision,data.projector?.updatedAt,data.adminParticipants?.length,data.inventedFilms?.length])
+  const director=show?.runtime.directorState||{}
+  const online=!!director.lastTickAt&&Date.now()-Date.parse(String(director.lastTickAt))<30000
 
   if(!show||!block||block.type!=='cinema_rounds')return null
   const active=round?.status==='active'
@@ -1010,7 +896,9 @@ function ShowRoundControl({data,busy,run}:{data:DemoState;busy:boolean;run:(acti
       <button type="button" aria-pressed={!autoRun} disabled={busy} className={!autoRun?'active':''} onClick={()=>{if(autoRun)toggleAuto()}}>переключаю сама</button>
       <button type="button" aria-pressed={autoRun} disabled={busy} className={autoRun?'active':''} onClick={()=>{if(!autoRun)toggleAuto()}}>переключать автоматически</button>
     </div>
-    <p className="muted">{autoRun?'шаги меняются по таймеру и после ответов гостей. для проверки без ожидания выбери «переключаю сама»':'автопереходы остановлены, включая первые 5 минут. переключай каждый шаг кнопкой «следующий шаг» ниже — проектор и телефоны обновятся вместе'}</p>
+    <p className="muted">{autoRun?(online?'последовательностью управляет сервер · блокировка телефона не останавливает вечер':'серверный планировщик не отвечает · автоматические переходы не подтверждены'):'автопереходы остановлены · каждый шаг подтверждаешь сама'}</p>
+    <p role="status">{String(director.message||'серверный режим ещё не проверен')}</p>
+    {director.blocked===true&&<Button disabled={busy} onClick={()=>run('admin-director-retry')}>продолжить после устранения ошибки</Button>}
     {!active?complete?<Button kind="secondary" disabled={busy||autoRun} onClick={()=>run('admin-show-control',{op:'next'})}>следующий блок вечера</Button>:<Button disabled={busy||show.runtime.runStatus!=='running'||autoRun} onClick={()=>run('admin-round-start')}>начать раунд {current+1} из {target}</Button>:null}
   </Card>
 }
@@ -1111,46 +999,6 @@ function MovieCatalogAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(act
   </Card>
 }
 
-function FilmPackagePrepAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(action:string,payload?:Record<string,unknown>)=>Promise<any>}){
-  const catalog=(data.movieCatalog||[]).filter(m=>m.enabledForEvent!==false)
-  const [movieId,setMovieId]=useState(()=>catalog[0]?.id||'')
-  const movie=catalog.find(m=>m.id===movieId)
-  const pack=movie?(data.filmPackages||[]).find(x=>x.movieCandidateId===movie.id):undefined
-  const selectedSource=(movie?.sourceCandidates||[]).find(s=>s.selected)
-  const makeFragments=()=>Array.from({length:6},(_,i)=>({label:i===0?'первый фрагмент':'продолжение '+i,sourcePlatform:'youtube',videoId:'',sourceUrl:'',startSec:0,endSec:'' as any}))
-  const makeQuestions=()=>Array.from({length:5},(_,i)=>({prompt:'',options:'',correctAnswer:'',revealText:'',position:i+1}))
-  const [fragments,setFragments]=useState<any[]>(makeFragments)
-  const [questions,setQuestions]=useState<any[]>(makeQuestions)
-  useEffect(()=>{if(!movieId&&catalog[0]?.id)setMovieId(catalog[0].id)},[catalog.length,movieId])
-  useEffect(()=>{
-    if(pack){
-      const fs=makeFragments();(pack.fragments||[]).slice(0,6).forEach((f:any,i:number)=>{fs[i]={...fs[i],...f,endSec:f?.endSec??''}});setFragments(fs)
-      const qs=makeQuestions();(pack.questions||[]).forEach((q:any)=>{const i=Math.max(0,Number(q.position)-1);if(i<5)qs[i]={position:i+1,prompt:q.prompt||'',options:Array.isArray(q.options)?q.options.join(', '):'',correctAnswer:answerText(q.correctAnswer),revealText:q.revealText||''}});setQuestions(qs)
-    }else{setFragments(makeFragments());setQuestions(makeQuestions())}
-  },[pack?.id,movieId])
-  if(!catalog.length)return <Card className="film-prep-card"><div className="section-title">пул киноблоков</div><p className="muted">сначала добавьте фильмы в каталог. после этого здесь можно заранее подготовить 6 фрагментов и 5 вопросов для каждого фильма.</p></Card>
-  const patchFragment=(i:number,p:any)=>setFragments(v=>v.map((x,n)=>n===i?{...x,...p}:x))
-  const applySelectedSource=()=>{if(!selectedSource)return;setFragments(v=>v.map(x=>({...x,sourcePlatform:selectedSource.sourcePlatform,videoId:['youtube','rutube'].includes(selectedSource.sourcePlatform)?String(selectedSource.videoId||''):'',sourceUrl:String(selectedSource.sourceUrl||'')})))}
-  const patchQuestion=(i:number,p:any)=>setQuestions(v=>v.map((x,n)=>n===i?{...x,...p}:x))
-  const ready=(data.filmPackages||[]).filter(p=>p.status==='ready').length
-  const save=()=>movie&&run('admin-film-package-save',{
-    movieCandidateId:movie.id,
-    fragments:fragments.map((f,i)=>({label:f.label||('фрагмент '+(i+1)),sourcePlatform:String(f.sourcePlatform||((f.videoId)?'youtube':'')).trim(),videoId:String(f.videoId||'').trim(),sourceUrl:String(f.sourceUrl||'').trim(),startSec:Number(f.startSec)||0,endSec:f.endSec===''?null:Number(f.endSec)||null})),
-    questions:questions.map((q,i)=>({prompt:q.prompt,options:String(q.options||'').split(',').map((x:string)=>x.trim()).filter(Boolean),correctAnswer:q.correctAnswer,revealText:q.revealText,revealFragment:{...fragments[i+1],index:i+1}}))
-  })
-  return <Card className="film-prep-card">
-    <div className="row spread"><div><div className="section-title">пул киноблоков до мероприятия</div><h2>готово {ready} из {catalog.length}</h2></div>{pack&&<Pill>{pack.questions.length===5?'5/5 вопросов':'неполный'}</Pill>}</div>
-    <Field label="фильм"><select value={movieId} onChange={e=>setMovieId(e.target.value)}>{catalog.map(m=><option value={m.id} key={m.id}>{m.title}{(data.filmPackages||[]).some(p=>p.movieCandidateId===m.id)?' · готовится/готов':''}</option>)}</select></Field>
-    {movie&&<details open={!pack}><summary>{pack?'изменить пакет заранее':'подготовить пакет заранее'}</summary>
-      <p className="muted">это подготовка до шоу. во время мероприятия останется только нажимать «показать фрагмент», «открыть вопрос» и «выбрать животинку».</p>
-      {selectedSource&&<div className="film-source-seed"><span>выбранный источник: {selectedSource.sourcePlatform} · {selectedSource.sourceType}</span><Button kind="secondary" onClick={applySelectedSource}>подставить во все 6 фрагментов</Button></div>}
-      <div className="film-fragment-editor">{fragments.map((f,i)=><div className="film-config-row" key={i}><div className="section-title">{i===0?'01. первый фрагмент':'0'+(i+1)+'. reveal после вопроса '+i}</div><div className="inline"><Field label="источник"><select value={f.sourcePlatform||'youtube'} onChange={e=>patchFragment(i,{sourcePlatform:e.target.value,videoId:e.target.value==='youtube'?f.videoId:'',sourceUrl:e.target.value==='youtube'?'':f.sourceUrl})}><option value="youtube">youtube</option><option value="internet_archive">internet archive</option><option value="wikimedia_commons">wikimedia commons</option><option value="rutube">RUTUBE</option><option value="direct">direct video</option></select></Field>{(f.sourcePlatform||'youtube')==='youtube'?<Field label="youtube video id"><input value={f.videoId||''} onChange={e=>patchFragment(i,{videoId:e.target.value})}/></Field>:<Field label="прямой video url"><input value={f.sourceUrl||''} onChange={e=>patchFragment(i,{sourceUrl:e.target.value})}/></Field>}</div><div className="inline"><Field label="start sec"><input type="number" min="0" value={f.startSec||0} onChange={e=>patchFragment(i,{startSec:Number(e.target.value)})}/></Field><Field label="end sec"><input type="number" min="0" value={f.endSec??''} onChange={e=>patchFragment(i,{endSec:e.target.value})}/></Field></div></div>)}</div>
-      <div className="film-question-editor">{questions.map((q,i)=><div className="film-config-row" key={i}><div className="section-title">вопрос {i+1}/5</div><Field label="что будет дальше?"><textarea value={q.prompt} onChange={e=>patchQuestion(i,{prompt:e.target.value})}/></Field><Field label="варианты через запятую"><input value={q.options} onChange={e=>patchQuestion(i,{options:e.target.value})}/></Field><Field label="правильный вариант"><input value={q.correctAnswer} onChange={e=>patchQuestion(i,{correctAnswer:e.target.value})}/></Field><Field label="что реально произошло"><textarea value={q.revealText} onChange={e=>patchQuestion(i,{revealText:e.target.value})}/></Field></div>)}</div>
-      <Button disabled={busy} onClick={save}>{pack?'сохранить пакет':'создать пакет'}</Button>
-    </details>}
-  </Card>
-}
-
 function RoundFilmFlowAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(action:string,payload?:Record<string,unknown>)=>Promise<any>}){
   const round=data.show?.currentRound
   const pitches=data.inventedFilms||[]
@@ -1167,6 +1015,9 @@ function RoundFilmFlowAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(ac
   const projector:any=data.projector
   const previewIndex=Math.max(0,Number(projector?.payload?.index||0))
   const previewTotal=Math.max(0,Number(projector?.payload?.total||pitches.length))
+  const video:any=data.show?.runtime.videoState
+  const fragment:any=projector?.payload?.revealFragment||projector?.payload?.fragment
+  const watched=video?.runId===data.show?.runtime.runId&&video?.projectorRevision===projector?.revision&&video?.status==='ended'&&video?.continuous===true&&Number.isFinite(fragment?.endSec)&&Number(video.position)>=Number(fragment.endSec)-.3
   const blocked=busy||stepping
   const project=(op:string,extra:Record<string,unknown>={})=>pack&&run('admin-film-projector',{filmPackageId:pack.id,roundId:round.id,op,...extra})
   const previous=async()=>{
@@ -1224,14 +1075,14 @@ function RoundFilmFlowAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(ac
   else if(flow==='submission_selected'){title='идея выбрана';detail='сначала покажи выбранную идею, затем запусти поиск реального фильма';nextLabel='начать поиск фильма'}
   else if(flow==='searching_movie'){title='животина ищет фильм';detail='поиск выполняется на сервере — ждём результата';nextLabel='ищем…';canNext=false}
   else if(flow==='movie_found'){title=round.movie?.title||'поиск завершён';detail=pack?'фрагмент готов к показу':'подходящий воспроизводимый фильм не найден. проверь источники, затем повтори поиск';nextLabel=pack?'показать фрагмент':'нет готового фрагмента';canNext=!!pack}
-  else if(flow==='playing_clip'){title='смотрим фрагмент';detail=mode==='review'?'сейчас можно перейти к выбору животины, которая досмотрит фильм':'после просмотра откроется первый вопрос о продолжении';nextLabel=mode==='review'?'запустить выбор животины':'открыть вопрос 1/3';canNext=!!pack}
+  else if(flow==='playing_clip'){title='смотрим фрагмент';detail=mode==='review'?'сейчас можно перейти к выбору животины, которая досмотрит фильм':'после просмотра откроется первый вопрос о продолжении';nextLabel=watched?(mode==='review'?'запустить выбор животины':'открыть вопрос 1/3'):'ждём окончания фрагмента';canNext=!!pack&&watched;detail=watched?detail:'экран должен подтвердить полный просмотр · при сбое открой резерв на ноутбуке'}
   else if(flow==='assignment_randomizing'){title='выбираем животину';detail='рандом уже на проекторе. следующим нажатием фиксируем победителя';nextLabel='назвать выбранную животину';canNext=!!pack}
-  else if(flow==='assignment_selected'){title=mode==='review'?'фильм назначен':'самый провидец найден';detail=mode==='review'?'победитель на экране — теперь откроем рецензию одним словом':'можно завершить раунд и перейти к следующему';nextLabel=mode==='review'?'открыть рецензию одним словом':'завершить раунд';canNext=mode!=='review'||!!pack}
+  else if(flow==='assignment_selected'){title=projector?.payload?.noWinner?'никто не угадал':mode==='review'?'фильм назначен':'самый провидец найден';detail=mode==='review'?'победитель на экране — теперь откроем рецензию одним словом':'можно завершить раунд и перейти к следующему';nextLabel=mode==='review'?'открыть рецензию одним словом':'завершить раунд';canNext=mode!=='review'||!!pack}
   else if(flow==='one_word_collecting'){title='рецензия одним словом';detail='слова участников появляются на проекторе';nextLabel='показать результат рецензий';canNext=!!pack}
   else if(flow==='one_word_results'){title='результаты рецензий';detail='результат уже на проекторе';nextLabel='завершить раунд'}
-  else if(flow==='question_open'){title=`вопрос ${position}/${target}`;detail=currentQuestion?.prompt||'гости отвечают на телефонах';nextLabel='показать ближайший ответ';canNext=!!pack}
-  else if(flow==='question_results'){title='самый близкий ответ';detail='животина сравнила ответы гостей';nextLabel='показать правильное продолжение';canNext=!!pack}
-  else if(flow==='question_reveal'){title=`продолжение после вопроса ${position}/${target}`;detail=position<target?'сейчас можно перейти к следующему вопросу':'все вопросы закончились, пора выбрать самого провидца';nextLabel=position<target?`открыть вопрос ${position+1}/${target}`:'запустить выбор провидца';canNext=!!pack}
+  else if(flow==='question_open'){title=`вопрос ${position}/${target}`;detail=currentQuestion?.prompt||'гости отвечают на телефонах';nextLabel='закрыть ответы и оценить';canNext=!!pack}
+  else if(flow==='question_results'){const decided=data.projector?.payload?.judgement?.status==='decided';title=decided?'оценка подтверждена':'нужно решение ведущей';detail=decided?'можно показать продолжение':'выбери правильные ответы или «никто не угадал»';nextLabel='показать правильное продолжение';canNext=!!pack&&decided}
+  else if(flow==='question_reveal'){title=`продолжение после вопроса ${position}/${target}`;detail=position<target?'сейчас можно перейти к следующему вопросу':'все вопросы закончились, пора выбрать самого провидца';nextLabel=watched?(position<target?`открыть вопрос ${position+1}/${target}`:'запустить выбор провидца'):'ждём окончания продолжения';canNext=!!pack&&watched}
   else {title='переход выполняется';detail='если переход занимает слишком долго, проверь уведомление об ошибке';canNext=false}
 
   const currentPhase=flow==='round_intro'?'intro':flow==='collecting_films'?'collect':
@@ -1276,45 +1127,40 @@ function FilmMechanicAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(act
   const pack=movie?(data.filmPackages||[]).find(x=>x.movieCandidateId===movie.id):undefined
   const selectedSource=(movie?.sourceCandidates||[]).find(s=>s.selected)
   const liveReady=!!round&&!!liveMovie&&!!movie&&liveMovie.id===movie.id
-  const makeFragments=()=>Array.from({length:6},(_,i)=>({label:i===0?'первый фрагмент':'продолжение '+i,sourcePlatform:'youtube',videoId:'',sourceUrl:'',startSec:0,endSec:'' as any}))
-  const makeQuestions=()=>Array.from({length:5},(_,i)=>({prompt:'',options:'',correctAnswer:'',revealText:'',position:i+1}))
+  const makeFragments=()=>Array.from({length:(pack?.questions?.length||3)+1},(_,i)=>({label:i===0?'первый фрагмент':'продолжение '+i,sourcePlatform:'youtube',videoId:'',sourceUrl:'',startSec:0,endSec:'' as any}))
+  const makeQuestions=()=>Array.from({length:pack?.questions?.length||3},(_,i)=>({prompt:'',options:'',correctAnswer:'',revealText:'',position:i+1}))
+  const [reviewed,setReviewed]=useState(false),[preview,setPreview]=useState<number|null>(null)
   const [fragments,setFragments]=useState<any[]>(makeFragments)
   const [questions,setQuestions]=useState<any[]>(makeQuestions)
   useEffect(()=>{
     if(pack){
-      const fs=makeFragments();(pack.fragments||[]).slice(0,6).forEach((f:any,i:number)=>{fs[i]={...fs[i],...f,endSec:f?.endSec??''}});setFragments(fs)
+      const fs=makeFragments();(pack.fragments||[]).slice(0,6).forEach((f:any,i:number)=>{fs[i]={...fs[i],...f,endSec:f?.endSec??'',backupUrl:f?.backups?.[0]?.sourceUrl||''}});setFragments(fs)
       const qs=makeQuestions();(pack.questions||[]).forEach((q:any)=>{const i=Math.max(0,Number(q.position)-1);if(i<5)qs[i]={position:i+1,prompt:q.prompt||'',options:Array.isArray(q.options)?q.options.join(', '):'',correctAnswer:answerText(q.correctAnswer),revealText:q.revealText||''}});setQuestions(qs)
     }else{setFragments(makeFragments());setQuestions(makeQuestions())}
   },[pack?.id,movie?.id])
-  if(!catalog.length)return <Card className="film-admin-card"><div className="section-title">киноблок нового формата</div><h2>сначала добавьте фильмы</h2><p className="muted">в production-каталоге пока нет ни одного movie candidate. добавьте фильм ниже в каталоге, затем здесь появится подготовка 6 фрагментов и 5 вопросов.</p></Card>
+  useEffect(()=>{setReviewed(false)},[JSON.stringify(fragments),JSON.stringify(questions),movie?.id])
+  if(!catalog.length)return <Card className="film-admin-card"><div className="section-title">киноблок нового формата</div><h2>сначала добавьте фильмы</h2><p className="muted">в production-каталоге пока нет ни одного movie candidate. добавьте фильм ниже в каталоге, затем здесь появится подготовка фрагментов и вопросов.</p></Card>
   if(!movie)return null
   const patchFragment=(i:number,p:any)=>setFragments(v=>v.map((x,n)=>n===i?{...x,...p}:x))
   const applySelectedSource=()=>{if(!selectedSource)return;setFragments(v=>v.map(x=>({...x,sourcePlatform:selectedSource.sourcePlatform,videoId:['youtube','rutube'].includes(selectedSource.sourcePlatform)?String(selectedSource.videoId||''):'',sourceUrl:String(selectedSource.sourceUrl||'')})))}
   const patchQuestion=(i:number,p:any)=>setQuestions(v=>v.map((x,n)=>n===i?{...x,...p}:x))
+  const normalized=fragments.map((f,i)=>({label:f.label||('фрагмент '+(i+1)),sourcePlatform:String(f.sourcePlatform||''),videoId:String(f.videoId||'').trim(),sourceUrl:String(f.sourceUrl||'').trim(),startSec:Number(f.startSec),endSec:f.endSec===''?null:Number(f.endSec),...(String(f.backupUrl||'').trim()?{backups:[{sourcePlatform:'direct',sourceUrl:String(f.backupUrl).trim(),startSec:Number(f.startSec),endSec:Number(f.endSec),sameCut:true}]}:{})}))
   const save=()=>run('admin-film-package-save',{
-    movieCandidateId:movie.id,
-    fragments:fragments.map((f,i)=>({label:f.label||('фрагмент '+(i+1)),sourcePlatform:String(f.sourcePlatform||((f.videoId)?'youtube':'')).trim(),videoId:String(f.videoId||'').trim(),sourceUrl:String(f.sourceUrl||'').trim(),startSec:Number(f.startSec)||0,endSec:f.endSec===''?null:Number(f.endSec)||null})),
-    questions:questions.map((q,i)=>({prompt:q.prompt,options:String(q.options||'').split(',').map((x:string)=>x.trim()).filter(Boolean),correctAnswer:q.correctAnswer,revealText:q.revealText,revealFragment:{...fragments[i+1],index:i+1}}))
+    movieCandidateId:movie.id,reviewed,fragments:normalized,
+    questions:questions.map((q,i)=>({prompt:q.prompt,options:String(q.options||'').split(',').map((x:string)=>x.trim()).filter(Boolean),correctAnswer:q.correctAnswer,revealText:q.revealText,revealFragment:normalized[i+1]}))
   })
-  const project=(op:string,extra:Record<string,unknown>={})=>pack&&round&&liveReady&&run('admin-film-projector',{filmPackageId:pack.id,roundId:round.id,op,...extra})
+
   return <Card className="film-admin-card">
-    <div className="row spread"><div><div className="section-title">подготовка киноблоков</div><h2>{movie.title}</h2></div><Pill>{pack?.status==='ready'?'готов к рандому':'не готов'}</Pill></div>
-    <Field label="какой фильм готовим"><select value={movie.id} onChange={e=>setPrepMovieId(e.target.value)}>{catalog.map(m=><option value={m.id} key={m.id}>{m.title}{(data.filmPackages||[]).some(p=>p.movieCandidateId===m.id&&p.status==='ready')?' · ready':' · без пакета'}</option>)}</select></Field>
-    <p className="muted">готовый пакет = первый фрагмент + 5 продолжений/reveal + ровно 5 проверенных вопросов. только такие фильмы попадают в live-рандом.</p>
-    {selectedSource&&<div className="film-source-seed"><span>выбранный источник: {selectedSource.sourcePlatform} · {selectedSource.sourceType}</span><Button kind="secondary" onClick={applySelectedSource}>подставить во все 6 фрагментов</Button></div>}
-    <details open={!pack} className="film-package-editor"><summary>{pack?'изменить 6 фрагментов и 5 вопросов':'подготовить 6 фрагментов и 5 вопросов'}</summary>
-      <div className="film-fragment-editor">{fragments.map((f,i)=><div className="film-config-row" key={i}><div className="section-title">{i===0?'01. первый фрагмент':'0'+(i+1)+'. reveal после вопроса '+i}</div><div className="inline"><Field label="источник"><select value={f.sourcePlatform||'youtube'} onChange={e=>patchFragment(i,{sourcePlatform:e.target.value,videoId:e.target.value==='youtube'?f.videoId:'',sourceUrl:e.target.value==='youtube'?'':f.sourceUrl})}><option value="youtube">youtube</option><option value="internet_archive">internet archive</option><option value="wikimedia_commons">wikimedia commons</option><option value="rutube">RUTUBE</option><option value="direct">direct video</option></select></Field>{(f.sourcePlatform||'youtube')==='youtube'?<Field label="youtube video id"><input value={f.videoId||''} onChange={e=>patchFragment(i,{videoId:e.target.value})}/></Field>:<Field label="прямой video url"><input value={f.sourceUrl||''} onChange={e=>patchFragment(i,{sourceUrl:e.target.value})}/></Field>}</div><div className="inline"><Field label="start sec"><input type="number" min="0" value={f.startSec||0} onChange={e=>patchFragment(i,{startSec:Number(e.target.value)})}/></Field><Field label="end sec"><input type="number" min="0" value={f.endSec??''} onChange={e=>patchFragment(i,{endSec:e.target.value})}/></Field></div></div>)}</div>
-      <div className="film-question-editor">{questions.map((q,i)=><div className="film-config-row" key={i}><div className="section-title">вопрос {i+1}/5</div><Field label="что будет дальше?"><textarea value={q.prompt} onChange={e=>patchQuestion(i,{prompt:e.target.value})}/></Field><Field label="варианты через запятую"><input value={q.options} onChange={e=>patchQuestion(i,{options:e.target.value})}/></Field><Field label="правильный вариант"><input value={q.correctAnswer} onChange={e=>patchQuestion(i,{correctAnswer:e.target.value})}/></Field><Field label="что реально произошло"><textarea value={q.revealText} onChange={e=>patchQuestion(i,{revealText:e.target.value})}/></Field></div>)}</div>
-      <Button disabled={busy} onClick={save}>{pack?'сохранить киноблок':'создать киноблок'}</Button>
+    <div className="row spread"><div><div className="section-title">подготовка киноблоков</div><h2>{movie.title}</h2></div><Pill>{pack?.sceneReviewed?'проверен для вопросов':'нужно проверить сцены'}</Pill></div>
+    <Field label="какой фильм готовим"><select value={movie.id} onChange={e=>setPrepMovieId(e.target.value)}>{catalog.map(m=><option value={m.id} key={m.id}>{m.title}{(data.filmPackages||[]).some(p=>p.movieCandidateId===m.id&&p.sceneReviewed===true)?' · проверен':' · без пакета'}</option>)}</select></Field>
+    <p className="muted">готовый комплект = вводный фрагмент + продолжение каждого вопроса. проверь тот же монтаж, язык и таймкоды, включая резерв. поиск ролика не заменяет эту проверку.</p>
+    {selectedSource&&<div className="film-source-seed"><span>выбранный источник: {selectedSource.sourcePlatform} · {selectedSource.sourceType}</span><Button kind="secondary" onClick={applySelectedSource}>подставить источник во все фрагменты</Button></div>}
+    <details open={!pack} className="film-package-editor"><summary>{pack?'изменить комплект':'подготовить комплект'}</summary>
+      <div className="film-fragment-editor">{fragments.map((f,i)=><div className="film-config-row" key={i}><div className="section-title">{i===0?'01. первый фрагмент':'0'+(i+1)+'. reveal после вопроса '+i}</div><div className="inline"><Field label="источник"><select value={f.sourcePlatform||'youtube'} onChange={e=>patchFragment(i,{sourcePlatform:e.target.value,videoId:e.target.value==='youtube'?f.videoId:'',sourceUrl:e.target.value==='youtube'?'':f.sourceUrl})}><option value="youtube">youtube</option><option value="internet_archive">internet archive</option><option value="wikimedia_commons">wikimedia commons</option><option value="rutube">rutube</option><option value="direct">direct video</option></select></Field>{(f.sourcePlatform||'youtube')==='youtube'?<Field label="youtube video id"><input value={f.videoId||''} onChange={e=>patchFragment(i,{videoId:e.target.value})}/></Field>:<Field label="прямой video url"><input value={f.sourceUrl||''} onChange={e=>patchFragment(i,{sourceUrl:e.target.value})}/></Field>}</div><div className="inline"><Field label="start sec"><input type="number" min="0" value={f.startSec||0} onChange={e=>patchFragment(i,{startSec:Number(e.target.value)})}/></Field><Field label="end sec"><input type="number" min="0" value={f.endSec??''} onChange={e=>patchFragment(i,{endSec:e.target.value})}/></Field></div><Field label="резерв: прямой https-адрес той же версии (необязательно)"><input value={f.backupUrl||''} onChange={e=>patchFragment(i,{backupUrl:e.target.value})}/></Field><Button kind="secondary" onClick={()=>setPreview(i)}>проверить фрагмент {i+1}</Button></div>)}</div>{preview!==null&&<div className="package-preview"><ProjectorMedia media={normalized[preview]} title={movie.title+' · фрагмент '+(preview+1)}/><Button kind="secondary" onClick={()=>setPreview(null)}>закрыть просмотр</Button></div>}
+      <div className="film-question-editor">{questions.map((q,i)=><div className="film-config-row" key={i}><div className="section-title">вопрос {i+1}/{questions.length}</div><Field label="что будет дальше?"><textarea value={q.prompt} onChange={e=>patchQuestion(i,{prompt:e.target.value})}/></Field><Field label="варианты через запятую"><input value={q.options} onChange={e=>patchQuestion(i,{options:e.target.value})}/></Field><Field label="правильный вариант"><input value={q.correctAnswer} onChange={e=>patchQuestion(i,{correctAnswer:e.target.value})}/></Field><Field label="что реально произошло"><textarea value={q.revealText} onChange={e=>patchQuestion(i,{revealText:e.target.value})}/></Field></div>)}</div>
+      <label className="scene-review-confirm"><input type="checkbox" checked={reviewed} onChange={e=>setReviewed(e.target.checked)}/> я просмотрела все фрагменты, вопросы и продолжения; таймкоды, монтаж и резерв совпадают</label><Button disabled={busy||!reviewed} onClick={save}>{pack?'сохранить киноблок':'создать киноблок'}</Button>
     </details>
-    {pack&&liveReady&&<div className="film-live-console">
-      <div className="row spread"><div className="section-title">режиссура projector · текущий раунд</div><Pill>{data.projector?.state||'не на экране'}</Pill></div>
-      <div className="film-live-step"><b>0. первый фрагмент</b><Button kind="secondary" disabled={busy} onClick={()=>project('film_intro')}>показать первый фрагмент</Button></div>
-      <div className="film-live-step"><b>слово зала</b><div className="inline"><Button disabled={busy} onClick={()=>project('one_word_open')}>собирать одно слово</Button><Button kind="secondary" disabled={busy} onClick={()=>project('one_word_results')}>зафиксировать стену слов</Button></div></div>
-      {(pack.questions||[]).map(q=><div className="film-live-step" key={q.id}><b>{q.position}/5. {q.prompt}</b><div className="film-control-three"><Button disabled={busy} onClick={()=>project('question_open',{position:q.position})}>открыть вопрос</Button><Button kind="secondary" disabled={busy} onClick={()=>project('question_results',{position:q.position})}>результаты</Button><Button kind="secondary" disabled={busy} onClick={()=>project('question_reveal',{position:q.position})}>правильное + фрагмент</Button></div></div>)}
-      <div className="film-live-step assignment-step"><b>после 5/5</b><div className="inline"><Button kind="secondary" disabled={busy} onClick={()=>project('assignment_randomizing')}>запустить рандом на экране</Button><Button disabled={busy} onClick={()=>run('admin-film-assign',{filmPackageId:pack.id,roundId:round.id})}>выбрать животинку</Button></div><p className="muted">выбор делается на сервере один раз. повторное нажатие вернёт того же победителя.</p></div>
-    </div>}
-    {pack&&!liveReady&&<div className="success">киноблок готов. он появится в live-пульте автоматически, когда этот фильм выпадет в текущем раунде.</div>}
+    {pack?.sceneReviewed&&!liveReady&&<div className="success">киноблок проверен. он появится в live-пульте автоматически, когда этот фильм выпадет в текущем раунде.</div>}
   </Card>
 }
 
@@ -1456,13 +1302,20 @@ function Admin(){
   const nav=useNavigate()
   const privileged=usePrivilegedState('admin',slug)
   const data=privileged.data,error=privileged.error,reload=privileged.reload
-  const [busy,setBusy]=useState(false),[actionError,setActionError]=useState('')
+  const [busy,setBusy]=useState(false),[actionError,setActionError]=useState(''),[savedAction,setSavedAction]=useState('')
+  const pendingAction=useRef(false)
   const [cap,setCap]=useState(50),[startsAt,setStartsAt]=useState(''),[ticketPrice,setTicketPrice]=useState(0),[runtimeCap,setRuntimeCap]=useState(150),[venueName,setVenueName]=useState(''),[venueAddress,setVenueAddress]=useState(''),[message,setMessage]=useState(''),[checkinLink,setCheckinLink]=useState(''),[projectorLink,setProjectorLink]=useState('')
   const [preflight,setPreflight]=useState<any>(null)
   const [artCheck,setArtCheck]=useState<{loaded:number;total:number;missing:string[]}|null>(null)
   useEffect(()=>{if(data){setCap(data.event.capacity);setStartsAt(moscowInputValue(data.event.startsAt));setTicketPrice(Number(data.event.ticketPriceRub||0));setRuntimeCap(Number(data.event.maxMovieRuntimeMin||150));setVenueName(data.event.venueName||'');setVenueAddress(data.event.venueAddress||'')}},[data?.event.capacity,data?.event.startsAt,data?.event.ticketPriceRub,data?.event.maxMovieRuntimeMin,data?.event.venueName,data?.event.venueAddress])
   if(!data)return <Loading error={error}/>
-  const run=async(action:string,payload:Record<string,unknown>={})=>{try{setBusy(true);setActionError('');const result=await callAdminApi<any>(action,{slug:data.event.slug,...payload},privileged.token);await reload();return result}catch(e:any){setActionError(e.message||'не получилось выполнить действие');return null}finally{setBusy(false)}}
+  const run=async(action:string,payload:Record<string,unknown>={})=>{
+    if(pendingAction.current)return null
+    pendingAction.current=true
+    try{setBusy(true);setActionError('');setSavedAction('');const result=await callAdminApi<any>(action,{slug:data.event.slug,expectedRunId:data.show?.runtime.runId??null,expectedProjectorRevision:data.projector?.revision??0,...payload},privileged.token);setSavedAction('сохранено');await reload();return result}
+    catch(e:any){setActionError(e.message||'действие не подтверждено · обнови данные перед повтором');return null}
+    finally{pendingAction.current=false;setBusy(false)}
+  }
   const probeProjectorArt=async()=>{
     const names=Array.from({length:5},(_,i)=>['projector','stage',String(i)].join('-')+'.webp')
     const results=await Promise.all(names.map(async name=>{try{const r=await fetch(`${import.meta.env.BASE_URL}assets/${name}`,{method:'HEAD',cache:'no-store'});return {name,ok:r.ok}}catch{return {name,ok:false}}}))
@@ -1476,7 +1329,9 @@ function Admin(){
     <nav className="admin-quick-nav" aria-label="разделы пульта"><button type="button" onClick={()=>document.getElementById('show-control')?.scrollIntoView({behavior:'smooth'})}>эфир</button><button type="button" onClick={()=>nav('/admin/checkin/'+data.event.slug)}>сканер qr</button><button type="button" onClick={()=>nav('/test/'+data.event.slug.replace(/^test-/,''))}>репетиция</button><button type="button" onClick={()=>document.getElementById('admin-projector')?.scrollIntoView({behavior:'smooth'})}>проектор</button><button type="button" onClick={()=>document.getElementById('admin-preflight')?.scrollIntoView({behavior:'smooth'})}>проверка</button><button type="button" onClick={()=>{const el=document.getElementById('admin-feedback') as HTMLDetailsElement|null;if(el){el.open=true;el.scrollIntoView({behavior:'smooth'})}}}>отзывы</button><button type="button" onClick={()=>{const el=document.getElementById('admin-support') as HTMLDetailsElement|null;if(el){el.open=true;el.scrollIntoView({behavior:'smooth'})}}}>настройки</button></nav>
     <div className="row spread admin-title-row"><div><div className="eyebrow">админка. экран ведущего</div><h2>{data.event.title}</h2></div><Pill>{data.show?showRunStatusLabel(data.show.runtime.runStatus):statusLabel(data.event.status)}</Pill></div>
     {error&&<div className="form-error" role="alert">данные не обновились. {error}<Button kind="secondary" onClick={()=>void reload()}>обновить данные</Button></div>}
-    {actionError&&<div className="form-error" role="alert">{actionError}</div>}
+    {busy&&<div role="status" aria-live="polite">сохраняем · повторно нажимать не нужно</div>}
+    {!busy&&savedAction&&<div role="status" aria-live="polite">{savedAction}</div>}
+    {actionError&&<div className="form-error" role="alert">{actionError}<Button kind="secondary" disabled={busy} onClick={()=>void reload()}>обновить данные</Button></div>}
     <section id="admin-quick-actions" className="director-action-dock" aria-label="быстрые действия администратора">
       <button type="button" className="director-action-primary" onClick={()=>nav('/admin/checkin/'+data.event.slug)}>
         <span className="director-action-icon" aria-hidden="true">⌗</span><span><strong>сканировать qr билета</strong><small>гость отмечается, животина появляется на экране</small></span><b aria-hidden="true">↗</b>
@@ -1485,6 +1340,7 @@ function Admin(){
         <span aria-hidden="true">◉</span><strong>{data.event.slug.startsWith('test-')?'режимы репетиции':'проверить весь вечер'}</strong><small>только администраторы</small>
       </button>
     </section>
+    <ReliabilityControl data={data} busy={busy} run={run}/>
     <ShowControl data={data} busy={busy} run={run}/>
     <FeedbackSummaryAdmin busy={busy} run={run}/>
     <Card id="admin-projector" className="projector-access-card"><div className="section-title">общий экран / проектор</div><p className="muted">откройте эту ссылку на ноутбуке, подключённом к проектору, и разверните браузер на весь экран. экран обновляется сам.</p><div className="inline"><Button kind="secondary" disabled={busy} onClick={async()=>{const x:any=await run('admin-screen-link');if(x?.screenUrl)setProjectorLink(String(x.screenUrl))}}>получить ссылку экрана</Button>{projectorLink&&<><Button onClick={()=>window.open(projectorLink,'_blank','noopener,noreferrer')}>открыть экран ↗</Button><Button kind="secondary" onClick={async()=>{try{await navigator.clipboard.writeText(projectorLink)}catch{window.prompt('скопируйте ссылку',projectorLink)}}}>скопировать</Button></>}</div>{projectorLink&&<input className="share-link" readOnly value={projectorLink}/>}</Card>
@@ -1504,6 +1360,7 @@ function Admin(){
       {!['2026-10-03','test-2026-10-03'].includes(data.event.slug)&&<ProgramEditor data={data} busy={busy} run={run}/>}
       {['2026-10-03','test-2026-10-03'].includes(data.event.slug)&&<Card><div className="section-title">программа вечера</div><p>сбор 60 минут → животина настоящая → снимаем кино → перерыв → снимаем кино → «творог» → обратная связь → музыка</p><p className="muted">каждый раунд начинается с 5 минут объяснения механики, затем сбор названий открывается автоматически.</p></Card>}
       <MovieCatalogAdmin data={data} busy={busy} run={run}/>
+      <FilmMechanicAdmin data={data} busy={busy} run={run}/>
     </details>
     <details className="admin-technical"><summary>технические настройки события</summary><div className="admin-tech-grid">
       <Card><div className="section-title">событие</div><Field label="дата и время. москва"><input type="datetime-local" value={startsAt} onChange={e=>setStartsAt(e.target.value)}/></Field><Field label="цена билета. ₽"><input type="number" min="0" max="100000" value={ticketPrice} onChange={e=>setTicketPrice(Number(e.target.value))}/></Field><Field label="максимальный хронометраж"><input type="number" min="45" max="360" value={runtimeCap} onChange={e=>setRuntimeCap(Number(e.target.value))}/></Field><Field label="площадка"><input value={venueName} onChange={e=>setVenueName(e.target.value)}/></Field><Field label="адрес"><input value={venueAddress} onChange={e=>setVenueAddress(e.target.value)}/></Field><Button disabled={busy||!moscowIso(startsAt)} onClick={()=>run('admin-event-config',{startsAt:moscowIso(startsAt),ticketPriceRub:ticketPrice,maxMovieRuntimeMin:runtimeCap,venueName,venueAddress})}>сохранить событие</Button></Card>
@@ -1706,13 +1563,14 @@ function projectorContent(d:DemoState){
   if(p.state==='one_word_collecting')return <><div className="eyebrow">рецензия одним словом</div><h1>что это за фильм?</h1><ScreenWordWall groups={Array.isArray(payload.wordGroups)?payload.wordGroups:[]} collecting/></>
   if(p.state==='one_word_results')return <><div className="eyebrow">рецензия зала</div><ScreenWordWall groups={Array.isArray(payload.wordGroups)?payload.wordGroups:[]}/></>
   if(p.state==='question_open')return <><div className="eyebrow">вопрос {Number(payload.position||0)}/{Number(payload.totalQuestions||3)}</div><h1>{String(payload.prompt||'что будет дальше?')}</h1><p>напишите свой вариант в телефоне</p></>
-  if(p.state==='question_results'){const x=payload.closest||{};return <div className="screen-closest-answer"><div className="eyebrow">ближе всех · {Number(payload.answerCount||0)} ответов</div><h1>{String(x.animalName||'нет ответов')}</h1>{x.answer&&<p className="screen-closest-quote">«{String(x.answer)}»</p>}{x.comment&&<p>{String(x.comment)}</p>}</div>}
+  if(p.state==='question_results'){const x=payload.closest||{},j=payload.judgement;return <div className="screen-closest-answer"><div className="eyebrow">оценка · {Number(payload.answerCount||0)} ответов</div><h1>{j?.status!=='decided'?'решение ведущей':String(x.animalName||'никто не угадал')}</h1>{x.answer&&<p className="screen-closest-quote">«{String(x.answer)}»</p>}<p>{String(j?.comment||'оценка ещё не подтверждена')}</p></div>}
   if(p.state==='question_reveal'){
     const fragment=payload.revealFragment
     if(fragment?.videoId||fragment?.sourceUrl)return <><ProjectorFragment fragment={fragment} title={String(payload.filmTitle||'продолжение')}/><div className="screen-reveal-overlay"><small>на самом деле</small><b>{answerText(payload.correctAnswer)}</b>{payload.revealText&&<span>{String(payload.revealText)}</span>}</div></>
     return <><div className="eyebrow">на самом деле</div><h1>{answerText(payload.correctAnswer)}</h1>{payload.revealText&&<p>{String(payload.revealText)}</p>}</>
   }
   if(p.state==='assignment_randomizing')return <div className="screen-assignment-random"><div className="eyebrow">рандом</div><h1>кто досмотрит фильм?</h1><div className="random-rabbits">{[0,1,2,3,4,5,6].map(i=><img key={i} src={import.meta.env.BASE_URL+'assets/rabbit-full.webp'} alt="" draggable={false}/>)}</div></div>
+  if(p.state==='assignment_winner'&&payload.noWinner)return <div className="screen-closest-answer"><h1>никто не угадал</h1><p>провидец в этом раунде не назначен</p></div>
   if(p.state==='assignment_winner'){const seer=payload.assignmentKind==='seer';return <div className="screen-assignment-winner"><div className="winner-rabbit"><ProjectorCreatureImage stage={String(payload.animalStage||'stage_0')} visualVariant={Number(payload.visualVariant||1)}/></div><div className="eyebrow">{seer?'самый провидец':'этот фильм твой'}</div><h1>{String(payload.animalName||'животина')}</h1><h2>{String(payload.filmTitle||'фильм')}</h2>{seer&&<p>ближе всех к продолжению: {Number(payload.correctCount||0)} из {Number(payload.totalQuestions||3)}</p>}<p>{String(payload.animalName||'животина')}, теперь ты смотришь этот фильм полностью</p></div>}
   if(p.state==='round_finished')return <><div className="eyebrow">раунд закончен</div><h1>готово</h1></>
   if(p.state==='past_review_card')return <div className="screen-past-review"><div className="eyebrow">в прошлый раз</div><h1>{String(payload.animalName||'животина')} × {String(payload.filmTitle||'фильм')}</h1>{payload.animalTake&&<h3>{String(payload.animalTake)}</h3>}</div>
@@ -1779,7 +1637,7 @@ function ProjectorAudio({data,screenToken}:{data:DemoState;screenToken:string}){
   const lastCue=useRef('')
   const lastTest=useRef('')
   const lastSync=useRef('')
-  const sessionId=useRef(crypto.randomUUID())
+  const sessionId=useRef(projectorSessionId)
   const unlocking=useRef(false)
   const [audioError,setAudioError]=useState('')
   const [unlockBusy,setUnlockBusy]=useState(false)
@@ -1957,7 +1815,7 @@ function Screen(){
       {testMode&&<div className="screen-message">тест · {data.show?.runtime.runKey||'репетиция'} · отдельная репетиция</div>}
       {!animalDemo&&data.screenMessage&&<div className="screen-message">{data.screenMessage}</div>}
     </div>:<div className="screen-notices" aria-hidden/>}
-    <main className="screen-content" key={`${data.show?.runtime.currentBlockId}:${data.projector?.state}:${data.projector?.payload?.roundNo}:${data.projector?.payload?.pitch?.id}:${data.projector?.payload?.position}`}>{content}</main>
+    <PlaybackContext.Provider value={{paused:data.show?.runtime.runStatus==='paused',runId:String(data.show?.runtime.runId||''),revision:Number(data.projector?.revision||0),report:sample=>callScreenApi('screen-video-heartbeat',{slug:data.event.slug,...sample},privileged.token)}}><main className="screen-content" key={`${data.show?.runtime.runId}:${data.projector?.revision}:${data.show?.runtime.currentBlockId}:${data.projector?.state}`}>{content}</main></PlaybackContext.Provider>
     <div className="screen-footer">{animalDemo?'демо · база не меняется':eventDate(data.event.startsAt)+' · насыпатели в кино'}</div>
   </div>
 }
@@ -1995,3 +1853,19 @@ function TelegramStartRouter({children}:{children:ReactNode}){
 function statusLabel(s:EventStatus){const m:Record<EventStatus,string>={DRAFT:'черновик',SALES_OPEN:'регистрация открыта',CHECKIN:'сбор гостей',IDEAS_OPEN:'идеи открыты',IDEAS_LOCKED:'идеи закрыты',TOP3_READY:'три идеи',IDEA_RANDOMIZED:'идея выбрана',MOVIE_SEARCH:'поиск фильма',MOVIE_FINALISTS:'три фильма',MOVIE_SELECTED:'фильм выбран',PREDICTIONS_OPEN:'прогнозы',PREDICTIONS_LOCKED:'прогнозы закрыты',WATCHING:'просмотр',PREDICTIONS_SCORED:'результаты',DISCUSSION:'реакции',FINAL_REVIEW:'финальная фраза',FEEDBACK:'исследование',CLOSED:'закрыто'};return m[s]}
 
 export default function App(){return <HashRouter><ConnectionStatus/><TelegramStartRouter><Routes><Route path="/onboarding" element={<Onboarding/>}/><Route path="/birth" element={<BirthPage/>}/><Route path="/rules" element={<RulesPage/>}/><Route element={<Layout/>}><Route path="/" element={<RequireProfile><Home/></RequireProfile>}/><Route path="/profile" element={<RequireProfile><CreatureProfilePage/></RequireProfile>}/><Route path="/mission/:assignmentId" element={<RequireProfile><FilmMissionPage/></RequireProfile>}/><Route path="/dating" element={<RequireProfile><DatingPage/></RequireProfile>}/><Route path="/private/:slug" element={<RequireProfile><PrivateLiveEvent/></RequireProfile>}/><Route path="/notifications" element={<RequireProfile><NotificationPage/></RequireProfile>}/><Route path="/event/:slug" element={<RequireProfile><EventPage/></RequireProfile>}/><Route path="/archive" element={<RequireProfile><ArchivePage/></RequireProfile>}/><Route path="/test" element={<Navigate to="/test/2026-10-17" replace/>}/><Route path="/test/:slug" element={<TestRoomHub/>}/><Route path="/club" element={<Navigate to="/archive" replace/>}/><Route path="/zhivotina" element={<RequireProfile><ZhivotinaPage/></RequireProfile>}/><Route path="/jipitina" element={<Navigate to="/zhivotina" replace/>}/></Route><Route path="/admin/:slug" element={<Admin/>}/><Route path="/admin/event/:slug" element={<Admin/>}/><Route path="/admin/checkin/:slug" element={<AdminCheckinScanner/>}/><Route path="/screen/:slug" element={<Screen/>}/><Route path="/screen/event/:slug" element={<Screen/>}/><Route path="/rehearsal/:slug" element={<RehearsalPage/>}/><Route path="*" element={<Navigate to="/" replace/>}/></Routes></TelegramStartRouter></HashRouter>}
+
+function ReliabilityControl({data,busy,run}:{data:DemoState;busy:boolean;run:(action:string,payload?:Record<string,unknown>)=>Promise<any>}){
+  const review=data.judgeReview,video=data.show?.runtime.videoState||{}
+  const [winners,setWinners]=useState<string[]>([])
+  useEffect(()=>{setWinners([])},[review?.questionId,review?.revision])
+  const media=['film_intro','playing_clip','question_reveal'].includes(String(data.projector?.state))
+  const stale=Date.now()-Number(video.lastSeenAt||0)>12000
+  if(!review&&!media)return null
+  return <Card className="reliability-control">
+    {media&&<><div className="section-title">контроль показа</div><h3>{video.status==='ended'&&video.continuous?'фрагмент показан полностью':stale?'нет сигнала от проектора · шоу ждёт':video.status==='playing'?'идёт видео':'показ приостановлен'}</h3><p role="status">{stale?'проверь ноутбук и сеть':`позиция: ${Math.floor(Number(video.position||0))} сек · ${String(video.status||'загрузка')}`}</p></>}
+    {review&&<><div className="section-title">решение ведущей</div><h3>{review.prompt}</h3><p>проверенное продолжение: {String(review.actual)} · {review.reveal}</p><p>выбери все правильные ответы. пустой выбор означает «никто не угадал»</p>
+      <div className="host-answers">{review.answers.map((a:any)=><label key={a.id}><input type="checkbox" checked={winners.includes(a.id)} disabled={busy} onChange={e=>setWinners(old=>e.target.checked?[...old,a.id]:old.filter(id=>id!==a.id))}/><span><b>{a.animal_name_snapshot}</b><br/>{String(a.answer)}</span></label>)}</div>
+      <Button disabled={busy} onClick={()=>run('admin-question-judge',{questionId:review.questionId,expectedProjectorRevision:review.revision,winnerIds:winners})}>{winners.length?'подтвердить правильные ответы':'никто не угадал · подтвердить'}</Button>
+    </>}
+  </Card>
+}

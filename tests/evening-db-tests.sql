@@ -1,0 +1,46 @@
+\set ON_ERROR_STOP on
+-- Dedicated database only, no external calls or real attendees.
+create function pg_temp.assert_ok(ok boolean,msg text) returns void language plpgsql as $$ begin if ok is distinct from true then raise exception 'assertion: %',msg; end if; raise notice 'PASS %',msg; end $$;
+create function pg_temp.expect_failure(command text,msg text) returns void language plpgsql as $$ begin execute command; raise exception using errcode='ZZ001',message='expected failure: '||msg; exception when sqlstate 'ZZ001' then raise; when others then raise notice 'PASS % [%]',msg,sqlerrm; end $$;
+insert into movie_candidates values('10000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000001');
+insert into event_rounds values('30000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000001',null,'active','movie_found',now());
+insert into event_runtime(event_id,run_id,current_round_id) values('20000000-0000-0000-0000-000000000001','40000000-0000-0000-0000-000000000001','30000000-0000-0000-0000-000000000001');
+do $$ declare e uuid='20000000-0000-0000-0000-000000000001';m uuid='10000000-0000-0000-0000-000000000001';p uuid;q uuid;u uuid='50000000-0000-0000-0000-000000000001'; r uuid='30000000-0000-0000-0000-000000000001';run uuid='40000000-0000-0000-0000-000000000001';fragments jsonb='[{"sourcePlatform":"direct","sourceUrl":"https://example.com/movie.mp4","startSec":0,"endSec":10},{"sourcePlatform":"direct","sourceUrl":"https://example.com/movie.mp4","startSec":10,"endSec":20}]';questions jsonb='[{"position":1,"prompt":"что случится?","options":["выйдет","сядет"],"correct_answer":"выйдет","reveal_text":"герой выходит","reveal_fragment":{}}]';review jsonb=jsonb_build_object('version',1,'digest',repeat('a',64));before_count int;rev bigint;ans uuid;
+begin
+ p=public.save_reviewed_film_package(e,m,'fixture',fragments,questions,review);
+ select id into q from film_questions where film_package_id=p;
+ perform pg_temp.assert_ok((select status='ready' from film_packages where id=p),'complete package saved atomically');
+ perform pg_temp.assert_ok((select correct_answer='"выйдет"'::jsonb from film_questions where id=q),'answer remains a JSON string');
+ perform pg_temp.expect_failure(format('select public.save_reviewed_film_package(%L,%L,%L,%L,%L,%L)',e,m,'bad edition',fragments||'[{}]'::jsonb,'[{"position":1,"prompt":"bad","options":[],"correct_answer":"yes"},{"position":2,"prompt":"","correct_answer":""}]',review),'partial package failure rolls back');
+ perform pg_temp.assert_ok((select title_snapshot='fixture' from film_packages where id=p),'failed edit leaves original package intact');
+ update event_rounds set movie_candidate_id=m where id=r;
+ perform pg_temp.expect_failure(format('select public.save_reviewed_film_package(%L,%L,%L,%L,%L,%L)',e,m,'active edition',fragments,questions,review),'active package immutable');
+ insert into registrations values(e,u,'attended');
+ insert into event_projector_state values(e,run,r,p,'question_open',7,jsonb_build_object('questionId',q,'position',1),now());
+ perform public.submit_film_prediction(e,r,q,u,'fixture','герой выйдет');
+ perform public.submit_film_prediction(e,r,q,u,'fixture','герой выйдет из двери');
+ perform pg_temp.assert_ok((select count(*)=1 from film_predictions),'same question retry is idempotent');
+ select id into ans from film_predictions limit 1;
+ perform pg_temp.expect_failure(format('select public.submit_film_prediction(%L,%L,%L,%L,%L,%L)',e,r,q,'50000000-0000-0000-0000-000000000009','absent','ответ'),'unattended guest rejected');
+ rev=public.freeze_film_question(e,r,q,7);
+ perform pg_temp.assert_ok(rev=8,'freeze fences the grading snapshot');
+ perform pg_temp.expect_failure(format('select public.submit_film_prediction(%L,%L,%L,%L,%L,%L)',e,r,q,u,'fixture','поздний ответ'),'late answer rejected after freeze');
+ perform public.commit_film_judgement(e,r,p,q,rev,'{"status":"needs_host","outcome":"uncertain","method":"ai","winnerIds":[]}',jsonb_build_object('questionId',q,'judgement',jsonb_build_object('status','needs_host')),null);
+ perform pg_temp.assert_ok((select bool_and(not is_correct) from film_predictions),'AI failure awards nobody');
+ perform pg_temp.expect_failure(format('select public.commit_film_judgement(%L,%L,%L,%L,8,%L,%L,null)',e,r,p,q,'{"status":"decided","outcome":"none","method":"host","winnerIds":[]}',jsonb_build_object('questionId',q,'judgement',jsonb_build_object('status','decided'))),'stale judgement rejected');
+ perform public.commit_film_judgement(e,r,p,q,9,jsonb_build_object('status','decided','outcome','winner','method','host','winnerIds',jsonb_build_array(ans)),jsonb_build_object('questionId',q,'judgement',jsonb_build_object('status','decided')),u);
+ perform pg_temp.assert_ok((select is_correct from film_predictions where id=ans),'host can approve a valid answer');
+ perform public.commit_film_judgement(e,r,p,q,10,'{"status":"decided","outcome":"none","method":"host","winnerIds":[]}',jsonb_build_object('questionId',q,'judgement',jsonb_build_object('status','decided')),u);
+ perform pg_temp.assert_ok((select bool_and(not is_correct) from film_predictions),'host can correct to nobody');
+ perform pg_temp.assert_ok((select count(*)=3 from event_runtime_log where action='question_judgement'),'all decisions have audit records');
+ perform pg_temp.expect_failure(format('select public.commit_film_judgement(%L,%L,%L,%L,11,%L,%L,null)',e,r,p,q,'{"status":"decided","outcome":"winner","method":"host","winnerIds":["50000000-0000-0000-0000-000000000009"]}',jsonb_build_object('questionId',q,'judgement',jsonb_build_object('status','decided'))),'foreign answer cannot win');
+ update event_projector_state set state='film_intro',revision=12,payload=jsonb_build_object('fragment',fragments->0) where event_id=e;
+ perform pg_temp.assert_ok(public.record_projector_playback(e,run,12,'{}',jsonb_build_object('runId',run,'projectorRevision',12,'status','playing')),'current playback report commits');
+ perform pg_temp.assert_ok(not public.record_projector_playback(e,run,12,'{}',jsonb_build_object('runId',run,'projectorRevision',12)),'concurrent stale playback CAS rejected');
+ perform pg_temp.assert_ok(not public.record_projector_playback(e,run,11,(select video_state from event_runtime where event_id=e),jsonb_build_object('runId',run,'projectorRevision',11)),'old projection heartbeat rejected');
+ update event_runtime set current_round_id='30000000-0000-0000-0000-000000000002' where event_id=e;
+ update event_projector_state set round_id='30000000-0000-0000-0000-000000000002',state='question_open',payload=jsonb_build_object('questionId',q) where event_id=e;
+ perform public.submit_film_prediction(e,'30000000-0000-0000-0000-000000000002',q,u,'fixture','ответ второго раунда');
+ perform pg_temp.assert_ok((select count(*)=2 from film_predictions),'reusing a package preserves both rounds of answers');
+end $$;
+select pg_temp.assert_ok(not has_function_privilege('anon',oid,'execute') and not has_function_privilege('authenticated',oid,'execute') and has_function_privilege('service_role',oid,'execute') and not prosecdef,proname||' has restricted invoker privileges') from pg_proc where proname in ('save_reviewed_film_package','submit_film_prediction','freeze_film_question','commit_film_judgement','record_projector_playback');

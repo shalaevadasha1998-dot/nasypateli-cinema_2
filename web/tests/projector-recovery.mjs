@@ -19,6 +19,7 @@ try{
  for(let i=0;i<40;i++){try{if((await fetch(base)).ok)break}catch{}await new Promise(r=>setTimeout(r,250))}
  browser=await chromium.launch({headless:true})
  const page=await browser.newPage({viewport:{width:1280,height:720}})
+ page.on('dialog',dialog=>dialog.accept())
  await page.addInitScript(()=>{window.Telegram={WebApp:{initData:'fixture'}}})
  await page.route('**/telegram-web-app.js*',r=>r.fulfill({body:'',contentType:'application/javascript'}))
  await page.route('**/functions/v1/app',async r=>{const {action}=r.request().postDataJSON();await r.fulfill({json:action==='screen-bootstrap'||action==='bootstrap'?state:action==='live-refresh'?{runtime:state.show.runtime}: {ok:true,owner:true}})})
@@ -39,7 +40,7 @@ try{
  state.projector={state:'film_intro',payload:{filmTitle:'тестовый фильм',fragment:{videoId:'testid12345',sourcePlatform:'youtube',startSec:0,endSec:5}},revision:2}
  await page.route('https://www.youtube.com/iframe_api',r=>r.fulfill({contentType:'application/javascript',body:`window.YT={Player:class {constructor(node,opts){this.node=node;setTimeout(()=>opts.events.onError({data:150}),50)}destroy(){}getIframe(){return null}}};window.onYouTubeIframeAPIReady()`}))
  await page.goto(base+'#/screen/test-2026-10-17?token=fixture',{waitUntil:'domcontentloaded'})
- await page.getByRole('alert').filter({hasText:'фрагмент недоступен'}).waitFor()
+ await page.getByRole('alert').filter({hasText:'показ приостановлен'}).waitFor()
  await page.getByLabel('резервный видеофайл').setInputFiles('public/assets/rabbit-boy.webm')
  await page.waitForFunction(()=>{const v=document.querySelector('.projector-media video');return v&&v.readyState>=2})
  assert(!await page.locator('.projector-media-error').count(),'Fallback video not restored')
@@ -63,7 +64,7 @@ try{
  await frame.locator('body').evaluate(()=>window.emitTime(20))
  await frame.getByText('paused',{exact:true}).waitFor()
  await frame.locator('body').evaluate(()=>window.emitError())
- await page.getByRole('alert').filter({hasText:'фрагмент недоступен'}).waitFor()
+ await page.getByRole('alert').filter({hasText:'показ приостановлен'}).waitFor()
  console.log('PASS Rutube timing, origin checks and blocked-video recovery')
 
 }finally{await browser?.close();server.kill('SIGTERM')}

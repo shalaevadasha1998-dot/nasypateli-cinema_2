@@ -29,7 +29,7 @@ function fakeShow(status='idle',test=true){
     event:{id:'d5ac9f9c-d0e8-4fd2-9b09-6f914d7ef340',slug:test?'test-2026-10-03':'2026-10-17',title:'насыпатели в кино · репетиция',status:'CHECKIN'},
     show:{
       program:{version:1,roundsTarget:4,rewards:{join:1,vote:1,round:2,finale:3},blocks},
-      runtime:{runKey:'test_002',isTest:test,runStatus:status,currentBlockId:status==='paused'?'cinema_first':'arrival',currentBlockIndex:status==='paused'?2:0,currentBlock:blocks[status==='paused'?2:0],currentRound:0,voteState:'closed',resultsVisible:false,videoState:{status:'idle'},revision:1},
+      runtime:{runId:'40000000-0000-0000-0000-000000000001',runKey:'test_002',isTest:test,runStatus:status,currentBlockId:status==='paused'?'cinema_first':'arrival',currentBlockIndex:status==='paused'?2:0,currentBlock:blocks[status==='paused'?2:0],currentRound:0,voteState:'closed',resultsVisible:false,videoState:{status:'idle'},revision:1},
       currentRound:null,voteResults:[],onlineCount:1,
       audio:{state:{mode:'auto',status:'stopped',volume:.28},assets:[],screen:{online:false,unlocked:false}}
     },
@@ -99,7 +99,7 @@ async function manualRoundSequence(roundNo){
     questionPosition:0,voteState:'closed',resultsVisible:false,videoState:{status:'idle'}
   }
   fixture.inventedFilms=[{id:'idea-1',userId:'guest-1',animalName:'кишка',title:'несуществующий фильм',description:'смешной и страшный',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()}]
-  fixture.filmPackages=[{id:'pack-1',movieCandidateId:'movie-1',title:'проверочный фильм',status:'ready',fragments:[],questions:[1,2,3].map(i=>({id:'q-'+i,position:i,prompt:'что дальше?',options:[],correctAnswer:'да',revealText:'был дождь',revealFragment:{}}))}]
+  fixture.filmPackages=[{id:'pack-1',movieCandidateId:'movie-1',title:'проверочный фильм',status:'ready',fragments:[0,1,2,3].map(i=>({sourcePlatform:'direct',sourceUrl:'https://example.com/fixture.mp4',startSec:i*10,endSec:(i+1)*10})),questions:[1,2,3].map(i=>({id:'q-'+i,position:i,prompt:'что дальше?',options:[],correctAnswer:'да',revealText:'был дождь',revealFragment:{}}))}]
   fixture.projector={state:'round_intro',revision:1,payload:{roundNo}}
   await page.addInitScript(value=>{if(!localStorage.getItem('nasypateli-cinema-demo-v3'))localStorage.setItem('nasypateli-cinema-demo-v3',JSON.stringify(value))},fixture)
   try{
@@ -118,6 +118,24 @@ async function manualRoundSequence(roundNo){
         return d.show?.currentRound?.flowStatus===expected
       },expectedFlow,{timeout:12000})
       clicked++
+      // This suite exercises controls only. Playback and grading evidence is explicitly
+      // simulated; the real reducer and database fences have separate regression tests.
+      if(['playing_clip','question_reveal','question_results'].includes(expectedFlow)){
+        await page.evaluate(flow=>{
+          const key='nasypateli-cinema-demo-v3',d=JSON.parse(localStorage.getItem(key)||'{}')
+          d.projector||={state:flow,revision:1,payload:{}}
+          d.projector.payload||={}
+          if(flow==='question_results')d.projector.payload.judgement={status:'decided',outcome:'none',method:'host',winnerIds:[]}
+          else {
+            const fragment=d.projector.payload.revealFragment||d.projector.payload.fragment||{startSec:0,endSec:10}
+            d.projector.payload.fragment=fragment
+            d.show.runtime.videoState={status:'ended',continuous:true,position:fragment.endSec,runId:d.show.runtime.runId,projectorRevision:d.projector.revision}
+          }
+          localStorage.setItem(key,JSON.stringify(d))
+        },expectedFlow)
+        await page.reload({waitUntil:'domcontentloaded'})
+        await page.locator('.manual-director-flow').waitFor({state:'visible'})
+      }
     }
     await doStep('открыть сбор названий','collecting_films')
     await doStep('закрыть сбор и показать идеи','films_locked')
@@ -134,7 +152,7 @@ async function manualRoundSequence(roundNo){
     }else{
       for(let i=1;i<=3;i++){
         await doStep('открыть вопрос '+i+'/3','question_open')
-        await doStep('показать ближайший ответ','question_results')
+        await doStep('закрыть ответы и оценить','question_results')
         await doStep('показать правильное продолжение','question_reveal')
       }
       await doStep('запустить выбор провидца','assignment_randomizing')
