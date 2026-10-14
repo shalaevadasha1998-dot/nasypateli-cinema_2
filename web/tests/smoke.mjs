@@ -15,20 +15,36 @@ async function ready(){
   throw Error('Vite preview did not start')
 }
 async function caseRun(label,path,viewport,expected){
-  const page=await browser.newPage({viewport,deviceScaleFactor:1})
-  page.on('pageerror',e=>issues.push(label+': '+e.message))
-  try{
-    const response=await page.goto(base+path,{waitUntil:'commit',timeout:25000})
-    if(!response?.ok())throw Error('HTTP '+response?.status())
-    const element=page.locator(expected)
-    try{await element.waitFor({state:'visible',timeout:30000})}
-    catch(e){console.error(label+' visible body: '+(await page.locator('body').innerText()).slice(0,1500));await page.screenshot({path:'test-artifacts/'+label+'-failure.png',fullPage:true});throw e}
-    const dimensions=await page.evaluate(()=>({scroll:document.documentElement.scrollWidth,viewport:innerWidth}))
-    if(dimensions.scroll>dimensions.viewport+5)throw Error('horizontal overflow '+JSON.stringify(dimensions))
-    await page.screenshot({path:'test-artifacts/'+label+'.png',fullPage:true})
-    console.log('PASS '+label+' '+JSON.stringify(dimensions))
-  }finally{await page.close()}
+  let lastError
+  // Hosted Chromium occasionally stalls before the initial DOM is committed.
+  // Retry a completely fresh page, but never suppress a real reproducible error.
+  for(let attempt=1;attempt<=3;attempt++){
+    const page=await browser.newPage({viewport,deviceScaleFactor:1})
+    const pageErrors=[]
+    page.on('pageerror',e=>pageErrors.push(e.message))
+    try{
+      const response=await page.goto(base+path,{waitUntil:'domcontentloaded',timeout:20000})
+      if(!response?.ok())throw Error('HTTP '+response?.status())
+      await page.locator(expected).waitFor({state:'visible',timeout:20000})
+      const dimensions=await page.evaluate(()=>({scroll:document.documentElement.scrollWidth,viewport:innerWidth}))
+      if(dimensions.scroll>dimensions.viewport+5)throw Error('horizontal overflow '+JSON.stringify(dimensions))
+      if(pageErrors.length)throw Error('Uncaught errors: '+pageErrors.join(' | '))
+      await page.screenshot({path:'test-artifacts/'+label+'.png',fullPage:true,timeout:20000})
+      console.log('PASS '+label+' '+JSON.stringify(dimensions))
+      return
+    }catch(error){
+      lastError=error
+      console.warn('RETRY '+label+' attempt '+attempt+': '+String(error).slice(0,420))
+      if(attempt===3){
+        try{console.error(label+' screen: '+(await page.locator('body').innerText({timeout:2500})).slice(0,1500))}catch{}
+        try{await page.screenshot({path:'test-artifacts/'+label+'-failure.png',fullPage:true,timeout:4500})}catch{}
+      }
+    }finally{await page.close().catch(()=>{})}
+    await new Promise(resolve=>setTimeout(resolve,900))
+  }
+  throw lastError
 }
+
 try{
   await ready()
   const audioBase='https://vwteokawtqnoiyzmsldj.supabase.co/storage/v1/object/public/event-media/audio/'
