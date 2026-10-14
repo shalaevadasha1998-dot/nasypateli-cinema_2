@@ -90,3 +90,6 @@ h1,h2,h3,h4{font-weight:600;line-height:1.08;letter-spacing:-.045em;overflow-wra
  .home-intro h1{font-size:clamp(23px,6.7vw,32px);letter-spacing:-.05em}
  .admin-rehearsal-roles strong{font-size:22px;line-height:1.16}
 }
+/* Outside Telegram there is no guest session yet; keep the handoff unobstructed. */
+.app-shell:has(.telegram-gate) .bottom-nav{display:none!important}
+.telegram-gate h1{font-size:clamp(36px,9.8vw,72px);line-height:1.06;letter-spacing:-.045em}
