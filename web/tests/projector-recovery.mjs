@@ -1,3 +1,5 @@
+import {fileURLToPath} from 'node:url'
+process.chdir(fileURLToPath(new URL('..',import.meta.url)))
 import {chromium} from 'playwright'
 import {spawn} from 'node:child_process'
 import {initialDemoState} from '../src/demo.ts'
@@ -43,4 +45,25 @@ try{
  assert(!await page.locator('.projector-media-error').count(),'Fallback video not restored')
  console.log('PASS YouTube error 150 replaced by recovery and local video playback')
  await page.screenshot({path:'test-artifacts/projector-video-recovery.png'})
+ const rutubeId='a'.repeat(32)
+ state.projector.payload.fragment={sourcePlatform:'rutube',sourceUrl:'https://rutube.ru/video/'+rutubeId+'/',startSec:10,endSec:20}
+ await page.route('https://rutube.ru/play/embed/**',r=>r.fulfill({contentType:'text/html',body:`<body><p id="state">loaded</p><script>
+ const send=x=>parent.postMessage(JSON.stringify(x),'*');setTimeout(()=>send({type:'player:ready'}),50);
+ window.addEventListener('message',e=>{if(JSON.parse(e.data).type==='player:pause')document.querySelector('#state').textContent='paused'});
+ window.emitTime=time=>send({type:'player:currentTime',data:{time}});window.emitError=()=>send({type:'player:error',data:{code:'blocked'}});
+ </script></body>`}))
+ await page.reload({waitUntil:'domcontentloaded'})
+ const frame=page.frameLocator('iframe[title="тестовый фильм"]')
+ await frame.locator('#state').waitFor()
+ const url=await page.locator('iframe').getAttribute('src')
+ assert(url.includes('t=10')&&url.includes('stopTime=20'),'Rutube fragment boundaries lost')
+ await page.evaluate(()=>window.dispatchEvent(new MessageEvent('message',{origin:'https://evil.example',data:JSON.stringify({type:'player:error'})})))
+ assert(!await page.locator('.projector-media-error').count(),'Untrusted frame can inject a player error')
+ await page.waitForTimeout(100)
+ await frame.locator('body').evaluate(()=>window.emitTime(20))
+ await frame.getByText('paused',{exact:true}).waitFor()
+ await frame.locator('body').evaluate(()=>window.emitError())
+ await page.getByRole('alert').filter({hasText:'фрагмент недоступен'}).waitFor()
+ console.log('PASS Rutube timing, origin checks and blocked-video recovery')
+
 }finally{await browser?.close();server.kill('SIGTERM')}

@@ -47,7 +47,7 @@ jobs:
           deno-version: v2.x
 
       - name: Verify server access boundaries and retired test links
-        run: deno test --allow-env --no-check tests/access-control.test.ts tests/test-invites.test.ts
+        run: deno test --allow-env --no-check tests/access-control.test.ts tests/test-invites.test.ts tests/video-validation.test.ts tests/source-library.test.ts tests/movie-source-search.test.ts
 
       - name: Setup Node
         uses: actions/setup-node@v7

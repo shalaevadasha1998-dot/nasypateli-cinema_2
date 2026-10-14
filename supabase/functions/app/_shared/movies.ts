@@ -1,3 +1,4 @@
+import { sourceTitleMatch, probeDirectVideo, isCountryAvailable } from './videoValidation.ts'
 export type ValidatedMovie={title:string;wikidataId:string;description?:string;runtimeMin:number;year?:number;url:string}
 
 function claimNumber(entity:any,prop:string){
@@ -122,25 +123,6 @@ export type MovieSourceCandidate={
   metadata:Record<string,unknown>
 }
 
-function sourceNormalize(value:string){
-  return String(value||'').toLowerCase().normalize('NFKD').replace(/[^a-z0-9а-яё]+/gi,' ').trim()
-}
-function sourceTitleMatch(candidate:string,movie:any){
-  const hay=sourceNormalize(candidate)
-  const names=[movie?.title,movie?.original_title,movie?.originalTitle,...(Array.isArray(movie?.metadata?.search_titles)?movie.metadata.search_titles:[])].map((x:any)=>sourceNormalize(String(x||''))).filter(Boolean)
-  if(!hay||!names.length)return 0
-  if(names.some(n=>hay===n))return 1
-  if(names.some(n=>hay.includes(n)||n.includes(hay)))return .85
-  const tokens=new Set(hay.split(' ').filter(x=>x.length>2))
-  let best=0
-  for(const name of names){
-    const wanted=name.split(' ').filter(x=>x.length>2)
-    if(!wanted.length)continue
-    const hit=wanted.filter(x=>tokens.has(x)).length/wanted.length
-    best=Math.max(best,hit)
-  }
-  return best
-}
 function clamp01(n:number){return Math.max(0,Math.min(1,n))}
 function dedupeSources(rows:MovieSourceCandidate[]){
   const seen=new Set<string>()
@@ -157,6 +139,14 @@ function sourceQuery(movie:any,mode:'fragment'|'trailer'){
     ? `${name} ${year} official clip scene excerpt`.trim()
     : `${name} ${year} official trailer teaser`.trim()
 }
+
+const SOURCE_HEADERS={'user-agent':'Mozilla/5.0 (compatible; NasypateliCinema/1.0)'}
+async function sourceJson(url:string,timeoutMs=3500){
+  const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),timeoutMs)
+  try{const r=await fetch(url,{headers:SOURCE_HEADERS,signal:controller.signal});if(!r.ok)return null;return await r.json()}
+  catch{return null}finally{clearTimeout(timer)}
+}
+function allowedLicense(value:string){return /creativecommons\.org\/(?:licenses|publicdomain)\//i.test(value)||/^(?:public domain|cc0|cc by(?:[- ]sa)?)/i.test(value)}
 
 async function searchYoutubePublic(movie:any,mode:'fragment'|'trailer'):Promise<MovieSourceCandidate[]>{
   const base=String(movie?.original_title||movie?.originalTitle||movie?.title||'').trim()
@@ -207,7 +197,7 @@ async function searchYoutubePublic(movie:any,mode:'fragment'|'trailer'):Promise<
       if(!o.ok)return null
       const meta=await o.json()
       const title=String(meta?.title||'')
-      const match=sourceTitleMatch(title,movie)
+      const match=sourceTitleMatch(title,movie,{useMode:mode,description:String(meta?.description||'')})
       if(match<.42)return null
       if(/(?:#|\b)(?:shorts?|ytshorts|vertical|reels)(?:\b|$)|вертикальн|короткое видео|9\s*[:хx×]\s*16/i.test(title))return null
       if(mode==='fragment'&&/(trailer|teaser|трейлер|тизер)/i.test(title))return null
@@ -219,7 +209,7 @@ async function searchYoutubePublic(movie:any,mode:'fragment'|'trailer'):Promise<
       const confidence=clamp01(.43+match*.36+(official?0.12:0)+((looksClip||looksTrailer||looksTeaser)?0.09:0))
       return {
         useMode:mode,
-        sourceType:mode==='fragment'?'clip':looksTeaser?'teaser':'trailer',
+        sourceType:mode==='fragment'?(/full (?:movie|film)|полный фильм/i.test(title)?'full_film':looksClip?'clip':'unknown'):looksTeaser?'teaser':'trailer',
         sourcePlatform:'youtube',
         sourceUrl:'https://www.youtube.com/watch?v='+id,
         videoId:id,
@@ -232,7 +222,7 @@ async function searchYoutubePublic(movie:any,mode:'fragment'|'trailer'):Promise<
         official,
         rightsStatus:'unknown',
         confidence,
-        metadata:{discoveredBy:'youtube_public_search',query:idQuery.get(id)||''}
+        metadata:{discoveredBy:'youtube_public_search',query:idQuery.get(id)||'',availabilityCheck:'embed_metadata',countryCheck:'unknown'}
       } as MovieSourceCandidate
     }catch{return null}
     finally{clearTimeout(timeout)}
@@ -243,169 +233,95 @@ async function searchYoutubePublic(movie:any,mode:'fragment'|'trailer'):Promise<
     .slice(0,8)
 }
 async function searchInternetArchive(movie:any,mode:'fragment'|'trailer'):Promise<MovieSourceCandidate[]>{
-  const base=String(movie?.original_title||movie?.originalTitle||movie?.title||'').trim()
-  const wanted=mode==='fragment'?base:`${base} trailer`
-  if(!wanted)return []
-  try{
-    const q=`title:(${wanted.replace(/[()"]/g,' ')}) AND mediatype:movies`
-    const qs=new URLSearchParams({q,output:'json',rows:'8',fl:'identifier,title,creator,year,licenseurl,description'})
-    const r=await fetch('https://archive.org/advancedsearch.php?'+qs.toString(),{headers:{'user-agent':'NasypateliCinema/1.0'}})
-    if(!r.ok)return []
-    const j=await r.json()
-    const docs=Array.isArray(j?.response?.docs)?j.response.docs:[]
-    const rows:MovieSourceCandidate[]=[]
-    for(const doc of docs){
-      const identifier=String(doc?.identifier||'')
-      if(!identifier)continue
-      const title=String(doc?.title||identifier)
-      const match=sourceTitleMatch(title,movie)
-      if(match<.4)continue
-      try{
-        const mr=await fetch('https://archive.org/metadata/'+encodeURIComponent(identifier),{headers:{'user-agent':'NasypateliCinema/1.0'}})
-        if(!mr.ok)continue
-        const meta=await mr.json()
-        const files=Array.isArray(meta?.files)?meta.files:[]
-        const playable=files.filter((x:any)=>/\.(mp4|webm)$/i.test(String(x?.name||''))&&String(x?.source||'').toLowerCase()!=='metadata')
-        const file=playable.find((x:any)=>/\.mp4$/i.test(String(x?.name||'')))||playable.find((x:any)=>/\.webm$/i.test(String(x?.name||'')))
-        if(!file?.name)continue
-        const sourceUrl='https://archive.org/download/'+encodeURIComponent(identifier)+'/'+String(file.name).split('/').map(encodeURIComponent).join('/')
-        const license=String(doc?.licenseurl||meta?.metadata?.licenseurl||'')
-        rows.push({
-          useMode:mode,
-          sourceType:mode==='fragment'?'full_film':/teaser/i.test(title)?'teaser':'trailer',
-          sourcePlatform:'internet_archive',
-          sourceUrl,
-          title,
-          sourceChannel:String(doc?.creator||meta?.metadata?.creator||'')||undefined,
-          startSec:0,
-          endSec:null,
-          verified:true,
-          embeddable:true,
-          official:false,
-          rightsStatus:license?'allowed':'unknown',
-          confidence:clamp01(.35+match*.45+(license?0.1:0)),
-          metadata:{identifier,licenseUrl:license||undefined,discoveredBy:'internet_archive',query:q}
-        })
-      }catch{}
+  const names=[movie?.original_title||movie?.originalTitle||movie?.title,...(movie?.metadata?.search_titles||[])].filter(Boolean).slice(0,2)
+  if(!names.length)return []
+  const titles=names.map(name=>`title:("${String(name).replace(/["()]/g,' ')}")`).join(' OR ')
+  const year=Number(movie?.year);const yearFilter=Number.isInteger(year)&&year>=1888?' AND year:'+year:''
+  const q=`(${titles}) AND mediatype:movies${yearFilter}${mode==='trailer'?' AND (title:trailer OR title:teaser)':''}`
+  const qs=new URLSearchParams({q,output:'json',rows:'8',fl:'identifier,title,creator,year,licenseurl,description'})
+  const j=await sourceJson('https://archive.org/advancedsearch.php?'+qs)
+  const docs=(Array.isArray(j?.response?.docs)?j.response.docs:[]).filter((doc:any)=>sourceTitleMatch(String(doc.title||''),movie,{useMode:mode,description:String(doc.year||'')+' '+String(doc.description||'')})>=.6).slice(0,4)
+  const rows=await Promise.all(docs.map(async(doc:any):Promise<MovieSourceCandidate|null>=>{
+    const identifier=String(doc.identifier||'');if(!identifier)return null
+    const meta=await sourceJson('https://archive.org/metadata/'+encodeURIComponent(identifier))
+    if(!meta||meta.is_dark||meta.metadata?.access==='restricted')return null
+    const title=String(doc.title||meta.metadata?.title||'')
+    const match=sourceTitleMatch(title,movie,{useMode:mode,description:String(doc.year||meta.metadata?.year||'')+' '+String(doc.description||'')})
+    const files=(Array.isArray(meta.files)?meta.files:[]).filter((f:any)=>/\.(?:mp4|webm)$/i.test(String(f.name||''))&&!f.private&&Number(f.size||0)>1024)
+      .sort((a:any,b:any)=>(/\.mp4$/i.test(a.name)?0:1)-(/\.mp4$/i.test(b.name)?0:1))
+    for(const file of files.slice(0,2)){
+      const url='https://archive.org/download/'+encodeURIComponent(identifier)+'/'+String(file.name).split('/').map(encodeURIComponent).join('/')
+      const probe=await probeDirectVideo(url,{timeoutMs:2500});if(!probe.ok)continue
+      const license=String(doc.licenseurl||meta.metadata?.licenseurl||'')
+      return {useMode:mode,sourceType:mode==='fragment'?'full_film':'trailer',sourcePlatform:'internet_archive',sourceUrl:url,title,sourceChannel:String(doc.creator||meta.metadata?.creator||'')||undefined,startSec:0,endSec:75,verified:true,embeddable:true,official:false,rightsStatus:allowedLicense(license)?'allowed':'unknown',confidence:clamp01(.42+match*.48+(allowedLicense(license)?.1:0)),metadata:{identifier,licenseUrl:license,discoveredBy:'internet_archive',availabilityCheck:'video_bytes',checkedAt:new Date().toISOString(),query:q}}
     }
-    return rows.sort((a,b)=>b.confidence-a.confidence).slice(0,5)
-  }catch{return []}
+    return null
+  }))
+  return rows.filter((x):x is MovieSourceCandidate=>!!x)
 }
 
 async function searchWikimediaCommons(movie:any,mode:'fragment'|'trailer'):Promise<MovieSourceCandidate[]>{
-  const query=sourceQuery(movie,mode)
-  try{
-    const qs=new URLSearchParams({
-      action:'query',generator:'search',gsrsearch:query,gsrnamespace:'6',gsrlimit:'10',
-      prop:'imageinfo',iiprop:'url|mime|extmetadata',format:'json',origin:'*'
-    })
-    const r=await fetch('https://commons.wikimedia.org/w/api.php?'+qs.toString(),{headers:{'api-user-agent':'NasypateliCinema/1.0'}})
-    if(!r.ok)return []
-    const j=await r.json()
-    const pages=Object.values(j?.query?.pages||{}) as any[]
-    const rows:MovieSourceCandidate[]=[]
-    for(const page of pages){
-      const info=page?.imageinfo?.[0]
-      const mime=String(info?.mime||'')
-      if(!['video/mp4','video/webm'].includes(mime))continue
-      const title=String(page?.title||'').replace(/^File:/,'')
-      const match=sourceTitleMatch(title,movie)
-      if(match<.4)continue
-      const low=title.toLowerCase()
-      if(mode==='fragment'&&/(trailer|teaser|трейлер|тизер)/i.test(low))continue
-      if(mode==='trailer'&&!/(trailer|teaser|трейлер|тизер)/i.test(low))continue
-      const licenseName=String(info?.extmetadata?.LicenseShortName?.value||'')
-      rows.push({
-        useMode:mode,
-        sourceType:mode==='fragment'?'clip':/teaser|тизер/i.test(low)?'teaser':'trailer',
-        sourcePlatform:'wikimedia_commons',
-        sourceUrl:String(info?.url||''),
-        title,
-        sourceChannel:'Wikimedia Commons',
-        startSec:0,
-        endSec:null,
-        verified:!!info?.url,
-        embeddable:true,
-        official:false,
-        rightsStatus:licenseName?'allowed':'unknown',
-        confidence:clamp01(.35+match*.45+(licenseName?0.1:0)),
-        metadata:{pageId:page?.pageid,license:licenseName||undefined,discoveredBy:'wikimedia_commons',query}
-      })
+  const name=String(movie?.original_title||movie?.originalTitle||movie?.title||'').replace(/"/g,' ')
+  if(!name)return []
+  const query=`filetype:video "${name}"${mode==='trailer'?' trailer':''}`
+  const qs=new URLSearchParams({action:'query',generator:'search',gsrsearch:query,gsrnamespace:'6',gsrlimit:'8',prop:'videoinfo',viprop:'url|mime|size|derivatives|extmetadata',format:'json'})
+  const j=await sourceJson('https://commons.wikimedia.org/w/api.php?'+qs)
+  const pages=(Object.values(j?.query?.pages||{}) as any[]).filter(page=>{
+    const info=page.videoinfo?.[0]||page.imageinfo?.[0]
+    return info&&sourceTitleMatch(String(page.title||'').replace(/^File:/,''),movie,{useMode:mode,description:String(info.extmetadata?.DateTimeOriginal?.value||'')+' '+String(info.extmetadata?.ImageDescription?.value||'')})>=.6
+  }).slice(0,4)
+  const rows=await Promise.all(pages.map(async(page:any):Promise<MovieSourceCandidate|null>=>{
+    const info=page.videoinfo?.[0]||page.imageinfo?.[0];if(info.extmetadata?.DeletionRequest)return null
+    const title=String(page.title).replace(/^File:/,'');const description=String(info.extmetadata?.DateTimeOriginal?.value||'')+' '+String(info.extmetadata?.ImageDescription?.value||'')
+    const match=sourceTitleMatch(title,movie,{useMode:mode,description})
+    const files=[...(Array.isArray(info.derivatives)?info.derivatives:[]),{src:info.url,type:info.mime}].filter(f=>/^video\/(?:mp4|webm)/.test(String(f.type||'')))
+      .sort((a:any,b:any)=>(a.type==='video/mp4'?0:1)-(b.type==='video/mp4'?0:1)||Number(b.height||0)-Number(a.height||0))
+    for(const file of files.slice(0,2)){
+      const probe=await probeDirectVideo(String(file.src||file.url||''),{timeoutMs:2500});if(!probe.ok)continue
+      const license=String(info.extmetadata?.LicenseShortName?.value||'')
+      return {useMode:mode,sourceType:mode==='fragment'?'full_film':'trailer',sourcePlatform:'wikimedia_commons',sourceUrl:String(file.src||file.url),title,sourceChannel:'Wikimedia Commons',startSec:0,endSec:75,verified:true,embeddable:true,official:false,rightsStatus:allowedLicense(license)?'allowed':'unknown',confidence:clamp01(.42+match*.48+(allowedLicense(license)?.1:0)),metadata:{pageId:page.pageid,license,discoveredBy:'wikimedia_commons',availabilityCheck:'video_bytes',checkedAt:new Date().toISOString(),query}}
     }
-    return rows.sort((a,b)=>b.confidence-a.confidence).slice(0,5)
-  }catch{return []}
+    return null
+  }))
+  return rows.filter((x):x is MovieSourceCandidate=>!!x)
 }
 
-async function discoverMode(movie:any,mode:'fragment'|'trailer'){
-  const settled=await Promise.allSettled([
-    searchYoutubePublic(movie,mode),
-    searchInternetArchive(movie,mode),
-    searchWikimediaCommons(movie,mode)
-  ])
-  return dedupeSources(settled.flatMap(x=>x.status==='fulfilled'?x.value:[]))
+async function searchRutube(movie:any,mode:'fragment'|'trailer'):Promise<MovieSourceCandidate[]>{
+  const name=String(movie?.title||movie?.original_title||movie?.originalTitle||'')
+  const query=`${name} ${movie?.year||''} ${mode==='fragment'?'фрагмент сцена':'трейлер'}`.trim()
+  const j=await sourceJson('https://rutube.ru/api/search/video/?'+new URLSearchParams({query,page:'1'}))
+  const results=(Array.isArray(j?.results)?j.results:[]).filter((x:any)=>!x.is_locked&&/^[a-f0-9]{32}$/i.test(String(x.id||''))).slice(0,5)
+  const rows=await Promise.all(results.map(async(row:any):Promise<MovieSourceCandidate|null>=>{
+    const meta=await sourceJson('https://rutube.ru/api/video/'+row.id+'/')
+    if(!meta||meta.is_hidden||meta.is_deleted||meta.is_paid||meta.is_adult||meta.is_club||meta.is_livestream||Number(meta.action_reason?.id||0)!==0)return null
+    const country=meta.restrictions?.country||{}
+    if(!isCountryAvailable({allowed:country.allowed,blocked:country.restricted},'RU'))return null
+    const description=String(meta.description||'');const match=sourceTitleMatch(String(meta.title||''),movie,{useMode:mode,description})
+    if(match<.6||Number(meta.duration||0)<15)return null
+    if(mode==='fragment'&&!/(фрагмент|сцена|scene|clip|excerpt|full movie|полный фильм)/i.test(String(meta.title)+' '+description))return null
+    return {useMode:mode,sourceType:mode==='fragment'?(/full (?:movie|film)|полный фильм/i.test(String(meta.title)+' '+description)?'full_film':'clip'):'trailer',sourcePlatform:'rutube',sourceUrl:'https://rutube.ru/video/'+row.id+'/',videoId:row.id,title:String(meta.title),sourceChannel:meta.author?.name,startSec:0,endSec:Math.min(75,Number(meta.duration)),verified:true,embeddable:true,official:false,rightsStatus:'unknown',confidence:clamp01(.43+match*.48),metadata:{discoveredBy:'rutube_public_search',availabilityCheck:'public_metadata',countryCheck:country.allowed?.length?'allowed_RU':'not_restricted_RU',hdAvailable:meta.has_high_quality===true,query}}
+  }))
+  return rows.filter((x):x is MovieSourceCandidate=>!!x)
 }
 
-export async function discoverMovieSourcesFast(movie:any){
-  const fast=(promise:Promise<MovieSourceCandidate[]>,ms:number)=>Promise.race([
-    promise,
-    new Promise<MovieSourceCandidate[]>(resolve=>setTimeout(()=>resolve([]),ms))
-  ])
-  const fragments=await fast(searchYoutubePublic(movie,'fragment'),6500)
-  const usableFragments=fragments.filter(x=>x.verified&&x.embeddable&&x.confidence>=.60)
-  if(usableFragments.length)return {
-    candidates:fragments,
-    fallbackUsed:false,
-    trace:{
-      mode:'fast_youtube',
-      fragmentsSearched:true,
-      fragmentCount:fragments.length,
-      usableFragmentCount:usableFragments.length,
-      trailersSearched:false,
-      trailerCount:0
-    }
-  }
-  const trailers=await fast(searchYoutubePublic(movie,'trailer'),4500)
-  return {
-    candidates:dedupeSources([...fragments,...trailers]),
-    fallbackUsed:true,
-    trace:{
-      mode:'fast_youtube',
-      fragmentsSearched:true,
-      fragmentCount:fragments.length,
-      usableFragmentCount:0,
-      trailersSearched:true,
-      trailerCount:trailers.length
-    }
-  }
+const PROVIDERS=['youtube','internet_archive','wikimedia_commons','rutube'] as const
+async function discoverMode(movie:any,mode:'fragment'|'trailer',budgetMs=7000){
+  const jobs=[searchYoutubePublic(movie,mode),searchInternetArchive(movie,mode),searchWikimediaCommons(movie,mode),searchRutube(movie,mode)]
+  const rows=await Promise.all(jobs.map(p=>new Promise<MovieSourceCandidate[]>(resolve=>{
+    const timer=setTimeout(()=>resolve([]),budgetMs)
+    p.then(value=>{clearTimeout(timer);resolve(value)},()=>{clearTimeout(timer);resolve([])})
+  })))
+  return {candidates:dedupeSources(rows.flat()),providers:Object.fromEntries(PROVIDERS.map((name,i)=>[name,rows[i].length]))}
 }
-
-export async function discoverMovieSources(movie:any){
-  const fragments=await discoverMode(movie,'fragment')
-  const usableFragments=fragments.filter(x=>x.verified&&x.embeddable&&x.confidence>=.60)
-  if(usableFragments.length)return {
-    candidates:fragments,
-    fallbackUsed:false,
-    trace:{
-      fragmentsSearched:true,
-      fragmentCount:fragments.length,
-      usableFragmentCount:usableFragments.length,
-      trailersSearched:false,
-      trailerCount:0
-    }
-  }
-  const trailers=await discoverMode(movie,'trailer')
-  return {
-    candidates:dedupeSources([...fragments,...trailers]),
-    fallbackUsed:true,
-    trace:{
-      fragmentsSearched:true,
-      fragmentCount:fragments.length,
-      usableFragmentCount:0,
-      trailersSearched:true,
-      trailerCount:trailers.length
-    }
-  }
+async function discoverSources(movie:any,budgetMs:number){
+  const fragments=await discoverMode(movie,'fragment',budgetMs)
+  const usable=fragments.candidates.filter(x=>x.verified&&x.embeddable&&x.confidence>=.60)
+  if(usable.length)return {candidates:fragments.candidates,fallbackUsed:false,trace:{mode:'multi_source',providers:fragments.providers,fragmentsSearched:true,fragmentCount:fragments.candidates.length,usableFragmentCount:usable.length,trailersSearched:false,trailerCount:0}}
+  const trailers=await discoverMode(movie,'trailer',Math.min(budgetMs,4500))
+  return {candidates:dedupeSources([...fragments.candidates,...trailers.candidates]),fallbackUsed:true,trace:{mode:'multi_source',providers:Object.fromEntries(PROVIDERS.map(name=>[name,(fragments.providers[name]||0)+(trailers.providers[name]||0)])),fragmentsSearched:true,fragmentCount:fragments.candidates.length,usableFragmentCount:0,trailersSearched:true,trailerCount:trailers.candidates.length}}
 }
+export async function discoverMovieSourcesFast(movie:any){return await discoverSources(movie,7000)}
+export async function discoverMovieSources(movie:any){return await discoverSources(movie,9000)}
 
 export function preferredMovieSource(rows:MovieSourceCandidate[]){
   return [...rows]
@@ -413,6 +329,8 @@ export function preferredMovieSource(rows:MovieSourceCandidate[]){
     .sort((a,b)=>{
       const mode=(a.useMode==='fragment'?0:1)-(b.useMode==='fragment'?0:1)
       if(mode)return mode
+      const checked=(a.metadata?.availabilityCheck==='video_bytes'?0:1)-(b.metadata?.availabilityCheck==='video_bytes'?0:1)
+      if(checked)return checked
       const type=(a.sourceType==='clip'?0:a.sourceType==='full_film'?1:a.sourceType==='trailer'?2:a.sourceType==='teaser'?3:4)
         -(b.sourceType==='clip'?0:b.sourceType==='full_film'?1:b.sourceType==='trailer'?2:b.sourceType==='teaser'?3:4)
       if(type)return type

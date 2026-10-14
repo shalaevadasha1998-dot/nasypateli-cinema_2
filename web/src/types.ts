@@ -74,6 +74,8 @@ export type MovieSourceCandidate = {
   embeddable:boolean
   official:boolean
   rightsStatus:'unknown'|'allowed'|'restricted'|'blocked'
+  availabilityCheck?:string
+  countryCheck?:string
   availabilityStatus:'candidate'|'ready'|'dead'|'blocked'
   confidence:number
   discoveredAt?:string
