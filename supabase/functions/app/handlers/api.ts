@@ -421,7 +421,7 @@ async function maybeAutoOpenRoundPitches(db:any,event:any){
 async function maybeAutoAdvanceShow(db:any,event:any){
   // Never progress a production event before its actual date.
   // Rehearsals live in a separate test_room event.
-  if(event?.settings?.test_room!==true&&event?.starts_at){
+  if(event?.settings?.test_room!==true&&event?.settings?.private_rehearsal!==true&&event?.starts_at){
     const opening=new Date(String(event.starts_at)).getTime()
     if(Number.isFinite(opening)&&Date.now()<opening-2*60*60*1000)return false
   }
@@ -1950,7 +1950,7 @@ export async function handleApi(req:Request){
         if(reg.error)throw reg.error;if(ev.error)throw ev.error
         if(!checkinOpenStatuses.has(String(ev.data.status||'')))return err(ev.data.status==='CLOSED'?'Чек-ин на этот вечер уже закрыт':'Чек-ин ещё не открыт',409)
         const awardJoin=async()=>{
-          if(ev.data?.settings?.test_room===true)return null
+          if(ev.data?.settings?.test_room===true||ev.data?.settings?.private_rehearsal===true)return null
           const p=await db.from('event_programs').select('config').eq('event_id',t.data.event_id).maybeSingle()
           if(p.error){console.error('checkin reward config failed',p.error);return null}
           const amount=Math.max(0,Math.min(100,Number(p.data?.config?.rewards?.join||0)))
@@ -2139,7 +2139,7 @@ export async function handleApi(req:Request){
       const r=await db.from('post_film_reactions').upsert({event_id:event.id,user_id:user.id,rating,state_word:stateWord.slice(0,80),thought:thought.slice(0,500),recommendation,updated_at:new Date().toISOString()},{onConflict:'event_id,user_id'});if(r.error)throw r.error
       await db.from('discussion_thoughts').upsert({event_id:event.id,user_id:user.id,text:thought.slice(0,240)},{onConflict:'event_id,user_id'})
       const room=await db.from('post_film_reactions').select('rating').eq('event_id',event.id);const avg=(room.data||[]).length?(room.data||[]).reduce((a:number,v:any)=>a+Number(v.rating||0),0)/(room.data||[]).length:rating
-      if(event?.settings?.test_room!==true)await emitStoryTrigger(db,user.id,'reaction_saved',{rating,rating_gap:Math.abs(rating-avg),recommendation},event.id)
+      if(event?.settings?.test_room!==true&&event?.settings?.private_rehearsal!==true)await emitStoryTrigger(db,user.id,'reaction_saved',{rating,rating_gap:Math.abs(rating-avg),recommendation},event.id)
       return json({ok:true})
     }
     if(action==='submit-thought'){
@@ -2179,7 +2179,7 @@ export async function handleApi(req:Request){
       if(saved.error)throw saved.error
       const reward=Math.max(0,Math.min(100,Number(show.program?.rewards?.finale||0)))
       let crumbs:any=null
-      if(reward>0&&event.settings?.test_room!==true&&!show.runtime?.isTest){
+      if(reward>0&&event.settings?.test_room!==true&&event.settings?.private_rehearsal!==true&&!show.runtime?.isTest){
         const award=await db.rpc('award_event_crumbs',{p_user_id:user.id,p_event_id:event.id,p_amount:reward,p_reason:'final_vote',p_source_id:`${show.runtime.runId||event.id}:final_vote`})
         if(award.error)console.error('final vote crumb award failed',award.error)
         else crumbs=award.data
@@ -2210,7 +2210,7 @@ export async function handleApi(req:Request){
       if(vote.error)throw vote.error
       const reward=Math.max(0,Math.min(100,Number(show.program?.rewards?.vote||0)))
       let crumbs:any=null
-      if(reward>0&&event.settings?.test_room!==true&&!show.runtime?.isTest){
+      if(reward>0&&event.settings?.test_room!==true&&event.settings?.private_rehearsal!==true&&!show.runtime?.isTest){
         const award=await db.rpc('award_event_crumbs',{p_user_id:user.id,p_event_id:event.id,p_amount:reward,p_reason:'vote',p_source_id:`${round.id}:${questionKey}`})
         if(award.error)console.error('vote crumb award failed',award.error)
         else crumbs=award.data
@@ -3416,7 +3416,7 @@ export async function handleApi(req:Request){
         const now=new Date().toISOString()
 
         if(op==='start'){
-          if(event.settings?.test_room!==true&&event.starts_at){
+          if(event.settings?.test_room!==true&&event.settings?.private_rehearsal!==true&&event.starts_at){
             const opening=new Date(String(event.starts_at)).getTime()
             if(Number.isFinite(opening)&&Date.now()<opening-2*60*60*1000)return err('боевой вечер ещё не наступил. для репетиции используйте вкладку «тест»',409)
           }
@@ -3758,7 +3758,7 @@ export async function handleApi(req:Request){
 
     if(action==='admin-award-crumbs'){
       const show=await buildShowState(db,event)
-      if(event?.settings?.test_room===true||show.runtime?.isTest===true)return json({ok:true,awarded:0,already:0,participants:0,amount:0,testMode:true})
+      if(event?.settings?.test_room===true||event?.settings?.private_rehearsal===true||show.runtime?.isTest===true)return json({ok:true,awarded:0,already:0,participants:0,amount:0,testMode:true})
       const amount=Math.max(1,Math.min(100,Math.round(Number(body.amount)||show.program.rewards.round||1)))
       const scope=String(body.scope||'round_voters')
       const sourceId=String(body.sourceId||show.currentRound?.id||show.runtime.currentBlockId||'manual').slice(0,160)
@@ -3826,7 +3826,7 @@ export async function handleApi(req:Request){
       const result=r.data?.[0]
       if(!result)return err('Не удалось изменить регистрацию',500)
       const targetUserId=String(result.user_id||'')
-      if(targetUserId&&['mark_attended','undo_attended'].includes(fix)&&event?.settings?.test_room!==true)await refreshLeaderboard(db,[targetUserId])
+      if(targetUserId&&['mark_attended','undo_attended'].includes(fix)&&event?.settings?.test_room!==true&&event?.settings?.private_rehearsal!==true)await refreshLeaderboard(db,[targetUserId])
       return json({ok:true,registrationId:String(result.registration_id||registrationId),status:String(result.status||''),promoted:Number(result.promoted||0)})
     }
     if(action==='admin-checkin-ticket'){
@@ -3867,7 +3867,7 @@ export async function handleApi(req:Request){
       if(userRow.error)throw userRow.error
       if(program.error)throw program.error
 
-      if(!alreadyAttended&&event?.settings?.test_room!==true){
+      if(!alreadyAttended&&event?.settings?.test_room!==true&&event?.settings?.private_rehearsal!==true){
         const amount=Math.max(0,Math.min(100,Number(program.data?.config?.rewards?.join||0)))
         if(amount>0){
           const award=await db.rpc('award_event_crumbs',{p_user_id:userId,p_event_id:event.id,p_amount:amount,p_reason:'event_join',p_source_id:'checkin'})
@@ -3898,7 +3898,7 @@ export async function handleApi(req:Request){
       return json({ok:true,token,expiresAt,deepLink:await telegramStartLink(`encounter_${token}`)})
     }
     if(action==='admin-award-story'){
-      if(event?.settings?.test_room===true)return json({ok:true,result:{testRoom:true,awarded:false}})
+      if(event?.settings?.test_room===true||event?.settings?.private_rehearsal===true)return json({ok:true,result:{testRoom:true,awarded:false}})
       const target=String(body.userId||'');const code=String(body.storyCode||'');if(!target||!code)return err('userId и storyCode обязательны',422);const r=await db.rpc('award_story',{p_user_id:target,p_story_code:code,p_event_id:event.id,p_occurrence_key:'once',p_context:{source:'admin'}});if(r.error)throw r.error;return json({ok:true,result:r.data})
     }
     if(action==='admin-set-mechanic'){
