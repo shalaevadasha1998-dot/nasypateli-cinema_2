@@ -1344,13 +1344,14 @@ function ShowVoteResults({data}:{data:DemoState}){
 
 function DirectVideoPlayer({src,title,startSec=0,endSec}:{src:string;title:string;startSec?:number;endSec?:number}){
   const ref=useRef<HTMLVideoElement|null>(null)
+  const [qualityError,setQualityError]=useState('')
   const initialized=useRef(false)
   const start=Math.max(0,Number(startSec||0))
   const end=endSec&&Number(endSec)>start?Number(endSec):undefined
-  useEffect(()=>{initialized.current=false},[src,start])
-  const seekAndPlay=()=>{const el=ref.current;if(!el||initialized.current)return;try{el.currentTime=start}catch{}initialized.current=true;void el.play().catch(()=>{})}
+  useEffect(()=>{initialized.current=false;setQualityError('')},[src,start])
+  const seekAndPlay=()=>{const el=ref.current;if(!el||initialized.current)return;if(el.videoWidth&&el.videoHeight&&(el.videoWidth<el.videoHeight||el.videoHeight<720)){el.pause();setQualityError('фрагмент отклонён: требуется горизонтальное видео не ниже 720p');initialized.current=true;return}try{el.currentTime=start}catch{}initialized.current=true;void el.play().catch(()=>{})}
   const stopAtEnd=()=>{const el=ref.current;if(!el||!end)return;if(el.currentTime>=end){el.pause();try{el.currentTime=end}catch{}}}
-  return <div className="screen-video-wrap"><video ref={ref} title={title} src={src} autoPlay playsInline controls preload="auto" onLoadedMetadata={seekAndPlay} onCanPlay={seekAndPlay} onTimeUpdate={stopAtEnd}/></div>
+  return <div className="screen-video-wrap">{qualityError?<div role="alert" className="screen-message">{qualityError}. выберите другой источник в пульте</div>:null}<video ref={ref} title={title} src={src} autoPlay={false} playsInline controls preload="auto" style={qualityError?{display:'none'}:undefined} onLoadedMetadata={seekAndPlay} onCanPlay={seekAndPlay} onTimeUpdate={stopAtEnd}/></div>
 }
 
 function ProjectorMedia({media,title}:{media:any;title:string}){
