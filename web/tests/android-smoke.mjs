@@ -51,23 +51,28 @@ async function check(config,stage){
   try{
     const label=config.label+'-'+stage
     await page.goto(origin+'#/',{waitUntil:'domcontentloaded'})
-    const shortcut=page.getByRole('button',{name:'войти в тестовую комнату'})
-    await shortcut.waitFor({state:'visible',timeout:16000})
-    await shortcut.tap()
-    await page.waitForURL('**/#/test',{timeout:12000})
-    const tab=page.locator('.bottom-nav a[href$="/test"]')
-    await tab.waitFor({state:'visible'})
-    const stableLink=page.locator('.test-room-invite a[href="https://t.me/nasipateli_v_kinobot?start=test"]')
-    await stableLink.waitFor({state:'visible'})
+    await page.locator('.bottom-nav').waitFor({state:'visible',timeout:16000})
     const navGeometry=await page.evaluate(()=>{
       const links=[...document.querySelectorAll('.bottom-nav a')].map(a=>({text:a.textContent||'',x:a.getBoundingClientRect().x,right:a.getBoundingClientRect().right}))
-      return {links,viewport:innerWidth}
+      return {links,viewport:innerWidth,navScroll:document.querySelector('.bottom-nav')?.scrollWidth,navClient:document.querySelector('.bottom-nav')?.clientWidth}
     })
-    if(navGeometry.links.length!==6||navGeometry.links.some(x=>x.x<0||x.right>navGeometry.viewport+1))throw Error('Android bottom navigation clipped '+JSON.stringify(navGeometry))
-    await page.getByRole('button',{name:'войти как участник'}).tap()
-    await page.waitForURL('**/#/rehearsal/'+testSlug,{timeout:12000})
-    await page.getByText('тестовый вечер',{exact:true}).first().waitFor({timeout:16000})
+    if(navGeometry.links.length!==5||navGeometry.links.some(x=>x.x<0||x.right>navGeometry.viewport+1))throw Error('Android five-tab navigation clipped '+JSON.stringify(navGeometry))
+    if(navGeometry.navScroll>navGeometry.navClient+2)throw Error('Android nav requires hidden horizontal swipe '+JSON.stringify(navGeometry))
+    if(await page.locator('.bottom-nav a[href$="/test"]').count())throw Error('Admin test leaked into guest navigation')
+    const testLinks=await page.getByRole('button',{name:/войти в тестовую комнату|проверить весь вечер/}).count()
+    if(testLinks>0)throw Error('Admin rehearsal promoted to regular guest')
+    // A real finger drag must move a long guest screen. No fixed-height shell may trap it.
+    const before=await page.evaluate(()=>scrollY)
+    const maxScroll=await page.evaluate(()=>document.documentElement.scrollHeight-innerHeight)
+    if(maxScroll>70){
+      await page.evaluate(()=>scrollTo(0,Math.max(120,document.documentElement.scrollHeight)))
+      await page.waitForTimeout(150)
+      const after=await page.evaluate(()=>scrollY)
+      if(after<=before+30)throw Error('Android page cannot scroll vertically '+JSON.stringify({before,after,maxScroll}))
+      await page.evaluate(()=>scrollTo(0,0))
+    }
     if(stage==='feedback'){
+      await page.goto(origin+'#/rehearsal/'+testSlug,{waitUntil:'domcontentloaded'})
       await page.getByText('как вам вечер?',{exact:true}).waitFor({timeout:12000})
       await page.locator('.feedback-show textarea').first().fill('больше фильмов и необычных заданий')
       await page.locator('.feedback-show').getByRole('button',{name:'отправить'}).tap()
