@@ -112,6 +112,22 @@ try{
   await page.getByText('давай обсудим кино',{exact:true}).waitFor()
   assert(await page.locator('.chat-msg.user').count()===1,'Chat duplicated the user message')
   console.log('PASS chat failure, same-request retry and single delivered message')
+  await page.evaluate(()=>{
+   window.voiceTracksStopped=0
+   const stream={getTracks:()=>[{stop(){window.voiceTracksStopped++}}]}
+   Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:{getUserMedia:async()=>stream}})
+   window.MediaRecorder=class{
+    static isTypeSupported(){return true}
+    state='inactive';mimeType='audio/webm'
+    start(){this.state='recording'}
+    stop(){this.state='inactive';this.ondataavailable?.({data:new Blob(['x'.repeat(1024)])});this.onstop?.()}
+   }
+  })
+  await page.getByRole('button',{name:'записать голос',exact:true}).click()
+  await page.getByRole('button',{name:'остановить запись',exact:true}).waitFor()
+  await page.locator('.bottom-nav a[href="#/profile"]').click()
+  await page.waitForFunction(()=>window.voiceTracksStopped===1)
+  console.log('PASS microphone released when leaving chat')
   await page.goto(base+'#/test/2026-10-17',{waitUntil:'domcontentloaded'})
   await page.getByText('Доступ к пульту запрещён',{exact:true}).waitFor()
   assert(!await page.locator('.admin-rehearsal-roles').count(),'Guest can launch test')
