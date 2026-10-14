@@ -106,7 +106,7 @@ Deno.test('each redirect is manually validated and redirect count is bounded', a
       return visited.length === 1 ? new Response(null, { status: 302, headers: { location: 'https://ia801234.archive.org/a.mp4' } }) : new Response(mp4)
     }),
   })
-  check(safe.ok && visited.length === 2 && safe.url.includes('ia801234.archive.org'), 'Safe redirect failed')
+  check(safe.ok && visited.length === 2 && new URL(safe.url).hostname === 'ia801234.archive.org', 'Safe redirect failed')
   for (const target of ['http://archive.org/a.mp4', 'https://127.0.0.1/secret', 'https://evil.example/a.mp4', 'https://archive.org.evil.example/a.mp4', 'https://user:pass@archive.org/a.mp4']) {
     let calls = 0
     const denied = await probeDirectVideo('https://archive.org/a.mp4', { fetch: mockFetch(() => { calls++; return new Response(null, { status: 302, headers: { location: target } }) }) })
