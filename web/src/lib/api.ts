@@ -245,6 +245,58 @@ function demoAction(action:string,payload:Record<string,unknown>){
       return {ok:true,reply,mode,requestId}
     }
     case 'admin-fix-registration': return mutate(s=>{const fix=String(payload.fix||'');if(fix==='mark_attended'&&['paid','no_show'].includes(s.registration))return {...s,registration:'attended'};if(fix==='undo_attended'&&s.registration==='attended')return {...s,registration:s.event.status==='CLOSED'?'no_show':'paid'};if(fix==='release_hold'&&s.registration==='reserved')return {...s,registration:'cancelled',reservationExpiresAt:undefined,queuePosition:undefined};throw new Error('это действие не подходит текущему статусу')})
+    // Local demo transport for UI-only smoke tests. Production always uses the
+    // authenticated Supabase state machine for these actions.
+    case 'admin-round-pitches-open':
+    case 'admin-round-pitches-close':
+    case 'admin-round-pitch-preview':
+    case 'admin-round-pitch-draw':
+    case 'admin-round-find-movie':
+    case 'admin-film-projector':
+    case 'admin-film-assign':
+    case 'admin-round-close': return mutate(s=>{
+      if(!s.show?.currentRound)throw new Error('no demo round')
+      const round={...s.show.currentRound}
+      let projector={...(s.projector||{state:'round_intro',revision:0,payload:{}})} as NonNullable<DemoState['projector']>
+      const change=(flow:NonNullable<typeof round.flowStatus>,stage:typeof projector.state,data:Record<string,unknown>={})=>{
+        round.flowStatus=flow
+        projector={...projector,state:stage,revision:projector.revision+1,payload:data,updatedAt:new Date().toISOString()}
+      }
+      if(action==='admin-round-pitches-open')change('collecting_films','pitch_collecting')
+      else if(action==='admin-round-pitches-close'){
+        if(!round.pitchCount)throw new Error('пока никто не отправил фильм')
+        change('films_locked','pitch_locked')
+      }else if(action==='admin-round-pitch-preview'){
+        const index=Math.max(0,Math.floor(Number(payload.index)||0))
+        change('films_locked','pitch_preview',{index,total:Math.max(1,(s.inventedFilms||[]).length)})
+      }else if(action==='admin-round-pitch-draw')change('submission_selected','pitch_selected')
+      else if(action==='admin-round-find-movie'){
+        round.movie={id:'movie-1',title:'проверочный фильм'}
+        change('movie_found','movie_found')
+      }else if(action==='admin-film-projector'){
+        const op=String(payload.op||'')
+        const states:Record<string,[NonNullable<typeof round.flowStatus>,typeof projector.state]>={
+          film_intro:['playing_clip','film_intro'],question_open:['question_open','question_open'],
+          question_results:['question_results','question_results'],question_reveal:['question_reveal','question_reveal'],
+          assignment_randomizing:['assignment_randomizing','assignment_randomizing'],
+          one_word_open:['one_word_collecting','one_word_collecting'],one_word_results:['one_word_results','one_word_results']
+        }
+        if(!states[op])throw new Error('неизвестная сцена')
+        if(op==='question_open')round.questionPosition=Math.max(1,Number(payload.position)||1)
+        change(states[op][0],states[op][1])
+      }else if(action==='admin-film-assign')change('assignment_selected','assignment_winner')
+      else if(action==='admin-round-close'){
+        round.status='closed'
+        change('round_finished','round_finished')
+      }
+      return {...s,show:{...s.show,currentRound:round},projector}
+    })
+    case 'admin-round-control-mode': {
+      const mode=String(payload.mode||'')
+      if(mode!=='manual'&&mode!=='auto')throw new Error('invalid round control mode')
+      mutate(s=>({...s,show:s.show?{...s.show,runtime:{...s.show.runtime,roundControlMode:mode}}:s.show}))
+      return {ok:true,mode}
+    }
     case 'admin-stage': return mutate(s=>applyStageData(s,payload.status as EventStatus))
     case 'admin-set-mechanic': return mutate(s=>({...s,event:{...s.event,nonexistentFilmEnabled:!!payload.enabled}}))
     case 'admin-event-config': return mutate(s=>({...s,event:{...s.event,startsAt:String(payload.startsAt||s.event.startsAt),ticketPriceRub:Number(payload.ticketPriceRub??s.event.ticketPriceRub),maxMovieRuntimeMin:Number(payload.maxMovieRuntimeMin??s.event.maxMovieRuntimeMin),venueName:String(payload.venueName||''),venueAddress:String(payload.venueAddress||'')}}))

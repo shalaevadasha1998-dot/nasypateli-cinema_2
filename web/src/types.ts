@@ -260,6 +260,7 @@ export type EventRuntime = {
   runKey?:string
   runMode?:'test'|'live'
   isTest?:boolean
+  roundControlMode?:'manual'|'auto'
   runStatus:'idle'|'running'|'paused'|'finished'
   currentBlockId:string
   currentBlockIndex:number
