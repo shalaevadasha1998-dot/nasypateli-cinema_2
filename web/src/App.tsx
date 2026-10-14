@@ -716,6 +716,8 @@ function ShowRoundControl({data,busy,run}:{data:DemoState;busy:boolean;run:(acti
   const block=show?.runtime.currentBlock
   const round=show?.currentRound
   const [clock,setClock]=useState(()=>Date.now())
+  const [autoRun,setAutoRun]=useState(()=>{try{return localStorage.getItem('nasypateli-director-mode')!=='manual'}catch{return true}})
+  const toggleAuto=()=>setAutoRun(v=>{const next=!v;try{localStorage.setItem('nasypateli-director-mode',next?'auto':'manual')}catch{};return next})
   const autoRef=useRef('')
   useEffect(()=>{const t=window.setInterval(()=>setClock(Date.now()),1000);return()=>window.clearInterval(t)},[])
 
@@ -727,7 +729,7 @@ function ShowRoundControl({data,busy,run}:{data:DemoState;busy:boolean;run:(acti
     })
   }
   useEffect(()=>{
-    if(!show||!block||block.type!=='cinema_rounds'||show.runtime.runStatus!=='running'||busy)return
+    if(!autoRun||!show||!block||block.type!=='cinema_rounds'||show.runtime.runStatus!=='running'||busy)return
     const active=round?.status==='active'
     const target=Math.max(1,Math.min(20,Number(block.roundsTarget||2)))
     const current=Math.max(0,Number((show.runtime as any).currentBlockRoundCount||0))
@@ -831,7 +833,7 @@ function ShowRoundControl({data,busy,run}:{data:DemoState;busy:boolean;run:(acti
     if(flow==='assignment_randomizing'){
       if(pack&&projectorElapsed>=2200)fire(`assign-seer:${round.id}`,'admin-film-assign',{filmPackageId:pack.id,roundId:round.id})
     }
-  },[clock,busy,show?.runtime.runStatus,show?.runtime.currentBlockId,show?.runtime.currentBlockRoundCount,round?.id,round?.status,round?.flowStatus,round?.pitchCount,round?.questionPosition,round?.movie?.id,data.projector?.revision,data.projector?.updatedAt,data.adminParticipants?.length,data.inventedFilms?.length])
+  },[clock,busy,autoRun,show?.runtime.runStatus,show?.runtime.currentBlockId,show?.runtime.currentBlockRoundCount,round?.id,round?.status,round?.flowStatus,round?.pitchCount,round?.questionPosition,round?.movie?.id,data.projector?.revision,data.projector?.updatedAt,data.adminParticipants?.length,data.inventedFilms?.length])
 
   if(!show||!block||block.type!=='cinema_rounds')return null
   const active=round?.status==='active'
@@ -839,8 +841,9 @@ function ShowRoundControl({data,busy,run}:{data:DemoState;busy:boolean;run:(acti
   const current=Math.max(0,Number((show.runtime as any).currentBlockRoundCount||0))
   const complete=!active&&current>=target
   return <Card className="show-round-card">
-    <div className="row spread"><div><div className="section-title">авторежиссёр включён</div><h2>{active?`раунд ${round?.roundNo} · ${round&&round.roundNo%2===1?'рецензия':'3 прогноза'}`:complete?`${target}/${target} готово`:`готовим раунд ${current+1} из ${target}`}</h2></div><Pill>auto</Pill></div>
-    <p className="muted">обычный эфир переключается сам. кнопки ниже нужны только если надо форсировать переход.</p>
+    <div className="row spread"><div><div className="section-title">{autoRun?'авторежиссёр включён':'ручное управление'}</div><h2>{active?`раунд ${round?.roundNo} · ${round&&round.roundNo%2===1?'рецензия':'3 прогноза'}`:complete?`${target}/${target} готово`:`готовим раунд ${current+1} из ${target}`}</h2></div><Pill>{autoRun?'auto':'manual'}</Pill></div>
+    <p className="muted">{autoRun?'сценарий переключается сам. для покадрового управления отключи автоматический режим':'автоматические переходы кинораунда остановлены в этом пульте. переключай шаги кнопками ниже'}</p>
+    <Button kind="secondary" onClick={toggleAuto}>{autoRun?'перейти на ручное управление':'вернуть автоматическое переключение'}</Button>
     {!active?complete?<Button kind="secondary" disabled={busy} onClick={()=>run('admin-show-control',{op:'next'})}>форсировать следующий блок</Button>:<Button kind="secondary" disabled={busy||show.runtime.runStatus!=='running'} onClick={()=>run('admin-round-start')}>форсировать старт раунда</Button>:null}
   </Card>
 }
