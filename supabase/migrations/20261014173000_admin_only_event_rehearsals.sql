@@ -119,3 +119,12 @@ from public.events
 where slug not like 'test-%' and slug not like 'private-%'
   and coalesce((settings->>'test_room')::boolean,false)=false
   and coalesce((settings->>'private_rehearsal')::boolean,false)=false;
+
+-- Previously created test rooms must obey the same permission boundary.
+update public.events
+set settings=settings||'{"admin_only":true,"hide_from_public":true,"round_manual_mode":true}'::jsonb
+where coalesce((settings->>'test_room')::boolean,false)=true;
+
+revoke all on function public.ensure_event_rehearsal(uuid) from public,anon,authenticated;
+revoke all on function public.event_rehearsal_after_insert() from public,anon,authenticated;
+revoke all on function public.event_rehearsal_program_sync() from public,anon,authenticated;
