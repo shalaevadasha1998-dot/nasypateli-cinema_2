@@ -1217,7 +1217,7 @@ export async function handleApi(req:Request){
     }
     const db=adminDb()
     const adminTokenOk=tokenMatches(req,'x-admin-token','ADMIN_ACCESS_TOKEN');const screenTokenOk=tokenMatches(req,'x-screen-token','SCREEN_ACCESS_TOKEN');const cronTokenOk=tokenMatches(req,'x-cron-token','CRON_ACCESS_TOKEN')
-    const testRoomHeader=req.headers.get('x-test-room-token')||''
+    // Test rooms are private admin resources; invitation tokens confer no participant access.
     if(action==='health')return json(await runtimeHealth(db))
 
     if(action==='pwa-exchange-handoff'){
@@ -1278,7 +1278,7 @@ export async function handleApi(req:Request){
       if(!x?.event?.id)return err('Событие не найдено',404)
       const event:any={...x.event,settings:x.event.settings||{}}
       const testScreenOk=await testRoomTokenMatches(event,req.headers.get('x-screen-token')||'')
-      const openTestScreen=event?.settings?.test_room===true
+      const openTestScreen=false // even test projectors require an admin-created screen link
       if(!screenTokenOk&&!testScreenOk&&!openTestScreen)return err('Доступ к экрану запрещён',401)
       await maybeAutoAdvanceShow(db,event)
 
@@ -1345,7 +1345,7 @@ export async function handleApi(req:Request){
     if(action==='screen-audio-heartbeat'){
       const event=await eventBySlug(db,String(body.slug||'2026-10-03'))
       const testScreenOk=await testRoomTokenMatches(event,req.headers.get('x-screen-token')||'')
-      const openTestScreen=event?.settings?.test_room===true
+      const openTestScreen=false // even test projectors require an admin-created screen link
       if(!screenTokenOk&&!testScreenOk&&!openTestScreen)return err('Доступ к экрану запрещён',401)
       return await withEventOperation(db,event.id,'screen-audio-lease',async()=>{
         const now=new Date().toISOString()
@@ -1369,7 +1369,7 @@ export async function handleApi(req:Request){
     if(action==='screen-audio-ended'){
       const event=await eventBySlug(db,String(body.slug||'2026-10-03'))
       const testScreenOk=await testRoomTokenMatches(event,req.headers.get('x-screen-token')||'')
-      const openTestScreen=event?.settings?.test_room===true
+      const openTestScreen=false // even test projectors require an admin-created screen link
       if(!screenTokenOk&&!testScreenOk&&!openTestScreen)return err('Доступ к экрану запрещён',401)
       const owner=await db.from('event_screen_status').select('session_id').eq('event_id',event.id).maybeSingle()
       if(owner.error)throw owner.error
@@ -1409,7 +1409,7 @@ export async function handleApi(req:Request){
       const hasPwaAuth=!!String(req.headers.get('x-pwa-session')||'').trim()
       if(!adminTokenOk&&!hasAdminHeader&&!hasTelegramAuth&&!hasPwaAuth&&!adminSlug.startsWith('test-'))return err('Доступ к пульту запрещён',401)
       const event=await eventBySlug(db,adminSlug)
-      const testAdminOk=await testRoomTokenMatches(event,req.headers.get('x-admin-token')||'')
+      const testAdminOk=false // legacy room invitation is not an admin credential
       if(!adminTokenOk&&!testAdminOk){
         try{
           const pwaUser=await pwaSessionUser(db,req)
@@ -1564,39 +1564,23 @@ export async function handleApi(req:Request){
     let tg:any=null,user:any=null,testEvent:any=null,testParticipantAccess=false
     const requestedSlug=String(body.slug||'')
     user=await pwaSessionUser(db,req)
-    if(testRoomHeader&&requestedSlug){
-      try{
-        const candidate=await eventBySlug(db,requestedSlug)
-        if(await testInviteMatches(candidate,testRoomHeader)||await testRoomTokenMatches(candidate,testRoomHeader)){
-          testEvent=candidate
-          testParticipantAccess=true
-          // A room capability grants event access, never a shared identity.
-          // Telegram takes precedence over any stale standalone session.
-          if(req.headers.get('x-telegram-init-data')||!user){
-            try{tg=await telegramUserFromRequest(req)}
-            catch{return err('Откройте приглашение в Telegram: для теста нужен ваш личный профиль',401)}
-            user=await getOrCreateUser(db,tg)
-          }
-        }
-      }catch(e:any){if(e?.message!=='EVENT_NOT_FOUND')throw e}
-    }
     const suppliedAdminToken=req.headers.get('x-admin-token')||''
     const adminTarget=isAdminAction?await eventBySlug(db,requestedSlug||'2026-10-03'):null
-    const legacyTestAdmin=isAdminAction&&await testRoomTokenMatches(adminTarget,suppliedAdminToken)
+    const legacyTestAdmin=false // legacy room links are no longer admin credentials
     if(!user&&(!isAdminAction||(!adminTokenOk&&!legacyTestAdmin))){
       try{tg=await telegramUserFromRequest(req);user=await getOrCreateUser(db,tg)}
       catch{return err(isAdminAction?'Доступ к пульту запрещён: откройте его через Telegram или закрытую ссылку':'Откройте приложение через Telegram',401)}
     }
 
-    // The rehearsal is discoverable from the app's main navigation. Signed-in
-    // Telegram/PWA participants may enter this one isolated test event directly;
-    // no anonymous access and no privilege to control the admin or projector.
-    if(!isAdminAction&&!testParticipantAccess&&requestedSlug==='test-2026-10-03'){
-      const rehearsal=await eventBySlug(db,requestedSlug)
-      if(rehearsal?.settings?.test_room===true&&user?.telegram_id){
-        testEvent=rehearsal
-        testParticipantAccess=true
-      }
+    // Only authenticated admins may read or mutate rehearsal participant data.
+    // Never trust test-room invite secrets, a public slug or Telegram /start test.
+    if(requestedSlug.startsWith('test-')&&!isAdminAction){
+      const privateRoom=await eventBySlug(db,requestedSlug)
+      if(privateRoom?.settings?.test_room!==true)return err('Репетиция не найдена',404)
+      try{await mustAdmin(db,user,tg)}
+      catch{return err('Тестовый прогон доступен только администраторам',403)}
+      testEvent=privateRoom
+      testParticipantAccess=true
     }
 
     if(action==='pwa-create-handoff'){
