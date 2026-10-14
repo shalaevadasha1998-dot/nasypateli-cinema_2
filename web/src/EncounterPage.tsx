@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import QRCode from 'qrcode'
 import QrScanner from 'qr-scanner'
 import { callApi, demoMode } from './lib/api'
@@ -44,6 +44,7 @@ function ScannedNotice({favorites,genres}:{favorites:number;genres:number}){
 }
 export default function EncounterPage(){
   const nav=useNavigate()
+  const [searchParams,setSearchParams]=useSearchParams()
   const [mode,setMode]=useState<'show'|'scan'>('show')
   const [code,setCode]=useState<MeetCode|null>(null)
   const [qr,setQr]=useState('')
@@ -61,6 +62,18 @@ export default function EncounterPage(){
   const scanner=useRef<QrScanner|null>(null)
   const file=useRef<HTMLInputElement>(null)
   const accepting=useRef(false)
+  useEffect(()=>{
+    const incoming=searchParams.get('incoming')
+    if(!incoming)return
+    const token=parseCreatureQr(incoming)
+    const next=new URLSearchParams(searchParams)
+    next.delete('incoming')
+    setSearchParams(next,{replace:true})
+    setMode('scan')
+    if(!token){setNotice('эта ссылка не подходит для знакомства животин');return}
+    accepting.current=true
+    setCandidate(token)
+  },[searchParams,setSearchParams])
   const stopCamera=()=>{
     const active=scanner.current
     scanner.current=null
