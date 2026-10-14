@@ -3050,10 +3050,14 @@ export async function handleApi(req:Request){
       if(!pack.data||!roundInfo.data)return err('киноблок не найден',404)
       const show=await buildShowState(db,event)
       if(show.runtime?.isTest){
-        const candidate=await db.from('registrations').select('user_id,creatures(name,stage,settings)').eq('event_id',event.id).eq('status','attended').limit(1).maybeSingle()
+        const candidate=await db.from('registrations').select('user_id').eq('event_id',event.id).eq('status','attended').limit(1).maybeSingle()
         if(candidate.error)throw candidate.error
         if(!candidate.data)return err('для test run отметьте хотя бы одного тестового участника',409)
-        const animal:any=(candidate.data as any).creatures||{}
+        // Registrations and creatures refer to the same user, but they have no
+        // PostgREST foreign-key relationship. Resolve the profile explicitly.
+        const creature=await db.from('creatures').select('name,stage,settings').eq('user_id',candidate.data.user_id).maybeSingle()
+        if(creature.error)throw creature.error
+        const animal:any=creature.data||{}
         const dueAt=new Date(Date.now()+7*86400000).toISOString()
         await setProjectorState(db,event,'assignment_winner',roundId,packageId,{
           animalName:String(animal.name||'животина'),filmTitle:pack.data.title_snapshot,dueAt,
