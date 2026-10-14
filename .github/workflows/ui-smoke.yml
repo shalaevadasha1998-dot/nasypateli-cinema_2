@@ -39,6 +39,9 @@ jobs:
       - name: Verify onboarding interactions and responsive layouts
         working-directory: web
         run: node tests/demo-smoke.mjs
+      - name: Verify admin controls and navigation on mobile and desktop
+        working-directory: web
+        run: node tests/director-smoke.mjs
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v4
