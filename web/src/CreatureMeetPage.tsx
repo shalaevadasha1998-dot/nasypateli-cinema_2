@@ -93,7 +93,7 @@ export default function CreatureMeetPage(){
     last.current={token,at:Date.now()}
     setBusy(true);setResult(null);setBanner(null)
     try{
-      const answer=await callApi<EncounterResult>('encounter',{token})
+      const answer=await callApi<EncounterResult>('encounter',{token,expectedKind:'rabbit'})
       if(answer.kind!=='rabbit')throw new Error('это код другого действия. для встречи нужен qr животины')
       stopCamera()
       setValue('')
