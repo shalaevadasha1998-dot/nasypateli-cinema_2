@@ -66,7 +66,7 @@ try{
     if(await page.locator('.bottom-nav a[href$="/test"]').count())throw Error('Admin tools visible in guest tabs')
     await page.screenshot({path:'test-artifacts/android-pixel-7-admin-roles.png',fullPage:true})
     await roles.first().click()
-    await page.waitForURL('**/#/rehearsal/test-2026-10-03')
+    await page.waitForURL('**/#/rehearsal/test-2026-10-17')
     if(problems.length)throw Error('Android javascript errors: '+problems.join('; '))
     console.log('PASS Android Pixel 7 test hub, navigation and participant route '+JSON.stringify(geometry))
   }finally{await android.close()}
