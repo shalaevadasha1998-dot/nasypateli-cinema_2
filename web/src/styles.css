@@ -3846,3 +3846,98 @@ html.chat-keyboard-open .chat-compose-inline{
   }
   .bottom-nav .nav-icon-wrap{width:24px!important;height:24px!important}
 }
+
+
+/* creature qr meetings · clear separation from the ticket checkpoint */
+.home-meet-shortcut{
+  margin:14px 0 22px;padding:17px;display:grid;grid-template-columns:45px minmax(0,1fr);
+  gap:13px;align-items:center;border:1px solid rgba(131,154,105,.32);
+  border-radius:22px;background:linear-gradient(135deg,rgba(131,154,105,.13),rgba(21,25,18,.9) 70%);
+}
+.home-meet-symbol{display:grid;place-items:center;align-self:start;width:45px;height:45px;border:1px solid rgba(165,194,143,.43);border-radius:16px;background:#1c2818;color:#b2cd9c;font-size:31px}
+.home-meet-shortcut .eyebrow{color:#a9c28f}
+.home-meet-shortcut h2{font-size:clamp(23px,6vw,31px);line-height:1.04;letter-spacing:-.05em;margin:7px 0}
+.home-meet-shortcut p{font-size:13px;color:#b3bbaa;line-height:1.5;margin:0}
+.home-meet-shortcut>.btn{grid-column:1/-1;margin:1px 0 0;min-height:52px;background:var(--rabbit);color:#0b1308}
+.creature-meet-entry{background:linear-gradient(115deg,#1a2517,#111510);border:1px solid #415339;padding:23px}
+.creature-meet-entry h2{font-size:clamp(28px,7vw,42px);letter-spacing:-.055em;margin:10px 0;line-height:1}
+.creature-meet-entry p{color:#b4c3ac;font-size:14px;line-height:1.5;margin:0 0 10px}
+.creature-meet-entry small{display:block;margin:10px 0 0;color:#98a28f;font-size:11px;line-height:1.45}
+.creature-meet-entry .btn{background:var(--rabbit);color:#11170e}
+.creature-meet-page{max-width:920px;padding-bottom:140px}
+.meet-heading{position:relative;isolation:isolate;padding:14px 5px 28px;overflow:hidden}
+.meet-heading:before{content:'';position:absolute;z-index:-1;width:250px;height:250px;border-radius:50%;border:1px solid rgba(131,154,105,.12);right:-85px;top:-20px;box-shadow:0 0 100px rgba(131,154,105,.065);pointer-events:none}
+.meet-back{display:inline-flex;min-height:44px;align-items:center;color:#a3b59b;font-size:13px;text-decoration:none;margin:0 0 22px}
+.meet-back:hover{text-decoration:underline}
+.meet-heading h1{font-size:clamp(52px,10vw,90px);line-height:.88;letter-spacing:-.078em;font-weight:850;margin:12px 0 23px}
+.meet-heading h1 em{font-style:normal;color:#9dbb83}
+.meet-heading p{color:#b4b8ad;font-size:clamp(15px,2.8vw,18px);line-height:1.58;margin:0;max-width:580px}
+.meet-card-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:14px;align-items:stretch}
+.meet-card-grid>.card{margin:0;min-width:0;border-radius:24px;padding:22px}
+.meet-own-card{background:linear-gradient(150deg,#25331f 0,#11170f 53%,#0c100b);border-color:#42543b!important}
+.meet-scan-card{background:linear-gradient(150deg,#191c18,#10120e 65%);border-color:#333b30!important}
+.meet-section-head{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+.meet-number{border:1px solid #4d6145;border-radius:11px;padding:10px;color:#a7c393;font:700 12px/1 ui-monospace,monospace}
+.meet-section-head h2{font-size:clamp(25px,3.4vw,33px);letter-spacing:-.05em;line-height:1.1;margin:3px 0 0}
+.meet-own-card .meet-section-head .eyebrow{color:#a4c092}
+.meet-qr-wrap{width:min(100%,312px);aspect-ratio:1;margin:0 auto;display:grid;place-items:center;background:#f4f1e7;border:7px solid rgba(238,233,223,.98);border-radius:20px;box-shadow:0 14px 44px rgba(0,0,0,.26);overflow:hidden}
+.meet-qr{width:100%;height:100%;display:block;image-rendering:auto;object-fit:contain}
+.meet-qr-placeholder{padding:20px;text-align:center;color:#334431;font-size:14px;line-height:1.45}
+.meet-creature-name{text-align:center;color:#f3f1e7;font-size:clamp(27px,5vw,37px);font-weight:820;letter-spacing:-.055em;overflow-wrap:anywhere;margin-top:16px;line-height:1.15}
+.meet-expire{text-align:center;font-size:12px;color:#aeb9a4;margin-top:6px}
+.meet-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:20px}
+.meet-actions .btn,.meet-actions .meet-file{display:inline-flex;flex:1 1 135px;align-items:center;justify-content:center;text-align:center;min-width:0;margin:0;font-size:13px;line-height:1.22;white-space:normal;min-height:52px}
+.meet-own-card .meet-actions .btn:first-child{background:#c2d5b2;color:#10170d}
+.meet-camera{width:100%;height:clamp(200px,28vw,260px);position:relative;overflow:hidden;border:1px solid #434c3e;border-radius:20px;background:radial-gradient(circle at center,#27301f,#11140f 75%)}
+.meet-camera video{width:100%;height:100%;object-fit:cover;display:block}
+.meet-camera:not(.is-on) video{opacity:0}
+.meet-camera-empty{position:absolute;inset:0;display:grid;place-content:center;text-align:center;gap:17px;pointer-events:none;color:#b5c0a9;font-size:13px;line-height:1.5}
+.meet-scan-corners{position:relative;width:110px;height:110px;margin:auto;border-radius:12px;border:2px solid rgba(188,211,171,.22)}
+.meet-scan-corners:before,.meet-scan-corners:after{content:'';position:absolute;inset:-2px;border:3px solid transparent;border-radius:12px;pointer-events:none}
+.meet-scan-corners:before{border-top-color:#b7d7a0;border-left-color:#b7d7a0;clip-path:polygon(0 0,45% 0,45% 15%,15% 15%,15% 45%,0 45%)}
+.meet-scan-corners:after{border-bottom-color:#b7d7a0;border-right-color:#b7d7a0;clip-path:polygon(55% 85%,85% 85%,85% 55%,100% 55%,100% 100%,55% 100%)}
+.meet-file{position:relative;cursor:pointer}
+.meet-file input{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}
+.meet-file.meet-disabled{opacity:.45;pointer-events:none}
+.meet-file:focus-within{outline:2px solid var(--rabbit);outline-offset:2px}
+.meet-manual{margin-top:24px;padding-top:17px;border-top:1px solid rgba(238,233,223,.1)}
+.meet-manual>label{font-size:12px;color:#b5b9ad;display:block;margin:0 0 10px}
+.meet-manual>div{display:flex;gap:8px;min-width:0}
+.meet-manual input{background:#090c08;color:var(--paper);border:1px solid #485043;min-width:0;flex:1;border-radius:14px;padding:12px;font-size:16px}
+.meet-manual input:focus{outline:2px solid var(--rabbit);outline-offset:1px}
+.meet-manual .btn{width:auto;flex:none;margin:0;min-height:50px;padding:12px 14px;font-size:13px;background:var(--rabbit);color:#11180e}
+.meet-banner{border-radius:14px;padding:12px 14px;margin-top:16px;line-height:1.5;font-size:13px}
+.meet-banner.error{background:#3b1c18;color:#ffd6ce;border:1px solid #874239}
+.meet-banner.success{background:#243621;color:#d8ebcd;border:1px solid #53704d}
+.meet-banner.info{background:#272c23;color:#d6dbd0;border:1px solid #4d5a47}
+.meet-result{border-radius:20px;margin:18px 0 0;padding:19px;background:radial-gradient(circle at 85% 0,rgba(166,195,139,.21),transparent 50%),#1b2718;border:1px solid #5b7652}
+.meet-result-mark{font-size:44px;color:#b8d7a5}
+.meet-result .eyebrow{color:#a9c693}
+.meet-result h3{font-size:clamp(30px,6vw,42px);margin:5px 0 10px}
+.meet-result p{font-size:14px;line-height:1.5;color:#d9e5d1}
+.meet-result span{display:block;color:#adc0a4;font-size:12px;line-height:1.4}
+.meet-rules{border:1px solid #343d32;border-radius:23px;margin-top:15px;padding:21px;background:#0c100b}
+.meet-rules>.eyebrow{margin-bottom:7px;color:#8da57b}
+.meet-rules>div:not(.eyebrow){padding:13px 0;border-bottom:1px solid #2a3328}
+.meet-rules>div:last-child{border-bottom:0;padding-bottom:0}
+.meet-rules b{font-size:15px;font-weight:800}
+.meet-rules p{font-size:13px;line-height:1.45;color:#a5b09d;margin:5px 0 0}
+@media(max-width:720px){
+  .meet-card-grid{grid-template-columns:minmax(0,1fr);gap:12px}
+  .meet-card-grid>.card{padding:20px}
+  .meet-camera{height:245px}
+  .meet-heading h1{font-size:clamp(55px,13vw,76px)}
+  .creature-meet-page{padding-top:16px}
+}
+@media(max-width:370px){
+  .meet-heading h1{font-size:52px}
+  .meet-card-grid>.card{padding:15px}
+  .meet-actions{flex-direction:column}
+  .meet-actions .btn,.meet-actions .meet-file{flex-basis:auto;width:100%}
+  .meet-manual>div{flex-wrap:wrap}
+  .meet-manual input{flex-basis:100%}
+  .meet-manual .btn{width:100%}
+}
+@media(prefers-reduced-motion:reduce){
+  .meet-heading *, .meet-result *, .home-meet-shortcut *{animation:none!important;transition:none!important}
+}
