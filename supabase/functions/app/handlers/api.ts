@@ -1277,7 +1277,7 @@ export async function handleApi(req:Request){
       }
       if(!x?.event?.id)return err('Событие не найдено',404)
       const event:any={...x.event,settings:x.event.settings||{}}
-      const testScreenOk=await testRoomTokenMatches(event,req.headers.get('x-screen-token')||'')
+      const testScreenOk=false // old test invitation tokens can no longer open a projector
       const openTestScreen=false // even test projectors require an admin-created screen link
       if(!screenTokenOk&&!testScreenOk&&!openTestScreen)return err('Доступ к экрану запрещён',401)
       await maybeAutoAdvanceShow(db,event)
@@ -1344,7 +1344,7 @@ export async function handleApi(req:Request){
 
     if(action==='screen-audio-heartbeat'){
       const event=await eventBySlug(db,String(body.slug||'2026-10-03'))
-      const testScreenOk=await testRoomTokenMatches(event,req.headers.get('x-screen-token')||'')
+      const testScreenOk=false // old test invitation tokens can no longer open a projector
       const openTestScreen=false // even test projectors require an admin-created screen link
       if(!screenTokenOk&&!testScreenOk&&!openTestScreen)return err('Доступ к экрану запрещён',401)
       return await withEventOperation(db,event.id,'screen-audio-lease',async()=>{
@@ -1368,7 +1368,7 @@ export async function handleApi(req:Request){
 
     if(action==='screen-audio-ended'){
       const event=await eventBySlug(db,String(body.slug||'2026-10-03'))
-      const testScreenOk=await testRoomTokenMatches(event,req.headers.get('x-screen-token')||'')
+      const testScreenOk=false // old test invitation tokens can no longer open a projector
       const openTestScreen=false // even test projectors require an admin-created screen link
       if(!screenTokenOk&&!testScreenOk&&!openTestScreen)return err('Доступ к экрану запрещён',401)
       const owner=await db.from('event_screen_status').select('session_id').eq('event_id',event.id).maybeSingle()
@@ -1974,7 +1974,7 @@ export async function handleApi(req:Request){
     }
 
     const slug=String(body.slug||'2026-10-03');const event=await eventBySlug(db,slug)
-    const testAdminTokenOk=await testRoomTokenMatches(event,req.headers.get('x-admin-token')||'')
+    const testAdminTokenOk=false // an invite token must never grant admin rights
     if(!isAdminAction&&event?.settings?.test_room===true&&!testParticipantAccess)return err('Тестовая комната закрыта',403)
 
     if(action==='claim-event-ticket'){
@@ -2424,12 +2424,6 @@ export async function handleApi(req:Request){
           good:String(f.strongest_part||'').slice(0,1000),
           improve:String(f.improve_text||'').slice(0,1000)
         }))})
-    }
-
-    if(action==='admin-test-invite'){
-      if(event.settings?.test_room!==true||event.slug!=='test-2026-10-03')return err('Приглашение доступно только для тестового вечера',403)
-      const token=await testInviteToken(event)
-      return json({ok:true,url:`https://t.me/nasipateli_v_kinobot?start=t_${token}`})
     }
 
     if(action==='admin-media-sync'){
