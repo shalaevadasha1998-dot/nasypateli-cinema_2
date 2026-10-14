@@ -2574,7 +2574,10 @@ export async function handleApi(req:Request){
               .limit(1)
             if(cachedSources.error)throw cachedSources.error
             const rawSource:any=cachedSources.data?.[0]
-            if(!rawSource)continue
+            // An old embed response cannot prove that a regional video still plays.
+            // Keep the immediate retry path only for recently probed direct files.
+            const checkedAt=Date.parse(String(rawSource?.verified_at||''))
+            if(!rawSource||rawSource.metadata?.availabilityCheck!=='video_bytes'||!Number.isFinite(checkedAt)||Date.now()-checkedAt>24*60*60*1000)continue
             const source:any={
               id:String(rawSource.id),
               useMode:String(rawSource.use_mode||'fragment'),
