@@ -3683,3 +3683,9 @@ html.chat-keyboard-open .chat-compose-inline{
 @media(prefers-reduced-motion:reduce){
   .screen-page .screen-creature-card.arrived,.screen-creature-arrival-callout{animation:none!important}
 }
+
+/* readable cinema controls with explicit backwards/forwards actions */
+#admin-invites{scroll-margin-top:90px}
+.round-film-navigation{display:flex;gap:10px;flex-wrap:wrap;align-items:stretch}
+.round-film-navigation .btn{flex:1 1 170px;min-height:48px;white-space:normal}
+@media(max-width:760px){.round-film-navigation .btn{flex:1 1 135px;font-size:13px;padding:10px}}
