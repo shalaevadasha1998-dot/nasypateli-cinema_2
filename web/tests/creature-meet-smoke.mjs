@@ -9,7 +9,7 @@ const own='a'.repeat(32),other='b'.repeat(32)
 const ownLink='https://t.me/nasipateli_v_kinobot?start=encounter_'+own
 const otherLink='https://t.me/nasipateli_v_kinobot?start=encounter_'+other
 const server=spawn('./node_modules/.bin/vite',['preview','--host','127.0.0.1','--port','4178','--strictPort','--base=/nasypateli-cinema_2/'],{stdio:'inherit'})
-let browser,connections=0
+let browser,connections=0,checkins=0
 async function ready(){
   for(let i=0;i<40;i++){try{if((await fetch(origin)).ok)return}catch{}await new Promise(r=>setTimeout(r,500))}
   throw Error('Meet preview did not start')
@@ -27,7 +27,9 @@ async function makePage(viewport){
     })})
     if(body.action==='my-encounter-token')return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({token:own,deepLink:ownLink,expiresAt:'2026-11-14T00:00:00Z'})})
     if(body.action==='my-encounters')return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({ok:true,encounters:connections?[{creatureName:'пломбир',metAt:'2026-10-14T12:00:00Z',sharedFavorites:2,sharedGenres:1}]:[]})})
+    if(body.action==='encounter-preview')return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({ok:true,kind:body.token==='c'.repeat(32)?'event_checkin':'rabbit'})})
     if(body.action==='encounter'){
+      if(body.token==='c'.repeat(32)){checkins++;return route.fulfill({status:200,contentType:'application/json',body:'{"ok":true,"kind":"event_checkin","alreadyAttended":false}'})}
       if(body.token!==other)return route.fulfill({status:409,contentType:'application/json',body:'{"error":"это qr вашей собственной животины"}'})
       connections++
       return route.fulfill({status:200,contentType:'application/json',body:'{"ok":true,"kind":"rabbit","sharedFavorites":2,"sharedGenres":1}'})
@@ -90,5 +92,14 @@ try{
     if(connections!==before+1)throw Error('Confirmed Telegram deep link did not save exactly once')
     console.log('PASS telegram-deeplink explicit animal consent')
   }finally{await context.close()}
+  // Legacy event check-in tokens must still mark attendance without opening /meet.
+  const eventPage=await makePage({width:390,height:844})
+  try{
+    await eventPage.page.goto(origin+'?encounter='+'c'.repeat(32)+'#/',{waitUntil:'domcontentloaded',timeout:20000})
+    await eventPage.page.getByText('вы внутри. животина запомнила, что вы пришли').waitFor({timeout:18000})
+    if(checkins!==1)throw Error('Legacy event check-in failed')
+    if(eventPage.page.url().includes('#/meet'))throw Error('Event check-in incorrectly opened animal QR scanner')
+    console.log('PASS event-checkin QR preserved')
+  }finally{await eventPage.context.close()}
 }catch(e){console.error('CREATURE MEET FAIL',e);process.exitCode=1}
 finally{if(browser)await browser.close();server.kill('SIGTERM')}
