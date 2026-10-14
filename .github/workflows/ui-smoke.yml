@@ -31,6 +31,14 @@ jobs:
       - name: Test desktop and mobile layouts against test room
         working-directory: web
         run: node tests/smoke.mjs
+      - name: Build isolated demo UI
+        working-directory: web
+        env:
+          VITE_DEMO_MODE: "true"
+        run: npm run build -- --base=/nasypateli-cinema_2/
+      - name: Verify onboarding interactions and responsive layouts
+        working-directory: web
+        run: node tests/demo-smoke.mjs
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v4
