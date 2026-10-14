@@ -27,7 +27,8 @@ function YoutubeVideo({id,start,end,title,onError}:{id:string;start:number;end?:
 }
 function DirectVideo({src,start,end,title,onError}:{src:string;start:number;end?:number;title:string;onError:()=>void}){
   const ref=useRef<HTMLVideoElement>(null)
-  return <video ref={ref} src={src} title={title} playsInline controls preload="auto" onError={onError} onLoadedMetadata={()=>{const v=ref.current;if(v){v.currentTime=start;void v.play().catch(()=>{})}}} onTimeUpdate={()=>{const v=ref.current;if(v&&end&&v.currentTime>=end)v.pause()}}/>
+  const safeSource=(()=>{try{const url=new URL(src);return ['https:','blob:'].includes(url.protocol)?url.href:undefined}catch{return undefined}})()
+  return <video ref={ref} src={safeSource} title={title} playsInline controls preload="auto" onError={onError} onLoadedMetadata={()=>{const v=ref.current;if(v){v.currentTime=start;void v.play().catch(()=>{})}}} onTimeUpdate={()=>{const v=ref.current;if(v&&end&&v.currentTime>=end)v.pause()}}/>
 }
 // Keep the same local movie for subsequent fragments in this projector tab only.
 const localMovies=new Map<string,string>()
@@ -43,7 +44,7 @@ export function ProjectorMedia({media,title}:{media:any;title:string}){
   const choose=(file?:File)=>{
     if(!file)return
     const old=localMovies.get(identity);if(old)URL.revokeObjectURL(old)
-    const src=URL.createObjectURL(file);localMovies.set(identity,src);setLocal(src);setFailed(false)
+    const src=encodeURI(URL.createObjectURL(file));localMovies.set(identity,src);setLocal(src);setFailed(false)
   }
   const direct=local||(['internet_archive','wikimedia_commons','direct'].includes(media?.sourcePlatform)?String(media?.sourceUrl||''):'')
   return <div className="screen-video-wrap projector-media">
