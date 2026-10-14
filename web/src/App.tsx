@@ -1112,7 +1112,8 @@ function RoundFilmFlowAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(ac
   const pitches=data.inventedFilms||[]
   const [stepping,setStepping]=useState(false)
   if(!round||round.status!=='active')return null
-  const flow=round.flowStatus||'collecting_films'
+  const manual=data.show?.runtime.roundControlMode==='manual'
+  const flow=round.flowStatus||'round_intro'
   const mode=round.roundNo%2===1?'review':'questions'
   const pack=round.movie?(data.filmPackages||[]).find(x=>x.movieCandidateId===round.movie?.id):undefined
   const questions=(pack?.questions||[]).slice().sort((a,b)=>a.position-b.position)
@@ -1124,76 +1125,98 @@ function RoundFilmFlowAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(ac
   const previewTotal=Math.max(0,Number(projector?.payload?.total||pitches.length))
   const blocked=busy||stepping
   const project=(op:string,extra:Record<string,unknown>={})=>pack&&run('admin-film-projector',{filmPackageId:pack.id,roundId:round.id,op,...extra})
-
-  const chooseAndSearch=async()=>{
-    setStepping(true)
-    try{
-      const selected=await run('admin-round-pitch-draw')
-      if(!selected)return
-      await run('admin-round-find-movie')
-    }finally{setStepping(false)}
-  }
-  const assign=async()=>{
-    if(!pack)return
-    setStepping(true)
-    try{
-      await project('assignment_randomizing')
-      await new Promise(resolve=>window.setTimeout(resolve,900))
-      await run('admin-film-assign',{filmPackageId:pack.id,roundId:round.id})
-    }finally{setStepping(false)}
-  }
   const previous=async()=>{
-    if(blocked)return
-    if(flow==='films_locked'&&previewIndex>0){await run('admin-round-pitch-preview',{index:previewIndex-1})}
-    else if(flow==='playing_clip'&&pack){await project('film_intro')}
+    if(blocked||!manual)return
+    if(flow==='films_locked'&&projector?.state==='pitch_preview'&&previewIndex>0)await run('admin-round-pitch-preview',{index:previewIndex-1})
+    else if(flow==='playing_clip'&&pack)await project('film_intro')
   }
   const next=async()=>{
-    if(blocked)return
-    if(flow==='round_intro')return
-    if(flow==='collecting_films'){await run('admin-round-pitches-close');return}
-    if(flow==='films_locked'){
-      if(previewIndex<previewTotal-1){await run('admin-round-pitch-preview',{index:previewIndex+1});return}
-      await chooseAndSearch();return
-    }
-    if(flow==='submission_selected'||flow==='searching_movie'){await run('admin-round-find-movie');return}
-    if(flow==='movie_found'){if(pack)await project('film_intro');return}
-    if(flow==='playing_clip'){if(mode==='review')await assign();else if(pack)await project('question_open',{position:1});return}
-    if(flow==='one_word_collecting'){if(pack)await project('one_word_results');return}
-    if(flow==='one_word_results'){await run('admin-round-close');return}
-    if(flow==='question_open'){if(pack)await project('question_results',{position});return}
-    if(flow==='question_results'){if(pack)await project('question_reveal',{position});return}
-    if(flow==='question_reveal'){
-      if(position<target){if(pack)await project('question_open',{position:position+1})}
-      else await assign()
-      return
-    }
-    if(flow==='assignment_selected'){if(mode==='review'&&pack)await project('one_word_open');else await run('admin-round-close');return}
+    if(blocked||!manual)return
+    setStepping(true)
+    try{
+      if(flow==='round_intro'){await run('admin-round-pitches-open');return}
+      if(flow==='collecting_films'){await run('admin-round-pitches-close');return}
+      if(flow==='films_locked'){
+        if(projector?.state!=='pitch_preview'){await run('admin-round-pitch-preview',{index:0});return}
+        if(previewIndex+1<previewTotal){await run('admin-round-pitch-preview',{index:previewIndex+1});return}
+        await run('admin-round-pitch-draw');return
+      }
+      if(flow==='submission_selected'){await run('admin-round-find-movie');return}
+      if(flow==='movie_found'){if(pack)await project('film_intro');return}
+      if(flow==='playing_clip'){
+        if(!pack)return
+        if(mode==='review')await project('assignment_randomizing')
+        else await project('question_open',{position:1})
+        return
+      }
+      if(flow==='assignment_randomizing'){if(pack)await run('admin-film-assign',{filmPackageId:pack.id,roundId:round.id});return}
+      if(flow==='assignment_selected'){
+        if(mode==='review'&&pack)await project('one_word_open')
+        else await run('admin-round-close')
+        return
+      }
+      if(flow==='one_word_collecting'){if(pack)await project('one_word_results');return}
+      if(flow==='one_word_results'){await run('admin-round-close');return}
+      if(flow==='question_open'){if(pack)await project('question_results',{position});return}
+      if(flow==='question_results'){if(pack)await project('question_reveal',{position});return}
+      if(flow==='question_reveal'){
+        if(!pack)return
+        if(position<target)await project('question_open',{position:position+1})
+        else await project('assignment_randomizing')
+        return
+      }
+    }finally{setStepping(false)}
   }
 
-  let title='готовим раунд'
-  let detail=''
-  let nextLabel='дальше'
-  let canNext=true
-  if(flow==='round_intro'){title='объясняем механику';detail='5 минут на объяснение. после этого сбор названий включится сам';nextLabel='сбор включится автоматически';canNext=false}
-  else if(flow==='collecting_films'){title='гости придумывают фильмы';detail=`${round.pitchCount||0} идей уже отправлено`;canNext=pitches.length>0}
-  else if(flow==='films_locked'){title='идеи собраны';detail='автоматика запускает рандом и покажет одну выбранную идею';nextLabel='форсировать рандом'}
-  else if(flow==='randomizing_submission'){title='рандом выбирает идею';detail='смотри на большой экран';canNext=false;nextLabel='выбираем…'}
-  else if(flow==='submission_selected'||flow==='searching_movie'){title='ищем реальный фильм';detail='берём проверенный воспроизводимый фрагмент';nextLabel='дальше → найти фильм'}
-  else if(flow==='movie_found'){title=round.movie?.title||'фильм найден';detail=pack?'фрагмент готов':'для фильма нет готового фрагмента';nextLabel='дальше → фрагмент';canNext=!!pack}
-  else if(flow==='playing_clip'){title='фрагмент идёт';detail=mode==='review'?'после просмотра назначаем, кто досмотрит фильм, затем 5 минут объяснения':'после просмотра автоматически откроется вопрос 1/3';nextLabel=mode==='review'?'форсировать назначение':'форсировать вопрос 1/3';canNext=!!pack}
-  else if(flow==='one_word_collecting'){title='одно слово';detail='слова появляются на большом экране вживую';nextLabel='дальше → зафиксировать';canNext=!!pack}
-  else if(flow==='one_word_results'){title='рецензия зала готова';detail='раунд сейчас закроется автоматически';nextLabel='форсировать конец раунда';canNext=true}
-  else if(flow==='question_open'){title=`вопрос ${position}/${target}`;detail=currentQuestion?.prompt||'гости отвечают своими словами';nextLabel='дальше → самый близкий ответ';canNext=!!pack}
-  else if(flow==='question_results'){title='ближайший ответ выбран';detail='животина сравнила открытые ответы с реальным продолжением';nextLabel='дальше → что было на самом деле';canNext=!!pack}
-  else if(flow==='question_reveal'){title='показано продолжение';detail=position<target?`следующий вопрос ${position+1}/${target}`:'животина выбирает самого провидца по трём ответам';nextLabel=position<target?`форсировать вопрос ${position+1}/${target}`:'форсировать выбор провидца';canNext=!!pack}
-  else if(flow==='assignment_randomizing'){title=mode==='questions'?'считаем самого провидца':'выбираем животину';detail=mode==='questions'?'победит тот, чей ответ животина чаще признавала самым близким':'выбор фиксируется на сервере один раз';canNext=false;nextLabel='считаем…'}
-  else if(flow==='assignment_selected'){title=mode==='questions'?'самый провидец найден':'фильм назначен';detail=mode==='review'?'5 минут объясняем задание, затем рецензия откроется сама':'5 минут показываем победителя, затем раунд закроется сам';nextLabel=mode==='review'?'форсировать рецензию':'форсировать конец раунда'}
-  else {title='раунд идёт';detail='следующий шаг появится автоматически';canNext=false}
+  let title='ждём обновления раунда',detail='',nextLabel='следующий шаг',canNext=true
+  if(flow==='round_intro'){title='объясняем механику';detail='на проекторе показаны правила. можно открывать сбор названий сразу, не ждать 5 минут';nextLabel='открыть сбор названий'}
+  else if(flow==='collecting_films'){title='гости придумывают фильмы';detail=`${round.pitchCount||0} идей уже отправлено. после этого покажем их на экране`;nextLabel='закрыть сбор и показать идеи';canNext=Number(round.pitchCount||0)>0}
+  else if(flow==='films_locked'){
+    title=projector?.state==='pitch_preview'?`показываем идею ${previewIndex+1} из ${Math.max(previewTotal,1)}`:'идеи собраны'
+    detail='на большом экране листаются идеи гостей'
+    nextLabel=projector?.state!=='pitch_preview'?'показать первую идею':previewIndex+1<previewTotal?'показать следующую идею':'запустить рандом'
+  }
+  else if(flow==='randomizing_submission'){title='рандом выбирает идею';detail='ждём, пока сервер зафиксирует случайный результат';nextLabel='выбираем…';canNext=false}
+  else if(flow==='submission_selected'){title='идея выбрана';detail='сначала покажи выбранную идею, затем запусти поиск реального фильма';nextLabel='начать поиск фильма'}
+  else if(flow==='searching_movie'){title='животина ищет фильм';detail='поиск выполняется на сервере — ждём результата';nextLabel='ищем…';canNext=false}
+  else if(flow==='movie_found'){title=round.movie?.title||'поиск завершён';detail=pack?'фрагмент готов к показу':'подходящий воспроизводимый фильм не найден. проверь источники, затем повтори поиск';nextLabel=pack?'показать фрагмент':'нет готового фрагмента';canNext=!!pack}
+  else if(flow==='playing_clip'){title='смотрим фрагмент';detail=mode==='review'?'сейчас можно перейти к выбору животины, которая досмотрит фильм':'после просмотра откроется первый вопрос о продолжении';nextLabel=mode==='review'?'запустить выбор животины':'открыть вопрос 1/3';canNext=!!pack}
+  else if(flow==='assignment_randomizing'){title='выбираем животину';detail='рандом уже на проекторе. следующим нажатием фиксируем победителя';nextLabel='назвать выбранную животину';canNext=!!pack}
+  else if(flow==='assignment_selected'){title=mode==='review'?'фильм назначен':'самый провидец найден';detail=mode==='review'?'победитель на экране — теперь откроем рецензию одним словом':'можно завершить раунд и перейти к следующему';nextLabel=mode==='review'?'открыть рецензию одним словом':'завершить раунд';canNext=mode!=='review'||!!pack}
+  else if(flow==='one_word_collecting'){title='рецензия одним словом';detail='слова участников появляются на проекторе';nextLabel='показать результат рецензий';canNext=!!pack}
+  else if(flow==='one_word_results'){title='результаты рецензий';detail='результат уже на проекторе';nextLabel='завершить раунд'}
+  else if(flow==='question_open'){title=`вопрос ${position}/${target}`;detail=currentQuestion?.prompt||'гости отвечают на телефонах';nextLabel='показать ближайший ответ';canNext=!!pack}
+  else if(flow==='question_results'){title='самый близкий ответ';detail='животина сравнила ответы гостей';nextLabel='показать правильное продолжение';canNext=!!pack}
+  else if(flow==='question_reveal'){title=`продолжение после вопроса ${position}/${target}`;detail=position<target?'сейчас можно перейти к следующему вопросу':'все вопросы закончились, пора выбрать самого провидца';nextLabel=position<target?`открыть вопрос ${position+1}/${target}`:'запустить выбор провидца';canNext=!!pack}
+  else {title='переход выполняется';detail='если переход занимает слишком долго, проверь уведомление об ошибке';canNext=false}
 
-  return <Card className="round-film-flow-admin">
-    <div className="row spread"><div><div className="section-title">раунд {round.roundNo} · {mode==='review'?'одно слово':'открытые вопросы'}</div><h2>{title}</h2></div><Pill>{round.pitchCount||0} идей</Pill></div>
-    {detail&&<p className="muted">{detail}</p>}
-    <div className="round-film-navigation"><Button kind="secondary" disabled={blocked||!(flow==='films_locked'&&previewIndex>0||flow==='playing_clip'&&!!pack)} onClick={()=>void previous()}>← повторить / назад</Button><Button disabled={blocked||!canNext} onClick={()=>void next()}>{blocked?'выполняем…':nextLabel}</Button></div>
+  const currentPhase=flow==='round_intro'?'intro':flow==='collecting_films'?'collect':
+    flow==='films_locked'?'preview':flow==='randomizing_submission'||flow==='submission_selected'?'random':
+    flow==='searching_movie'||flow==='movie_found'?'search':flow==='playing_clip'?'clip':
+    ['question_open','question_results','question_reveal','one_word_collecting','one_word_results'].includes(flow)?'answers':
+    ['assignment_randomizing','assignment_selected'].includes(flow)?'winner':'intro'
+  const stages=[
+    {id:'intro',name:'объяснение'},
+    {id:'collect',name:'сбор идей'},
+    {id:'preview',name:'показ идей'},
+    {id:'random',name:'рандом'},
+    {id:'search',name:'поиск фильма'},
+    {id:'clip',name:'фрагмент'},
+    {id:'answers',name:mode==='review'?'рецензия':'3 вопроса'},
+    {id:'winner',name:'финал раунда'}
+  ]
+  // Odd rounds award a film first and collect a one-word review afterward.
+  if(mode==='review'){const answers=stages.splice(6,1)[0];stages.push(answers)}
+  const currentIndex=stages.findIndex(x=>x.id===currentPhase)
+  return <Card className="round-film-flow-admin manual-director-flow">
+    <div className="row spread"><div><div className="section-title">режиссура раунда {round.roundNo} · {mode==='review'?'снимаем кино':'угадываем кино'}</div><h2>{title}</h2></div><Pill>{manual?'ручной режим':'авторежиссёр'}</Pill></div>
+    <div className="manual-director-stages" aria-label="этапы текущего раунда">{stages.map((step,i)=><div key={step.id} className={'manual-director-stage '+(step.id===currentPhase?'current':i<currentIndex?'done':'waiting')} aria-current={step.id===currentPhase?'step':undefined}><span>{String(i+1).padStart(2,'0')}</span><b>{step.name}</b>{step.id===currentPhase&&<small>сейчас на экране</small>}</div>)}</div>
+    {detail&&<p className="muted manual-director-description">{detail}</p>}
+    <div className="round-film-navigation">
+      <Button kind="secondary" disabled={!manual||blocked||!(flow==='films_locked'&&projector?.state==='pitch_preview'&&previewIndex>0||flow==='playing_clip'&&!!pack)} onClick={()=>void previous()}>← предыдущая идея</Button>
+      <Button disabled={!manual||blocked||!canNext} onClick={()=>void next()}>{blocked?'переключаем…':!manual?'включи ручной режим':nextLabel+' →'}</Button>
+    </div>
+    {manual&&!canNext&&<p className="manual-director-help" role="status">{flow==='collecting_films'?'чтобы продолжить, отправь хотя бы одну идею с телефона участника':flow==='movie_found'?'следующий шаг недоступен без найденного фильма с разрешённым источником':'дождись завершения текущего действия или проверь сообщение об ошибке выше'}</p>}
   </Card>
 }
 function FilmMechanicAdmin({data,busy,run}:{data:DemoState;busy:boolean;run:(action:string,payload?:Record<string,unknown>)=>Promise<any>}){
