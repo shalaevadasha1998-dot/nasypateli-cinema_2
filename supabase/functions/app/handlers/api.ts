@@ -2386,6 +2386,19 @@ export async function handleApi(req:Request){
       try{await mustAdmin(db,user,tg)}catch{return err('Доступ к пульту запрещён',403)}
     }
 
+    if(action==='admin-feedback-summary'){
+      const feedback=await db.from('event_feedback').select('return_intent,strongest_part,improve_text,duration_feel,invite_friend').eq('event_id',event.id).limit(200)
+      if(feedback.error)throw feedback.error
+      const rows=feedback.data||[]
+      const byIntent:Record<string,number>={}
+      for(const f of rows){const key=String(f.return_intent||'не ответили');byIntent[key]=(byIntent[key]||0)+1}
+      return json({ok:true,total:rows.length,byIntent,
+        comments:rows.filter((f:any)=>String(f.strongest_part||f.improve_text||'').trim()).slice(0,50).map((f:any)=>({
+          good:String(f.strongest_part||'').slice(0,1000),
+          improve:String(f.improve_text||'').slice(0,1000)
+        }))})
+    }
+
     if(action==='admin-test-invite'){
       if(event.settings?.test_room!==true||event.slug!=='test-2026-10-03')return err('Приглашение доступно только для тестового вечера',403)
       const token=await testInviteToken(event)
