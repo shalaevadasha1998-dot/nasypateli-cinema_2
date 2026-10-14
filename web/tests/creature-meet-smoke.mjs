@@ -78,5 +78,17 @@ try{
   browser=await chromium.launch({headless:true,args:['--no-sandbox']})
   await test({width:412,height:915},'pixel-7',false)
   await test({width:320,height:640},'compact-gallery',true)
+  // A Telegram encounter deep link must show consent rather than auto-save.
+  const before=connections
+  const {page,context}=await makePage({width:390,height:844})
+  try{
+    await page.goto(origin+'?encounter='+other+'#/',{waitUntil:'domcontentloaded',timeout:20000})
+    await page.getByRole('heading',{name:'познакомить животин?'}).waitFor({timeout:18000})
+    if(connections!==before)throw Error('Telegram deep link saved a meeting before confirmation')
+    await page.getByRole('button',{name:'да, познакомить'}).click()
+    await page.getByRole('heading',{name:'животины встретились'}).waitFor({timeout:15000})
+    if(connections!==before+1)throw Error('Confirmed Telegram deep link did not save exactly once')
+    console.log('PASS telegram-deeplink explicit animal consent')
+  }finally{await context.close()}
 }catch(e){console.error('CREATURE MEET FAIL',e);process.exitCode=1}
 finally{if(browser)await browser.close();server.kill('SIGTERM')}
