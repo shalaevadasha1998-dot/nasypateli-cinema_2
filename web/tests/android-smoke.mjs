@@ -36,6 +36,9 @@ async function ready(){
 async function check(config,stage){
   const context=await browser.newContext({viewport:config.viewport,deviceScaleFactor:config.scale,isMobile:true,hasTouch:true,userAgent:config.userAgent})
   const page=await context.newPage()
+  // The external Telegram SDK sometimes hangs in CI and blocks DOMContentLoaded.
+  // Mock it only in browser-only smoke; this never tests real Telegram authorization.
+  await page.route('**/telegram-web-app.js*',route=>route.fulfill({status:200,contentType:'application/javascript',body:'/* telegram sdk skipped in browser-only ui smoke */'}))
   const errors=[];page.on('pageerror',e=>errors.push(e.message))
   let sentFeedback=false
   await page.route('https://vwteokawtqnoiyzmsldj.supabase.co/functions/v1/app',async route=>{

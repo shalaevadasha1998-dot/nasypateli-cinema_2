@@ -5,12 +5,20 @@ import { mkdir } from 'node:fs/promises'
 const origin='http://127.0.0.1:4174/nasypateli-cinema_2/'
 const server=spawn('./node_modules/.bin/vite',['preview','--host','127.0.0.1','--port','4174','--strictPort','--base=/nasypateli-cinema_2/'],{stdio:'inherit'})
 let browser
+async function newPage(options){
+  const page=await browser.newPage(options)
+  // The remote, parser-blocking Telegram SDK may stall GitHub-hosted Chromium.
+  // UI smoke does not validate Telegram credentials: keep that in a real-device test.
+  await page.route('**/telegram-web-app.js*',route=>route.fulfill({status:200,contentType:'application/javascript',body:'/* telegram sdk skipped in browser-only ui smoke */'}))
+  return page
+}
+
 async function ready(){
   for(let i=0;i<40;i++){try{if((await fetch(origin)).ok)return}catch{}await new Promise(r=>setTimeout(r,500))}
   throw Error('Demo preview failed')
 }
 async function check(viewport,label){
-  const page=await browser.newPage({viewport})
+  const page=await newPage({viewport})
   const errors=[]
   page.on('pageerror',e=>errors.push(e.message))
   try{
@@ -38,6 +46,8 @@ try{
   await check({width:1440,height:900},'desktop-1440')
   const android=await browser.newContext({...devices['Pixel 7']})
   const page=await android.newPage()
+  // External Telegram SDK is not needed for UI-only Android browser checks.
+  await page.route('**/telegram-web-app.js*',route=>route.fulfill({status:200,contentType:'application/javascript',body:'/* browser smoke stub */'}))
   const problems=[]
   page.on('pageerror',e=>problems.push(e.message))
   try{
@@ -51,7 +61,9 @@ try{
       return {screen:innerWidth,scroll:document.documentElement.scrollWidth,navClient:e?.clientWidth,navScroll:e?.scrollWidth}
     })
     if(geometry.scroll>geometry.screen+5)throw Error('Android document overflows '+JSON.stringify(geometry))
-    if(geometry.navScroll<=geometry.navClient)throw Error('Android nav is not horizontally scrollable '+JSON.stringify(geometry))
+    if(geometry.navScroll>geometry.navClient+3)throw Error('Android six-tab navigation still requires horizontal scrolling '+JSON.stringify(geometry))
+    const tabs=await page.locator('.bottom-nav a').count()
+    if(tabs!==6)throw Error('Android navigation must show six tabs, found '+tabs)
     await page.screenshot({path:'test-artifacts/android-pixel-7-rehearsal.png',fullPage:true})
     await page.getByRole('button',{name:'войти как участник'}).click()
     await page.waitForURL('**/#/rehearsal/test-2026-10-03')

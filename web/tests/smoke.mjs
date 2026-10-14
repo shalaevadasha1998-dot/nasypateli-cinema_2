@@ -7,6 +7,14 @@ const issues=[]
 await mkdir('test-artifacts',{recursive:true})
 const server=spawn('./node_modules/.bin/vite',['preview','--host','127.0.0.1','--port','4173','--strictPort','--base=/nasypateli-cinema_2/'],{stdio:'inherit',env:process.env})
 let browser
+async function newPage(options){
+  const page=await browser.newPage(options)
+  // The remote, parser-blocking Telegram SDK may stall GitHub-hosted Chromium.
+  // UI smoke does not validate Telegram credentials: keep that in a real-device test.
+  await page.route('**/telegram-web-app.js*',route=>route.fulfill({status:200,contentType:'application/javascript',body:'/* telegram sdk skipped in browser-only ui smoke */'}))
+  return page
+}
+
 async function ready(){
   for(let i=0;i<30;i++){
     try{const res=await fetch(base);if(res.ok)return}catch{}
@@ -19,7 +27,7 @@ async function caseRun(label,path,viewport,expected){
   // Hosted Chromium occasionally stalls before the initial DOM is committed.
   // Retry a completely fresh page, but never suppress a real reproducible error.
   for(let attempt=1;attempt<=3;attempt++){
-    const page=await browser.newPage({viewport,deviceScaleFactor:1})
+    const page=await newPage({viewport,deviceScaleFactor:1})
     const pageErrors=[]
     page.on('pageerror',e=>pageErrors.push(e.message))
     try{
@@ -62,7 +70,7 @@ try{
   await caseRun('compact-mobile-entry','',{width:320,height:640},'.telegram-gate, .loading-page, .page')
   // Exercise the long intro card without changing server/database state.
   for(const viewport of [{width:1280,height:720},{width:1024,height:600},{width:390,height:640}]){
-    const page=await browser.newPage({viewport})
+    const page=await newPage({viewport})
     const width=viewport.width,height=viewport.height
     await page.route('https://vwteokawtqnoiyzmsldj.supabase.co/functions/v1/app',async route=>{
       const request=route.request()
@@ -100,7 +108,7 @@ try{
     }finally{await page.close()}
   }
   // Animate arrivals in an isolated preview. It does not mutate live check-ins.
-  const animalsPage=await browser.newPage({viewport:{width:1920,height:1080}})
+  const animalsPage=await newPage({viewport:{width:1920,height:1080}})
   try{
     await animalsPage.goto(base+'#/screen/test-2026-10-03?demo=animals',{waitUntil:'domcontentloaded'})
     await animalsPage.waitForFunction(()=>document.querySelectorAll('.screen-creature-card').length===12,null,{timeout:25000})
@@ -110,14 +118,14 @@ try{
     console.log('PASS creature-arrivals '+animals+' animated animals')
   }finally{await animalsPage.close()}
   // One stable Telegram /start test link must route directly to the rehearsal.
-  const stableLinkPage=await browser.newPage({viewport:{width:390,height:844}})
+  const stableLinkPage=await newPage({viewport:{width:390,height:844}})
   try{
     await stableLinkPage.goto(base+'?tgWebAppStartParam=test',{waitUntil:'domcontentloaded'})
     await stableLinkPage.waitForFunction(()=>location.hash.startsWith('#/rehearsal/test-2026-10-03'),{timeout:15000})
     console.log('PASS stable-test-telegram-deeplink')
   }finally{await stableLinkPage.close()}
   // Verify Telegram's compact deep link stays inside the isolated test route.
-  const invitePage=await browser.newPage({viewport:{width:390,height:844}})
+  const invitePage=await newPage({viewport:{width:390,height:844}})
   try{
     await invitePage.goto(base+'?test_invite=t_'+ '0'.repeat(32),{waitUntil:'domcontentloaded'})
     await invitePage.waitForFunction(()=>location.hash.startsWith('#/rehearsal/test-2026-10-03?room='),{timeout:15000})
