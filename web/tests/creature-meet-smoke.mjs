@@ -6,6 +6,7 @@ import QRCode from 'qrcode'
 const origin='http://127.0.0.1:4178/nasypateli-cinema_2/'
 const token='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 const another='bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+const photoToken='cccccccccccccccccccccccccccccccc'
 const invite='https://t.me/nasipateli_v_kinobot?start=encounter_'+token
 const otherInvite='https://t.me/nasipateli_v_kinobot?start=encounter_'+another
 const server=spawn('./node_modules/.bin/vite',['preview','--host','127.0.0.1','--port','4178','--strictPort','--base=/nasypateli-cinema_2/'],{stdio:'inherit'})
@@ -28,7 +29,7 @@ async function check(viewport,label){
     if(body.action==='my-encounter-token')return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({ok:true,token,deepLink:invite,expiresAt:'2026-11-13T13:00:00Z'})})
     if(body.action==='encounter'){
       encounterCalls++
-      if(body.token!==another)return route.fulfill({status:403,contentType:'application/json',body:'{"error":"неверный токен"}'})
+      if(body.token!==another&&body.token!==photoToken)return route.fulfill({status:403,contentType:'application/json',body:'{"error":"неверный токен"}'})
       return route.fulfill({status:200,contentType:'application/json',body:'{"ok":true,"kind":"rabbit","sharedFavorites":2,"sharedGenres":1}'})
     }
     return route.fulfill({status:200,contentType:'application/json',body:'{"ok":true}'})
@@ -60,6 +61,12 @@ async function check(viewport,label){
     if(encounterCalls!==startCalls+1)throw Error('Expected one authenticated encounter request')
     const result=await page.locator('.meet-result').innerText()
     if(!result.includes('2')||!result.includes('1'))throw Error('Compatibility counts missing: '+result)
+    const beforePhoto=encounterCalls
+    const photo=await QRCode.toBuffer('https://t.me/nasipateli_v_kinobot?start=encounter_'+photoToken,{width:512,margin:4})
+    await page.locator('.meet-file input[type="file"]').setInputFiles({name:'other-creature.png',mimeType:'image/png',buffer:photo})
+    await page.getByRole('heading',{name:'уже знакомы'}).waitFor({state:'visible',timeout:10000})
+    await page.waitForFunction(()=>!document.querySelector('.meet-file')?.textContent?.includes('читаем фото'),null,{timeout:10000})
+    if(encounterCalls!==beforePhoto+1)throw Error('Photo QR image was not decoded locally')
     await page.screenshot({path:'test-artifacts/'+label+'-creature-qr.png',fullPage:true})
     if(errors.length)throw Error('JavaScript errors: '+errors.join('; '))
     console.log('PASS creature-encounter '+label+' '+JSON.stringify(pixels))
