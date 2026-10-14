@@ -1580,6 +1580,17 @@ export async function handleApi(req:Request){
       catch{return err(isAdminAction?'Доступ к пульту запрещён: откройте его через Telegram или закрытую ссылку':'Откройте приложение через Telegram',401)}
     }
 
+    // The rehearsal is discoverable from the app's main navigation. Signed-in
+    // Telegram/PWA participants may enter this one isolated test event directly;
+    // no anonymous access and no privilege to control the admin or projector.
+    if(!isAdminAction&&!testParticipantAccess&&requestedSlug==='test-2026-10-03'){
+      const rehearsal=await eventBySlug(db,requestedSlug)
+      if(rehearsal?.settings?.test_room===true&&user?.telegram_id){
+        testEvent=rehearsal
+        testParticipantAccess=true
+      }
+    }
+
     if(action==='pwa-create-handoff'){
       if(!tg?.id)return err('Откройте приложение из Telegram, чтобы связать его с рабочим столом',401)
       const token=randomOpaqueToken()
@@ -2099,7 +2110,11 @@ export async function handleApi(req:Request){
       const rating=Number(body.rating);if(!Number.isInteger(rating)||rating<1||rating>10)return err('Поставьте оценку от 1 до 10');const sentence=String(body.sentence||'').trim();if(!sentence)return err('Напишите финальную фразу');const r=await db.from('final_reviews').upsert({event_id:event.id,user_id:user.id,rating,final_sentence:sentence.slice(0,180)});if(r.error)throw r.error;return json({ok:true})
     }
     if(action==='submit-feedback'){
-      if(!await hasPaidAccess(db,event.id,user.id))return err('Нужен оплаченный билет',403);if(!['FEEDBACK','CLOSED'].includes(event.status))return err('Обратная связь сейчас закрыта',409)
+      if(!await hasPaidAccess(db,event.id,user.id))return err('Нужен подтверждённый вход на событие',403)
+      const feedbackRuntime=await db.from('event_runtime').select('current_block_id').eq('event_id',event.id).maybeSingle()
+      if(feedbackRuntime.error)throw feedbackRuntime.error
+      const feedbackInShow=String(feedbackRuntime.data?.current_block_id||'')==='feedback'
+      if(!feedbackInShow&&!['FEEDBACK','CLOSED'].includes(event.status))return err('Обратная связь сейчас закрыта',409)
       const f=body.feedback||{};const invite=Math.max(0,Math.min(10,Number(f.inviteFriend)));const r=await db.from('event_feedback').upsert({event_id:event.id,user_id:user.id,return_intent:String(f.returnIntent||''),strongest_part:String(f.strongest||'').slice(0,1000),improve_text:String(f.improve||'').slice(0,1000),willingness_to_pay:Number(f.willingness)||null,duration_feel:String(f.durationFeel||''),invite_friend:Number.isFinite(invite)?String(invite):null});if(r.error)throw r.error;return json({ok:true})
     }
 
@@ -3263,17 +3278,18 @@ export async function handleApi(req:Request){
       if(!blocks||blocks.length<1)return err('добавьте хотя бы один блок программы',422)
       const fixedShow=['2026-10-03','test-2026-10-03'].includes(String(event.slug||''))
       if(fixedShow){
-        const expected=['arrival','creature_intro','cinema_rounds','break','cinema_rounds','final_qr','music_outro']
+        const expected=['arrival','creature_intro','cinema_rounds','break','cinema_rounds','final_qr','feedback','music_outro']
         const actual=blocks.map((block:any)=>String(block.type))
         if(actual.length!==expected.length||actual.some((type:string,index:number)=>type!==expected[index])){
-          return err('для вечера 3 октября программа зафиксирована: сбор → 2 раунда → перерыв → 2 раунда → творог → музыка',422)
+          return err('программа зафиксирована: сбор → животина → кино → перерыв → кино → творог → обратная связь → музыка',422)
         }
         blocks=blocks.map((block:any,index:number)=>({
           ...block,
           ...(index===0?{duration_min:60,auto_advance:true}:{}),
           ...(index===1?{duration_min:5,auto_advance:true}:{}),
           ...(index===2||index===4?{rounds_target:2,auto_advance:false}:{}),
-          ...(index===3?{duration_min:30,auto_advance:true}:{})
+          ...(index===3?{duration_min:30,auto_advance:true}:{}),
+          ...(index===6?{duration_min:6,auto_advance:true}:{})
         }))
       }
       const roundsTarget=fixedShow?4:Math.max(1,Math.min(20,Math.round(Number(body.roundsTarget||4)||4)))
