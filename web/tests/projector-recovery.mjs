@@ -2,7 +2,7 @@ import {chromium} from 'playwright'
 import {spawn} from 'node:child_process'
 import {initialDemoState} from '../src/demo.ts'
 const base='http://127.0.0.1:4186/nasypateli-cinema_2/'
-const server=spawn('./node_modules/.bin/vite',['preview','--host','127.0.0.1','--port','4186','--strictPort'],{stdio:'inherit'})
+const server=spawn('./node_modules/.bin/vite',['preview','--host','127.0.0.1','--port','4186','--strictPort','--base=/nasypateli-cinema_2/'],{stdio:'inherit'})
 const assert=(v,m)=>{if(!v)throw Error(m)}
 let browser
 let state=structuredClone(initialDemoState)
@@ -20,10 +20,12 @@ try{
  await page.addInitScript(()=>{window.Telegram={WebApp:{initData:'fixture'}}})
  await page.route('**/telegram-web-app.js*',r=>r.fulfill({body:'',contentType:'application/javascript'}))
  await page.route('**/functions/v1/app',async r=>{const {action}=r.request().postDataJSON();await r.fulfill({json:action==='screen-bootstrap'||action==='bootstrap'?state:action==='live-refresh'?{runtime:state.show.runtime}: {ok:true,owner:true}})})
- await page.route('**/assets/animal-001.webp',async r=>{await new Promise(resolve=>setTimeout(resolve,800));await r.fulfill({status:404,body:''})})
- await page.goto(base+'#/screen/test-2026-10-17?token=fixture')
+ let releaseImage;const imageGate=new Promise(resolve=>{releaseImage=resolve})
+ await page.route('**/assets/animal-001.webp',async r=>{await imageGate;await r.fulfill({status:404,body:''})})
+ await page.goto(base+'#/screen/test-2026-10-17?token=fixture',{waitUntil:'domcontentloaded'})
  await page.locator('.projector-image-loading').waitFor()
  assert(await page.locator('.screen-creature-art img').count()===0,'Broken image shown during load')
+ releaseImage()
  await page.locator('.screen-creature-art img').waitFor()
  assert(await page.locator('.screen-creature-art img').evaluate(e=>e.complete&&e.naturalWidth>0),'Fallback failed')
  console.log('PASS delayed and missing image never renders broken placeholder')
@@ -34,7 +36,7 @@ try{
  console.log('PASS check-in screen disappears during live program without reload')
  state.projector={state:'film_intro',payload:{filmTitle:'тестовый фильм',fragment:{videoId:'testid12345',sourcePlatform:'youtube',startSec:0,endSec:5}},revision:2}
  await page.route('https://www.youtube.com/iframe_api',r=>r.fulfill({contentType:'application/javascript',body:`window.YT={Player:class {constructor(node,opts){this.node=node;setTimeout(()=>opts.events.onError({data:150}),50)}destroy(){}getIframe(){return null}}};window.onYouTubeIframeAPIReady()`}))
- await page.goto(base+'#/screen/test-2026-10-17?token=fixture')
+ await page.goto(base+'#/screen/test-2026-10-17?token=fixture',{waitUntil:'domcontentloaded'})
  await page.getByRole('alert').filter({hasText:'фрагмент недоступен'}).waitFor()
  await page.getByLabel('резервный видеофайл').setInputFiles('public/assets/rabbit-boy.webm')
  await page.waitForFunction(()=>{const v=document.querySelector('.projector-media video');return v&&v.readyState>=2})
