@@ -15,7 +15,7 @@ async function ready(){
   throw Error('Vite preview did not start')
 }
 async function caseRun(label,path,viewport,expected){
-  const page=await browser.newPage({viewportSize:viewport,deviceScaleFactor:1})
+  const page=await browser.newPage({viewport,deviceScaleFactor:1})
   page.on('pageerror',e=>issues.push(label+': '+e.message))
   try{
     const response=await page.goto(base+path,{waitUntil:'domcontentloaded',timeout:25000})
