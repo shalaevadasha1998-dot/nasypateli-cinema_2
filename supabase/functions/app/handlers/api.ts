@@ -1884,36 +1884,6 @@ export async function handleApi(req:Request){
       if(row.data.expires_at&&new Date(row.data.expires_at).getTime()<Date.now())return err('Срок действия qr-кода истёк',410)
       return json({ok:true,kind:row.data.kind})
     }
-    if(action==='my-encounters'){
-      // Read only the signed-in user's recorded animal meetings. No Telegram IDs
-      // or dating profile details are exposed to either participant.
-      const meetings=await db.from('story_trigger_log').select('context,created_at')
-        .eq('user_id',user.id).eq('trigger_key','encounter')
-        .order('created_at',{ascending:false}).limit(250)
-      if(meetings.error)throw meetings.error
-      const unique=new Map<string,{userId:string;metAt:string;sharedFavorites:number;sharedGenres:number}>()
-      for(const row of meetings.data||[]){
-        const context=row.context&&typeof row.context==='object'?row.context:{}
-        const other=String(context.other_user_id||'')
-        if(!isUuid(other)||other===user.id||unique.has(other))continue
-        unique.set(other,{userId:other,metAt:String(row.created_at||''),sharedFavorites:Math.max(0,Number(context.shared_favorites||0)),sharedGenres:Math.max(0,Number(context.shared_genres||0))})
-        if(unique.size>=30)break
-      }
-      const ids=[...unique.keys()]
-      if(!ids.length)return json({ok:true,encounters:[]})
-      const animals=await db.from('creatures').select('user_id,name').in('user_id',ids)
-      if(animals.error)throw animals.error
-      const names=new Map((animals.data||[]).map((creature:any)=>[String(creature.user_id),String(creature.name||'животина')]))
-      return json({ok:true,encounters:[...unique.values()].filter(x=>names.has(x.userId)).map(x=>({
-        creatureName:names.get(x.userId),metAt:x.metAt,sharedFavorites:x.sharedFavorites,sharedGenres:x.sharedGenres
-      }))})
-    }
-    if(action==='my-encounter-token'){
-      const now=new Date().toISOString();const existing=await db.from('encounter_tokens').select('token,expires_at').eq('owner_user_id',user.id).eq('kind','rabbit').gt('expires_at',now).order('created_at',{ascending:false}).limit(1).maybeSingle();if(existing.error)throw existing.error
-      let token=String(existing.data?.token||'');let expiresAt=existing.data?.expires_at||null
-      if(!token){token=crypto.randomUUID().replaceAll('-','');expiresAt=new Date(Date.now()+1000*60*60*24*30).toISOString();const r=await db.from('encounter_tokens').insert({token,owner_user_id:user.id,kind:'rabbit',expires_at:expiresAt});if(r.error)throw r.error}
-      return json({ok:true,token,expiresAt,deepLink:await telegramStartLink(`encounter_${token}`)})
-    }
     if(action==='encounter'){
       const token=String(body.token||'').trim();const t=await db.from('encounter_tokens').select('*').eq('token',token).maybeSingle();if(t.error)throw t.error;if(!t.data)return err('Этот жетон не существует',404);if(t.data.expires_at&&new Date(t.data.expires_at).getTime()<Date.now())return err('Этот жетон уже истёк',410)
       if(t.data.kind==='event_checkin'){
@@ -1949,9 +1919,6 @@ export async function handleApi(req:Request){
         const crumbs=await awardJoin()
         await refreshLeaderboard(db,[user.id])
         return json({ok:true,kind:'event_checkin',alreadyAttended:false,awards,crumbs})
-      }
-      if(t.data.kind==='rabbit'){
-        const other=String(t.data.owner_user_id||'');if(!other||other===user.id)return err('Это жетон вашей собственной Животины',409);const [a,b]=await Promise.all([db.from('cinema_profiles').select('favorite_films,favorite_genres').eq('user_id',user.id).maybeSingle(),db.from('cinema_profiles').select('favorite_films,favorite_genres').eq('user_id',other).maybeSingle()]);const bf=new Set((b.data?.favorite_films||[]).map((x:string)=>x.toLowerCase()));const bg=new Set((b.data?.favorite_genres||[]).map((x:string)=>x.toLowerCase()));const sharedFavorites=(a.data?.favorite_films||[]).filter((x:string)=>bf.has(x.toLowerCase())).length;const sharedGenres=(a.data?.favorite_genres||[]).filter((x:string)=>bg.has(x.toLowerCase())).length;for(const uid of [user.id,other]){await emitStoryTrigger(db,uid,'encounter',{story_code:'first_rabbit_meet',shared_favorites:sharedFavorites,shared_genres:sharedGenres,other_user_id:uid===user.id?other:user.id},t.data.event_id||null);if(sharedFavorites)await emitStoryTrigger(db,uid,'encounter',{story_code:'same_taste',shared_favorites:sharedFavorites,shared_genres:sharedGenres},t.data.event_id||null);if(!sharedFavorites&&!sharedGenres)await emitStoryTrigger(db,uid,'encounter',{story_code:'nothing_common',shared_favorites:0,shared_genres:0},t.data.event_id||null)}return json({ok:true,kind:'rabbit',sharedFavorites,sharedGenres})
       }
       return err('Неизвестный тип жетона',422)
     }
