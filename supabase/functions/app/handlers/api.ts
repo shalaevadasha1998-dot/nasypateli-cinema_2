@@ -968,6 +968,19 @@ async function pwaSessionUser(db:any,req:Request){
   if(touched.error)console.warn('pwa session touch failed',String(touched.error.message||touched.error))
   return user.data
 }
+async function screenTokenAuthorized(req:Request,event:any,globalTokenValid:boolean){
+  // The live projection key is not a key to every admin-only rehearsal.
+  // Rehearsal screens receive a separate, event-bound bearer token issued
+  // only by the authenticated administrator's admin-screen-link action.
+  if(event?.settings?.test_room!==true)return globalTokenValid
+  const issued=String(req.headers.get('x-screen-token')||'')
+  const root=String(Deno.env.get('SCREEN_ACCESS_TOKEN')||'')
+  if(!root||issued.length!==64)return false
+  const expected=await sha256Hex('nasypateli-rehearsal-screen:v1:'+event.id+':'+root)
+  let difference=0
+  for(let i=0;i<64;i++)difference|=issued.charCodeAt(i)^expected.charCodeAt(i)
+  return difference===0
+}
 function isUuid(value:string){return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)}
 function notificationQuietUntil(pref:any){
   if(pref?.quiet_hours!==true)return null
@@ -1267,9 +1280,7 @@ export async function handleApi(req:Request){
       }
       if(!x?.event?.id)return err('Событие не найдено',404)
       const event:any={...x.event,settings:x.event.settings||{}}
-      const testScreenOk=false // old test invitation tokens can no longer open a projector
-      const openTestScreen=false // even test projectors require an admin-created screen link
-      if(!screenTokenOk&&!testScreenOk&&!openTestScreen)return err('Доступ к экрану запрещён',401)
+      if(!await screenTokenAuthorized(req,event,screenTokenOk))return err('Доступ к экрану запрещён',401)
       await maybeAutoAdvanceShow(db,event)
 
       const config:any=x.program_config||{}
@@ -1334,9 +1345,7 @@ export async function handleApi(req:Request){
 
     if(action==='screen-audio-heartbeat'){
       const event=await eventBySlug(db,String(body.slug||'2026-10-03'))
-      const testScreenOk=false // old test invitation tokens can no longer open a projector
-      const openTestScreen=false // even test projectors require an admin-created screen link
-      if(!screenTokenOk&&!testScreenOk&&!openTestScreen)return err('Доступ к экрану запрещён',401)
+      if(!await screenTokenAuthorized(req,event,screenTokenOk))return err('Доступ к экрану запрещён',401)
       return await withEventOperation(db,event.id,'screen-audio-lease',async()=>{
         const now=new Date().toISOString()
         const session=String(body.sessionId||'').slice(0,100)
@@ -1358,9 +1367,7 @@ export async function handleApi(req:Request){
 
     if(action==='screen-audio-ended'){
       const event=await eventBySlug(db,String(body.slug||'2026-10-03'))
-      const testScreenOk=false // old test invitation tokens can no longer open a projector
-      const openTestScreen=false // even test projectors require an admin-created screen link
-      if(!screenTokenOk&&!testScreenOk&&!openTestScreen)return err('Доступ к экрану запрещён',401)
+      if(!await screenTokenAuthorized(req,event,screenTokenOk))return err('Доступ к экрану запрещён',401)
       const owner=await db.from('event_screen_status').select('session_id').eq('event_id',event.id).maybeSingle()
       if(owner.error)throw owner.error
       if(owner.data?.session_id&&owner.data.session_id!==String(body.sessionId||''))return json({ok:true,ignored:true})
@@ -3254,7 +3261,10 @@ export async function handleApi(req:Request){
       const screenToken=String(Deno.env.get('SCREEN_ACCESS_TOKEN')||'').trim()
       const webAppUrl=String(Deno.env.get('TELEGRAM_WEBAPP_URL')||'').trim().replace(/\/+$/,'')
       if(!screenToken||!webAppUrl)return err('Экран проектора не настроен',503)
-      return json({ok:true,screenUrl:`${webAppUrl}/#/screen/event/${event.slug}?token=${encodeURIComponent(screenToken)}`})
+      const scopedToken=event.settings?.test_room===true
+        ? await sha256Hex('nasypateli-rehearsal-screen:v1:'+event.id+':'+screenToken)
+        : screenToken
+      return json({ok:true,screenUrl:`${webAppUrl}/#/screen/event/${event.slug}?token=${encodeURIComponent(scopedToken)}`})
     }
 
     if(action==='admin-program-save'){
