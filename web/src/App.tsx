@@ -126,7 +126,26 @@ function RabbitLoop({kind,className=''}:{kind:'boy'|'girl'|'splash';className?:s
   </div>
 }
 
-function Loading({error}:{error?:string}){const message=String(error||'');const lower=message.toLowerCase();const initMissing=lower.includes('initdata');const adminDenied=lower.includes('доступ к пульту запрещён');if(initMissing||adminDenied)return <div className="telegram-gate"><div className="telegram-gate-noise"/><RabbitLoop kind="splash" className="telegram-gate-rabbit"/><div className="eyebrow">{adminDenied?'боевой пульт':'мини-приложение'}</div><h1>{adminDenied?'откройте пульт':'откройте нас'}<br/>из telegram</h1><p>{adminDenied?'обычный браузер не передаёт telegram-профиль администратора. откройте мини-приложение из бота и нажмите «админка шоу ↗».':'браузер не передаёт ваш telegram-профиль. внутри бота всё откроется нормально'}</p><a className="btn telegram-gate-btn" href="https://t.me/nasipateli_v_kinobot">открыть бота</a></div>;return <div className="page loading-page"><div className="loading-stage"><RabbitLoop kind="splash" className="loading-rabbit"/><div className="loading-brand">насыпатели <span>в кино</span></div>{error?<><div className="loading-error">не загрузилось</div><p>{error}</p><Button kind="secondary" onClick={()=>location.reload()}>попробовать ещё раз</Button></>:<><div className="loading-track"><i/></div><div className="loading-words" aria-live="polite"><span>собираем кинопрофиль</span><span>будим животину</span><span>открываем клуб</span></div></>}</div></div>}
+function Loading({error}:{error?:string}){
+  const message=String(error||'')
+  const lower=message.toLowerCase()
+  const adminDenied=lower.includes('доступ к пульту запрещён')
+  const testInviteIssue=lower.includes('тестовая комната закрыта')||lower.includes('тестовая ссылка')
+  const needsTelegram=lower.includes('initdata')||lower.includes('откройте приглашение в telegram')||lower.includes('откройте приложение через telegram')
+  if(adminDenied||testInviteIssue||needsTelegram)return <div className="telegram-gate">
+    <div className="telegram-gate-noise"/>
+    <RabbitLoop kind="splash" className="telegram-gate-rabbit"/>
+    <div className="eyebrow">{adminDenied?'пульт ведущего':testInviteIssue?'репетиция':'мини-приложение'}</div>
+    <h1>{adminDenied?'откройте пульт':testInviteIssue?'нужна новая ссылка':'откройте нас'}<br/>{testInviteIssue?'на тест':'из telegram'}</h1>
+    <p>{adminDenied?'для управления откройте мини-приложение через бота и выберите админку':testInviteIssue?'эта тестовая ссылка недействительна. скопируйте новое приглашение из пульта ведущего и откройте его в личном чате с ботом':'в обычном браузере нет данных вашего Telegram-профиля. откройте кнопку «попасть на событие» внутри бота'}</p>
+    <a className="btn telegram-gate-btn" href="https://t.me/nasipateli_v_kinobot">открыть бота</a>
+  </div>
+  return <div className="page loading-page"><div className="loading-stage">
+    <RabbitLoop kind="splash" className="loading-rabbit"/>
+    <div className="loading-brand">насыпатели <span>в кино</span></div>
+    {error?<><div className="loading-error">не загрузилось</div><p>{error}</p><Button kind="secondary" onClick={()=>location.reload()}>попробовать ещё раз</Button></>:<><div className="loading-track"><i/></div><div className="loading-words" aria-live="polite"><span>собираем кинопрофиль</span><span>будим животину</span><span>открываем клуб</span></div></>}
+  </div></div>
+}
 function parseLines(v:string){return v.split(/\n+/).map(x=>x.trim()).filter(Boolean)}
 function parseCommaList(v:string){return v.split(/[\n,]+/).map(x=>x.trim()).filter(Boolean)}
 function eventDate(iso:string){try{return new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long',timeZone:'Europe/Moscow'}).format(new Date(iso))}catch{return iso}}
