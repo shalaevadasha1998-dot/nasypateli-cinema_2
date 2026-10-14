@@ -3260,17 +3260,17 @@ export async function handleApi(req:Request){
       if(!blocks||blocks.length<1)return err('добавьте хотя бы один блок программы',422)
       const fixedShow=['2026-10-03','test-2026-10-03'].includes(String(event.slug||''))
       if(fixedShow){
-        const expected=['arrival','cinema_rounds','break','cinema_rounds','final_qr','music_outro']
+        const expected=['arrival','creature_intro','cinema_rounds','break','cinema_rounds','final_qr','music_outro']
         const actual=blocks.map((block:any)=>String(block.type))
         if(actual.length!==expected.length||actual.some((type:string,index:number)=>type!==expected[index])){
           return err('для вечера 3 октября программа зафиксирована: сбор → 2 раунда → перерыв → 2 раунда → творог → музыка',422)
         }
         blocks=blocks.map((block:any,index:number)=>({
           ...block,
-          auto_advance:false,
-          ...(index===0?{duration_min:15}:{}),
-          ...(index===1||index===3?{rounds_target:2}:{}),
-          ...(index===2?{duration_min:30}:{})
+          ...(index===0?{duration_min:60,auto_advance:true}:{}),
+          ...(index===1?{duration_min:5,auto_advance:true}:{}),
+          ...(index===2||index===4?{rounds_target:2,auto_advance:false}:{}),
+          ...(index===3?{duration_min:30,auto_advance:true}:{})
         }))
       }
       const roundsTarget=fixedShow?4:Math.max(1,Math.min(20,Math.round(Number(body.roundsTarget||4)||4)))
@@ -3345,7 +3345,7 @@ export async function handleApi(req:Request){
         if(op==='start'){
           const screen=await db.from('event_screen_status').select('audio_unlocked,last_seen_at').eq('event_id',event.id).maybeSingle()
           if(screen.error)throw screen.error
-          if(!screen.data?.audio_unlocked||Date.now()-new Date(screen.data.last_seen_at||0).getTime()>20000)return err('сначала включите звук на экране ноутбука',409)
+          if(event.settings?.test_room!==true&&(!screen.data?.audio_unlocked||Date.now()-new Date(screen.data.last_seen_at||0).getTime()>20000))return err('сначала включите звук на экране ноутбука',409)
           if(event.status==='DRAFT')return err('сначала откройте регистрацию',409)
           idx=0;runStatus='running';startedAt=startedAt||now;blockStartedAt=now;pausedAt=null;resetRound=true
         }else if(op==='next'||op==='skip'){
