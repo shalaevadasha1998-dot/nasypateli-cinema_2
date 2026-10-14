@@ -1187,7 +1187,10 @@ let dataApiCircuitOpenUntil=0
 function dataApiUnavailable(error:any){
   const code=String(error?.code||'')
   const message=String(error?.message||error||'')
-  return code==='PGRST002'||code==='PGRST003'||/schema cache|statement timeout|service unavailable/i.test(message)
+  // A missing relationship (PGRST200) is a programming/schema mismatch,
+  // not a database outage: never take every participant offline for it.
+  if(code==='PGRST200')return false
+  return code==='PGRST002'||code==='PGRST003'||/could not query the schema cache|statement timeout|service unavailable/i.test(message)
 }
 
 export async function handleApi(req:Request){
