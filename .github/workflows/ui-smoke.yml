@@ -1,0 +1,39 @@
+name: UI and rehearsal smoke
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      VITE_DEMO_MODE: "false"
+      VITE_SUPABASE_URL: "https://vwteokawtqnoiyzmsldj.supabase.co"
+      VITE_API_FUNCTION: "app"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install app and browser test dependencies
+        working-directory: web
+        run: |
+          npm ci
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+      - name: Build app
+        working-directory: web
+        run: npm run build -- --base=/nasypateli-cinema_2/
+      - name: Test desktop and mobile layouts against test room
+        working-directory: web
+        run: node tests/smoke.mjs
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-rehearsal-screenshots
+          path: web/test-artifacts/*.png
+          if-no-files-found: ignore
