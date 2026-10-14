@@ -3787,3 +3787,14 @@ html.chat-keyboard-open .chat-compose-inline{
 .test-room-invite-actions{display:flex;flex-wrap:wrap;align-items:stretch;gap:10px;min-width:0}
 .test-room-invite-actions .btn{display:inline-flex;justify-content:center;align-items:center;text-decoration:none;min-height:48px;flex:1 1 185px;white-space:normal;text-align:center}
 @media(max-width:370px){.test-room-invite{padding:15px}.test-room-invite-actions{flex-direction:column}.test-room-invite-actions .btn{flex:0 0 auto;width:100%}}
+
+/* Private operator summary of responses after the Tvorog block */
+.admin-feedback{border:1px solid #30392d;border-radius:17px;margin:14px 0;background:#11140e;scroll-margin-top:96px}
+.admin-feedback>summary{cursor:pointer;min-height:56px;display:flex;align-items:center;padding:16px;font-size:15px;font-weight:750;letter-spacing:-.01em}
+.admin-feedback-inner{padding:0 17px 18px;display:grid;gap:12px;min-width:0}
+.admin-feedback-inner h3{font-size:clamp(26px,5vw,38px);margin:6px 0 0}
+.admin-feedback-inner>.btn{justify-self:start}
+.admin-feedback-counts{display:flex;gap:8px;flex-wrap:wrap}
+.admin-feedback-counts span{background:#242e21;color:#c6d5bb;border:1px solid #354530;border-radius:999px;padding:8px 13px;font-size:13px}
+.admin-feedback-comment{border-top:1px solid #353a32;padding:9px 0 0;line-height:1.45;font-size:14px;overflow-wrap:anywhere}
+.admin-feedback-comment p{margin:4px 0}
