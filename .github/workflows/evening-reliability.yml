@@ -1,0 +1,30 @@
+name: Evening reliability
+on:
+  push:
+    branches: [fix/evening-reliability-20261015]
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/evening-reliability.yml'
+      - 'supabase/**'
+      - 'web/**'
+      - 'tests/**'
+      - 'scripts/**'
+permissions:
+  contents: read
+jobs:
+  source-snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Archive tracked source for isolated verification
+        run: |
+          mkdir -p /tmp/evening-verification
+          git archive --format=tar.gz --output=/tmp/evening-verification/source.tar.gz HEAD
+          git rev-parse HEAD > /tmp/evening-verification/source-sha.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: evening-reliability-source
+          path: /tmp/evening-verification/
+          retention-days: 3
