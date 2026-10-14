@@ -3951,3 +3951,5 @@ html.chat-keyboard-open .chat-compose-inline{
 .home-encounter-notice.is-error{background:linear-gradient(100deg,#3b211c,#1b1210);border-color:#965444}
 .home-encounter-notice.is-error>span{background:#743a2f;color:#ffe9e0}
 .home-encounter-notice.is-error .eyebrow{color:#efab99}
+
+.meet-privacy-hint{font-size:11px;line-height:1.45;color:#aebca4;margin:12px auto 0;text-align:center;max-width:315px}
