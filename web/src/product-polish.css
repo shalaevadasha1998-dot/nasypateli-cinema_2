@@ -84,3 +84,11 @@ body:not(.chat-page-open){overscroll-behavior-y:auto!important}
  .admin-checkin-actions{grid-template-columns:1fr}
 }
 @media(prefers-reduced-motion:reduce){.admin-rehearsal-roles button{transition:none}.admin-rehearsal-roles button:hover{transform:none}}
+
+/* Rehearsal ticket / genuine check-in chain, separate from live attendance. */
+.admin-rehearsal-ticket{border:1px solid #789065;border-radius:18px;padding:clamp(18px,4vw,26px);margin-bottom:16px;background:linear-gradient(145deg,#202c1c,#11160e);overflow:hidden}
+.admin-rehearsal-ticket h2{font-size:clamp(28px,7vw,43px);line-height:1;letter-spacing:-.075em;margin:14px 0}
+.admin-rehearsal-ticket p{font-size:14px;color:#bfc9b8;line-height:1.6;max-width:570px}
+.admin-rehearsal-ticket .event-pass{margin:16px 0}
+.admin-rehearsal-ticket .btn{min-height:54px;margin:14px 0 0}
+.admin-rehearsal-screen-fallback{display:inline-flex;width:auto;min-height:48px;align-items:center;text-align:center;margin:0 0 28px}
