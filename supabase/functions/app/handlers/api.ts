@@ -1,4 +1,3 @@
-import { testInviteToken, testInviteMatches } from '../_shared/testInvite.ts'
 import { adminDb } from '../_shared/db.ts'
 import { cors, err, json } from '../_shared/http.ts'
 import { telegramUserFromRequest, isConfiguredAdmin } from '../_shared/telegram.ts'
@@ -969,15 +968,6 @@ async function pwaSessionUser(db:any,req:Request){
   if(touched.error)console.warn('pwa session touch failed',String(touched.error.message||touched.error))
   return user.data
 }
-async function testRoomTokenMatches(event:any,token:string){
-  if(event?.settings?.test_room!==true)return false
-  const expected=String(event?.settings?.test_room_token_hash||'')
-  if(!expected||!token)return false
-  const got=await sha256Hex(token)
-  if(expected.length!==got.length)return false
-  let diff=0;for(let i=0;i<expected.length;i++)diff|=expected.charCodeAt(i)^got.charCodeAt(i)
-  return diff===0
-}
 function isUuid(value:string){return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)}
 function notificationQuietUntil(pref:any){
   if(pref?.quiet_hours!==true)return null
@@ -1565,7 +1555,6 @@ export async function handleApi(req:Request){
     const requestedSlug=String(body.slug||'')
     user=await pwaSessionUser(db,req)
     const suppliedAdminToken=req.headers.get('x-admin-token')||''
-    const adminTarget=isAdminAction?await eventBySlug(db,requestedSlug||'2026-10-03'):null
     const legacyTestAdmin=false // legacy room links are no longer admin credentials
     if(!user&&(!isAdminAction||(!adminTokenOk&&!legacyTestAdmin))){
       try{tg=await telegramUserFromRequest(req);user=await getOrCreateUser(db,tg)}
