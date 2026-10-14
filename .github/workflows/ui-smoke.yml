@@ -36,9 +36,9 @@ jobs:
       - name: Android viewport, touch and rehearsal/feedback tests
         working-directory: web
         run: node tests/android-smoke.mjs
-      - name: Test QR meetings, camera alternatives and private encounter history
+      - name: Verify admin-only test roles and ticket QR gallery scanner on Android
         working-directory: web
-        run: node tests/creature-meet-smoke.mjs
+        run: node tests/admin-rehearsal-smoke.mjs
       - name: Build isolated demo UI
         working-directory: web
         env:

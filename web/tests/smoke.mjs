@@ -12,6 +12,20 @@ async function newPage(options){
   // The remote, parser-blocking Telegram SDK may stall GitHub-hosted Chromium.
   // UI smoke does not validate Telegram credentials: keep that in a real-device test.
   await page.route('**/telegram-web-app.js*',route=>route.fulfill({status:200,contentType:'application/javascript',body:'/* telegram sdk skipped in browser-only ui smoke */'}))
+  await page.route('https://vwteokawtqnoiyzmsldj.supabase.co/functions/v1/app',async route=>{
+    const body=JSON.parse(route.request().postData()||'{}')
+    if(body.action==='screen-bootstrap'){
+      const fixture={
+        event:{id:'test-screen',slug:'test-2026-10-03',title:'служебная репетиция',status:'CHECKIN',startsAt:'2026-10-17T13:00:00Z'},
+        show:{runtime:{runStatus:'running',currentBlockId:'arrival',currentBlock:{id:'arrival',type:'arrival',title:'сбор гостей',durationMin:60},currentBlockIndex:0,currentRound:0,revision:1},
+          program:{blocks:[{id:'arrival',type:'arrival',title:'сбор гостей',durationMin:60}],roundsTarget:1,rewards:{join:0,vote:0,round:0,finale:0}},audio:{state:{status:'stopped',mode:'auto'},assets:[],screen:{online:false,unlocked:false}}},
+        projector:{state:'arrival',revision:1,payload:{}},screenCreatures:[],screenMessage:''
+      }
+      return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(fixture)})
+    }
+    if(body.action==='screen-audio-heartbeat'||body.action==='screen-audio-ended')return route.fulfill({status:200,contentType:'application/json',body:'{"ok":true,"owner":true}'})
+    return route.continue()
+  })
   return page
 }
 
@@ -65,9 +79,9 @@ try{
   browser=await chromium.launch({headless:true,args:['--no-sandbox']})
   // The live test room may currently show a round, not arrival. Verify screen readiness
   // regardless of its state; arrivals are tested with ?demo=animals below.
-  await caseRun('projector-arrival','#/screen/test-2026-10-03',{width:1920,height:1080},'.screen-page .screen-content')
-  await caseRun('projector-arrival-720p','#/screen/test-2026-10-03',{width:1280,height:720},'.screen-page .screen-content')
-  await caseRun('projector-arrival-small','#/screen/test-2026-10-03',{width:1024,height:600},'.screen-page .screen-content')
+  await caseRun('projector-arrival','#/screen/test-2026-10-03?token=ci-screen',{width:1920,height:1080},'.screen-page .screen-content')
+  await caseRun('projector-arrival-720p','#/screen/test-2026-10-03?token=ci-screen',{width:1280,height:720},'.screen-page .screen-content')
+  await caseRun('projector-arrival-small','#/screen/test-2026-10-03?token=ci-screen',{width:1024,height:600},'.screen-page .screen-content')
   await caseRun('mobile-telegram-entry','',{width:390,height:844},'.telegram-gate, .loading-page, .page')
   await caseRun('compact-mobile-entry','',{width:320,height:640},'.telegram-gate, .loading-page, .page')
   // Exercise the long intro card without changing server/database state.
@@ -94,7 +108,7 @@ try{
       }else await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({ok:true,owner:true})})
     })
     try{
-      await page.goto(base+'#/screen/test-2026-10-03',{waitUntil:'domcontentloaded'})
+      await page.goto(base+'#/screen/test-2026-10-03?token=ci-screen',{waitUntil:'domcontentloaded'})
       await page.locator('.screen-round-intro').waitFor({state:'visible',timeout:13000})
       const geometry=await page.evaluate(()=>{
         const rect=selector=>{const {top,right,bottom,left}=document.querySelector(selector).getBoundingClientRect();return {top,right,bottom,left}}
@@ -112,7 +126,7 @@ try{
   // Animate arrivals in an isolated preview. It does not mutate live check-ins.
   const animalsPage=await newPage({viewport:{width:1920,height:1080}})
   try{
-    await animalsPage.goto(base+'#/screen/test-2026-10-03?demo=animals',{waitUntil:'domcontentloaded'})
+    await animalsPage.goto(base+'#/screen/test-2026-10-03?token=ci-screen&demo=animals',{waitUntil:'domcontentloaded'})
     await animalsPage.waitForFunction(()=>document.querySelectorAll('.screen-creature-card').length===12,null,{timeout:25000})
     const animals=await animalsPage.locator('.screen-creature-card').count()
     if(animals!==12)throw Error('Creature preview failed to render all arrivals')
@@ -123,8 +137,8 @@ try{
   const stableLinkPage=await newPage({viewport:{width:390,height:844}})
   try{
     await stableLinkPage.goto(base+'?tgWebAppStartParam=test',{waitUntil:'domcontentloaded'})
-    await stableLinkPage.waitForFunction(()=>location.hash.startsWith('#/rehearsal/test-2026-10-03'),{timeout:15000})
-    console.log('PASS stable-test-telegram-deeplink')
+    await stableLinkPage.waitForFunction(()=>location.hash.startsWith('#/test/2026-10-17'),{timeout:15000})
+    console.log('PASS admin-only test-telegram-deeplink')
   }finally{await stableLinkPage.close()}
   // A private full rehearsal must land on the real ticket page, not the test room.
   const privatePage=await newPage({viewport:{width:390,height:844}})
@@ -137,8 +151,8 @@ try{
   const invitePage=await newPage({viewport:{width:390,height:844}})
   try{
     await invitePage.goto(base+'?test_invite=t_'+ '0'.repeat(32),{waitUntil:'domcontentloaded'})
-    await invitePage.waitForFunction(()=>location.hash.startsWith('#/rehearsal/test-2026-10-03?room='),{timeout:15000})
-    console.log('PASS test-invite-route: deep link stayed in the test room')
+    await invitePage.waitForFunction(()=>location.hash.startsWith('#/test/2026-10-17'),{timeout:15000})
+    console.log('PASS retired test invite cannot grant participant access')
   }finally{await invitePage.close()}
   if(issues.length)throw Error('Uncaught browser errors: '+issues.join(' | '))
   console.log('UI smoke passed: projector arrival, mobile & compact mobile')

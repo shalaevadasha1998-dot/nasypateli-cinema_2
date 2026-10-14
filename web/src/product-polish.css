@@ -1,0 +1,94 @@
+/* product polish: a single guest navigation; admin features live in admin only */
+html,body,#root{height:auto;min-height:100%;max-width:100%;overflow-x:clip!important}
+html:not(.chat-page-open),body:not(.chat-page-open){overflow-y:auto!important;-webkit-overflow-scrolling:touch}
+body:not(.chat-page-open){overscroll-behavior-y:auto!important}
+.app-shell{min-height:100dvh!important;width:100%;max-width:100%;overflow:visible!important;padding-bottom:calc(94px + env(safe-area-inset-bottom))!important}
+.app-shell>main{min-width:0;width:100%;height:auto;min-height:0;overflow:visible}
+.app-shell .page{min-width:0;max-width:min(100%,720px);padding-bottom:calc(105px + env(safe-area-inset-bottom))}
+.bottom-nav{display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;overflow:hidden!important;gap:2px!important}
+.bottom-nav>a{min-width:0!important;width:auto!important;white-space:nowrap!important;overflow:hidden;text-overflow:ellipsis;touch-action:manipulation}
+.bottom-nav a:focus-visible,.director-action-dock button:focus-visible,.admin-rehearsal-roles button:focus-visible,.admin-checkin-upload:focus-within{outline:2px solid #d2e7b7;outline-offset:2px}
+.page h1,.page h2,.admin-page h2,.admin-page h3{overflow-wrap:break-word}
+.page button,.page a,.admin-page button,.admin-page a,.admin-checkin-page button{touch-action:manipulation}
+@media(max-width:760px){
+ .bottom-nav{min-height:66px;height:calc(66px + env(safe-area-inset-bottom))!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;gap:1px!important;padding:5px max(3px,env(safe-area-inset-right)) calc(5px + env(safe-area-inset-bottom)) max(3px,env(safe-area-inset-left))!important;overscroll-behavior-x:none!important}
+ .bottom-nav a{display:grid!important;grid-template-rows:26px 20px!important;align-content:center!important;justify-items:center!important;min-width:0!important;flex:initial!important;min-height:55px!important;padding:3px 0!important;font-size:clamp(9px,2.35vw,11px)!important;line-height:1.18!important;letter-spacing:0!important}
+ .bottom-nav .nav-icon-wrap{width:26px!important;height:26px!important}
+ .topbar{width:100%;padding-inline:14px;max-width:100%}
+ .page .card{min-width:0}
+ input,textarea,select{font-size:16px!important;min-width:0}
+}
+.admin-rehearsal-hub{max-width:1100px!important;padding:clamp(16px,3.4vw,44px) clamp(14px,3vw,36px) 100px!important}
+.admin-rehearsal-header{padding:clamp(8px,3vw,35px) 0 30px;border-bottom:1px solid #353b32}
+.admin-rehearsal-header h1{font-size:clamp(52px,10vw,124px);letter-spacing:-.09em;line-height:.88;font-weight:950;margin:18px 0 26px}
+.admin-rehearsal-header h1 span{color:#b3c993}
+.admin-rehearsal-header>p{font-size:clamp(15px,1.8vw,20px);line-height:1.55;max-width:640px;color:#b0b6aa}
+.admin-rehearsal-event{font-size:12px;color:#939b90;margin-top:24px;display:flex;gap:6px;flex-wrap:wrap}
+.admin-rehearsal-event b{color:#e1e8db}
+.admin-rehearsal-roles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:26px 0 32px}
+.admin-rehearsal-roles button{position:relative;min-width:0;min-height:280px;display:flex;flex-direction:column;align-items:flex-start;text-align:left;padding:clamp(17px,2vw,28px);border:1px solid #404a3d;border-radius:18px;background:linear-gradient(150deg,#1b2319,#0d100c);color:#e9eee4;cursor:pointer;transition:border-color .2s,transform .2s}
+.admin-rehearsal-roles button:hover{border-color:#a5be90;transform:translateY(-2px)}
+.admin-rehearsal-roles button:disabled{opacity:.55}
+.admin-rehearsal-roles .role-number{color:#92a882;font-size:12px;font-weight:850;letter-spacing:.1em}
+.admin-rehearsal-roles .role-symbol{font-size:47px;font-weight:300;color:#b4ce9b;line-height:1;margin:18px 0}
+.admin-rehearsal-roles strong{font-size:clamp(21px,3vw,31px);font-weight:900;letter-spacing:-.055em;margin-bottom:10px}
+.admin-rehearsal-roles small{font-size:13px;color:#afb9a9;line-height:1.5}
+.admin-rehearsal-roles em{margin-top:auto;padding-top:26px;color:#c8e2b2;font-size:13px;font-weight:800;font-style:normal}
+.admin-rehearsal-foot{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:20px;border-top:1px solid #353b32;padding-top:24px;align-items:center}
+.admin-rehearsal-foot b{font-size:16px}
+.admin-rehearsal-foot p{font-size:13px;color:#a9b4a1;line-height:1.55}
+.admin-rehearsal-foot .btn{margin:0;max-width:230px}
+.rehearsal-locked{padding-top:clamp(35px,6vw,90px)!important}
+.rehearsal-locked h1{font-size:clamp(40px,9vw,70px);letter-spacing:-.075em}
+.rehearsal-locked p{color:#c0c6ba;line-height:1.5}
+.director-action-dock{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:12px;margin:22px 0}
+.director-action-dock button{min-width:0;min-height:100px;text-align:left;border-radius:16px;cursor:pointer;display:flex;align-items:center;gap:16px;padding:17px 20px;border:1px solid #617650}
+.director-action-primary{color:#152014;background:#d1e9b9}
+.director-action-primary .director-action-icon{display:grid;place-items:center;width:59px;height:59px;flex:0 0 59px;border:2px solid #516b4a;border-radius:14px;font-size:45px;line-height:1}
+.director-action-primary strong{display:block;font-size:clamp(17px,2.1vw,24px);letter-spacing:-.04em;font-weight:900;line-height:1.1}
+.director-action-primary small{display:block;margin-top:8px;font-size:12px;line-height:1.4}
+.director-action-primary>b{margin-left:auto;font-size:28px;align-self:flex-start}
+.director-action-secondary{color:#e9f0df;background:linear-gradient(130deg,#2c3c27,#172117)}
+.director-action-secondary>span{font-size:34px;color:#c6dcaa}
+.director-action-secondary strong{font-size:17px;letter-spacing:-.025em}
+.director-action-secondary small{font-size:11px;color:#aec6a5;margin-left:auto}
+.admin-checkin-page{max-width:920px;margin:0 auto;padding:calc(20px + env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom))}
+.admin-checkin-page>.card,.admin-checkin-head{width:100%;max-width:760px}
+.admin-checkin-head h1{font-size:clamp(53px,10vw,88px);letter-spacing:-.085em;line-height:.89;margin:10px 0 15px}
+.admin-checkin-head p{color:#bbc7b0;max-width:490px;font-size:15px;line-height:1.5}
+.checkin-live-count{display:flex;align-items:baseline;gap:12px;margin:16px 0}
+.checkin-live-count b{font-size:46px;color:#d5eeb9;letter-spacing:-.08em}
+.checkin-live-count span{font-size:13px;color:#a5b398}
+.admin-checkin-camera{aspect-ratio:1.18;max-height:530px;border-radius:16px;background:#151a12}
+.admin-checkin-camera:not(.camera-active) video{visibility:hidden}
+.admin-scanner-placeholder{position:absolute;inset:0;display:flex;flex-direction:column;gap:12px;align-items:center;justify-content:center;color:#e6f1dc;text-align:center;padding:26px;pointer-events:none}
+.admin-scanner-placeholder>span{font-size:91px;line-height:1;color:#b6ce9b}
+.admin-scanner-placeholder>b{font-size:clamp(17px,4vw,25px);line-height:1.25}
+.admin-scanner-placeholder small{font-size:13px;color:#94a089}
+.admin-checkin-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.admin-checkin-actions .btn{margin:0;min-height:56px}
+.admin-checkin-upload{display:flex;align-items:center;justify-content:center;min-height:56px;border:1px solid #6b8560;border-radius:10px;color:#d4eac8;font-size:14px;font-weight:750;cursor:pointer}
+.admin-checkin-upload input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.admin-checkin-result{border-color:#91ae7a;background:#1e2c1a}
+@media(max-width:650px){
+ .admin-rehearsal-roles{grid-template-columns:1fr;gap:9px}
+ .admin-rehearsal-roles button{min-height:180px;padding:18px}
+ .admin-rehearsal-roles .role-symbol{font-size:32px;margin:10px 0}
+ .admin-rehearsal-roles em{padding-top:12px}
+ .admin-rehearsal-foot{grid-template-columns:1fr}
+ .admin-rehearsal-foot .btn{max-width:none}
+ .director-action-dock{grid-template-columns:1fr}
+ .director-action-dock button{min-height:88px;padding:15px}
+ .director-action-secondary{flex-wrap:wrap;justify-content:flex-start}
+ .director-action-secondary small{margin-left:0}
+ .admin-checkin-actions{grid-template-columns:1fr}
+}
+@media(prefers-reduced-motion:reduce){.admin-rehearsal-roles button{transition:none}.admin-rehearsal-roles button:hover{transform:none}}
+
+/* Rehearsal ticket / genuine check-in chain, separate from live attendance. */
+.admin-rehearsal-ticket{border:1px solid #789065;border-radius:18px;padding:clamp(18px,4vw,26px);margin-bottom:16px;background:linear-gradient(145deg,#202c1c,#11160e);overflow:hidden}
+.admin-rehearsal-ticket h2{font-size:clamp(28px,7vw,43px);line-height:1;letter-spacing:-.075em;margin:14px 0}
+.admin-rehearsal-ticket p{font-size:14px;color:#bfc9b8;line-height:1.6;max-width:570px}
+.admin-rehearsal-ticket .event-pass{margin:16px 0}
+.admin-rehearsal-ticket .btn{min-height:54px;margin:14px 0 0}
+.admin-rehearsal-screen-fallback{display:inline-flex;width:auto;min-height:48px;align-items:center;text-align:center;margin:0 0 28px}

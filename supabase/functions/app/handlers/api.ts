@@ -1,4 +1,3 @@
-import { testInviteToken, testInviteMatches } from '../_shared/testInvite.ts'
 import { adminDb } from '../_shared/db.ts'
 import { cors, err, json } from '../_shared/http.ts'
 import { telegramUserFromRequest, isConfiguredAdmin } from '../_shared/telegram.ts'
@@ -969,14 +968,18 @@ async function pwaSessionUser(db:any,req:Request){
   if(touched.error)console.warn('pwa session touch failed',String(touched.error.message||touched.error))
   return user.data
 }
-async function testRoomTokenMatches(event:any,token:string){
-  if(event?.settings?.test_room!==true)return false
-  const expected=String(event?.settings?.test_room_token_hash||'')
-  if(!expected||!token)return false
-  const got=await sha256Hex(token)
-  if(expected.length!==got.length)return false
-  let diff=0;for(let i=0;i<expected.length;i++)diff|=expected.charCodeAt(i)^got.charCodeAt(i)
-  return diff===0
+async function screenTokenAuthorized(req:Request,event:any,globalTokenValid:boolean){
+  // The live projection key is not a key to every admin-only rehearsal.
+  // Rehearsal screens receive a separate, event-bound bearer token issued
+  // only by the authenticated administrator's admin-screen-link action.
+  if(event?.settings?.test_room!==true)return globalTokenValid
+  const issued=String(req.headers.get('x-screen-token')||'')
+  const root=String(Deno.env.get('SCREEN_ACCESS_TOKEN')||'')
+  if(!root||issued.length!==64)return false
+  const expected=await sha256Hex('nasypateli-rehearsal-screen:v1:'+event.id+':'+root)
+  let difference=0
+  for(let i=0;i<64;i++)difference|=issued.charCodeAt(i)^expected.charCodeAt(i)
+  return difference===0
 }
 function isUuid(value:string){return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)}
 function notificationQuietUntil(pref:any){
@@ -1217,7 +1220,7 @@ export async function handleApi(req:Request){
     }
     const db=adminDb()
     const adminTokenOk=tokenMatches(req,'x-admin-token','ADMIN_ACCESS_TOKEN');const screenTokenOk=tokenMatches(req,'x-screen-token','SCREEN_ACCESS_TOKEN');const cronTokenOk=tokenMatches(req,'x-cron-token','CRON_ACCESS_TOKEN')
-    const testRoomHeader=req.headers.get('x-test-room-token')||''
+    // Test rooms are private admin resources; invitation tokens confer no participant access.
     if(action==='health')return json(await runtimeHealth(db))
 
     if(action==='pwa-exchange-handoff'){
@@ -1277,9 +1280,7 @@ export async function handleApi(req:Request){
       }
       if(!x?.event?.id)return err('Событие не найдено',404)
       const event:any={...x.event,settings:x.event.settings||{}}
-      const testScreenOk=await testRoomTokenMatches(event,req.headers.get('x-screen-token')||'')
-      const openTestScreen=event?.settings?.test_room===true
-      if(!screenTokenOk&&!testScreenOk&&!openTestScreen)return err('Доступ к экрану запрещён',401)
+      if(!await screenTokenAuthorized(req,event,screenTokenOk))return err('Доступ к экрану запрещён',401)
       await maybeAutoAdvanceShow(db,event)
 
       const config:any=x.program_config||{}
@@ -1344,9 +1345,7 @@ export async function handleApi(req:Request){
 
     if(action==='screen-audio-heartbeat'){
       const event=await eventBySlug(db,String(body.slug||'2026-10-03'))
-      const testScreenOk=await testRoomTokenMatches(event,req.headers.get('x-screen-token')||'')
-      const openTestScreen=event?.settings?.test_room===true
-      if(!screenTokenOk&&!testScreenOk&&!openTestScreen)return err('Доступ к экрану запрещён',401)
+      if(!await screenTokenAuthorized(req,event,screenTokenOk))return err('Доступ к экрану запрещён',401)
       return await withEventOperation(db,event.id,'screen-audio-lease',async()=>{
         const now=new Date().toISOString()
         const session=String(body.sessionId||'').slice(0,100)
@@ -1368,9 +1367,7 @@ export async function handleApi(req:Request){
 
     if(action==='screen-audio-ended'){
       const event=await eventBySlug(db,String(body.slug||'2026-10-03'))
-      const testScreenOk=await testRoomTokenMatches(event,req.headers.get('x-screen-token')||'')
-      const openTestScreen=event?.settings?.test_room===true
-      if(!screenTokenOk&&!testScreenOk&&!openTestScreen)return err('Доступ к экрану запрещён',401)
+      if(!await screenTokenAuthorized(req,event,screenTokenOk))return err('Доступ к экрану запрещён',401)
       const owner=await db.from('event_screen_status').select('session_id').eq('event_id',event.id).maybeSingle()
       if(owner.error)throw owner.error
       if(owner.data?.session_id&&owner.data.session_id!==String(body.sessionId||''))return json({ok:true,ignored:true})
@@ -1409,7 +1406,7 @@ export async function handleApi(req:Request){
       const hasPwaAuth=!!String(req.headers.get('x-pwa-session')||'').trim()
       if(!adminTokenOk&&!hasAdminHeader&&!hasTelegramAuth&&!hasPwaAuth&&!adminSlug.startsWith('test-'))return err('Доступ к пульту запрещён',401)
       const event=await eventBySlug(db,adminSlug)
-      const testAdminOk=await testRoomTokenMatches(event,req.headers.get('x-admin-token')||'')
+      const testAdminOk=false // legacy room invitation is not an admin credential
       if(!adminTokenOk&&!testAdminOk){
         try{
           const pwaUser=await pwaSessionUser(db,req)
@@ -1564,39 +1561,22 @@ export async function handleApi(req:Request){
     let tg:any=null,user:any=null,testEvent:any=null,testParticipantAccess=false
     const requestedSlug=String(body.slug||'')
     user=await pwaSessionUser(db,req)
-    if(testRoomHeader&&requestedSlug){
-      try{
-        const candidate=await eventBySlug(db,requestedSlug)
-        if(await testInviteMatches(candidate,testRoomHeader)||await testRoomTokenMatches(candidate,testRoomHeader)){
-          testEvent=candidate
-          testParticipantAccess=true
-          // A room capability grants event access, never a shared identity.
-          // Telegram takes precedence over any stale standalone session.
-          if(req.headers.get('x-telegram-init-data')||!user){
-            try{tg=await telegramUserFromRequest(req)}
-            catch{return err('Откройте приглашение в Telegram: для теста нужен ваш личный профиль',401)}
-            user=await getOrCreateUser(db,tg)
-          }
-        }
-      }catch(e:any){if(e?.message!=='EVENT_NOT_FOUND')throw e}
-    }
     const suppliedAdminToken=req.headers.get('x-admin-token')||''
-    const adminTarget=isAdminAction?await eventBySlug(db,requestedSlug||'2026-10-03'):null
-    const legacyTestAdmin=isAdminAction&&await testRoomTokenMatches(adminTarget,suppliedAdminToken)
+    const legacyTestAdmin=false // legacy room links are no longer admin credentials
     if(!user&&(!isAdminAction||(!adminTokenOk&&!legacyTestAdmin))){
       try{tg=await telegramUserFromRequest(req);user=await getOrCreateUser(db,tg)}
       catch{return err(isAdminAction?'Доступ к пульту запрещён: откройте его через Telegram или закрытую ссылку':'Откройте приложение через Telegram',401)}
     }
 
-    // The rehearsal is discoverable from the app's main navigation. Signed-in
-    // Telegram/PWA participants may enter this one isolated test event directly;
-    // no anonymous access and no privilege to control the admin or projector.
-    if(!isAdminAction&&!testParticipantAccess&&requestedSlug==='test-2026-10-03'){
-      const rehearsal=await eventBySlug(db,requestedSlug)
-      if(rehearsal?.settings?.test_room===true&&user?.telegram_id){
-        testEvent=rehearsal
-        testParticipantAccess=true
-      }
+    // Only authenticated admins may read or mutate rehearsal participant data.
+    // Never trust test-room invite secrets, a public slug or Telegram /start test.
+    if(requestedSlug.startsWith('test-')&&!isAdminAction){
+      const privateRoom=await eventBySlug(db,requestedSlug)
+      if(privateRoom?.settings?.test_room!==true)return err('Репетиция не найдена',404)
+      try{await mustAdmin(db,user,tg)}
+      catch{return err('Тестовый прогон доступен только администраторам',403)}
+      testEvent=privateRoom
+      testParticipantAccess=true
     }
 
     if(action==='pwa-create-handoff'){
@@ -1742,14 +1722,8 @@ export async function handleApi(req:Request){
         return json({user,profile,event:null,onboardingComplete:profile.completed,creature})
       }
       await maybeAutoAdvanceShow(db,event)
-      if(testParticipantAccess&&event?.settings?.test_room===true&&Number(user?.telegram_id||0)>0){
-        const admitted=await db.from('registrations').upsert({
-          event_id:event.id,user_id:user.id,status:'attended',queue_position:null,payment_provider:'test_room',
-          provider_payment_id:null,telegram_payment_charge_id:null,amount_rub:0,photo_video_consent:false,
-          paid_at:new Date().toISOString(),reservation_expires_at:null
-        },{onConflict:'event_id,user_id'})
-        if(admitted.error)throw admitted.error
-      }
+      // A rehearsal must simulate the real ticket flow. Do not silently mark
+      // a participant as attended while the admin is trying to test QR check-in.
       if(event.status==='SALES_OPEN'){const promoted=await db.rpc('promote_event_waitlist',{p_event_id:event.id});if(promoted.error)throw promoted.error}
       if(event.status!=='CLOSED'){
         const presence=await db.from('event_presence').upsert({event_id:event.id,user_id:user.id,last_seen_at:new Date().toISOString()},{onConflict:'event_id,user_id'})
@@ -1911,36 +1885,6 @@ export async function handleApi(req:Request){
       if(row.data.expires_at&&new Date(row.data.expires_at).getTime()<Date.now())return err('Срок действия qr-кода истёк',410)
       return json({ok:true,kind:row.data.kind})
     }
-    if(action==='my-encounters'){
-      // Read only the signed-in user's recorded animal meetings. No Telegram IDs
-      // or dating profile details are exposed to either participant.
-      const meetings=await db.from('story_trigger_log').select('context,created_at')
-        .eq('user_id',user.id).eq('trigger_key','encounter')
-        .order('created_at',{ascending:false}).limit(250)
-      if(meetings.error)throw meetings.error
-      const unique=new Map<string,{userId:string;metAt:string;sharedFavorites:number;sharedGenres:number}>()
-      for(const row of meetings.data||[]){
-        const context=row.context&&typeof row.context==='object'?row.context:{}
-        const other=String(context.other_user_id||'')
-        if(!isUuid(other)||other===user.id||unique.has(other))continue
-        unique.set(other,{userId:other,metAt:String(row.created_at||''),sharedFavorites:Math.max(0,Number(context.shared_favorites||0)),sharedGenres:Math.max(0,Number(context.shared_genres||0))})
-        if(unique.size>=30)break
-      }
-      const ids=[...unique.keys()]
-      if(!ids.length)return json({ok:true,encounters:[]})
-      const animals=await db.from('creatures').select('user_id,name').in('user_id',ids)
-      if(animals.error)throw animals.error
-      const names=new Map((animals.data||[]).map((creature:any)=>[String(creature.user_id),String(creature.name||'животина')]))
-      return json({ok:true,encounters:[...unique.values()].filter(x=>names.has(x.userId)).map(x=>({
-        creatureName:names.get(x.userId),metAt:x.metAt,sharedFavorites:x.sharedFavorites,sharedGenres:x.sharedGenres
-      }))})
-    }
-    if(action==='my-encounter-token'){
-      const now=new Date().toISOString();const existing=await db.from('encounter_tokens').select('token,expires_at').eq('owner_user_id',user.id).eq('kind','rabbit').gt('expires_at',now).order('created_at',{ascending:false}).limit(1).maybeSingle();if(existing.error)throw existing.error
-      let token=String(existing.data?.token||'');let expiresAt=existing.data?.expires_at||null
-      if(!token){token=crypto.randomUUID().replaceAll('-','');expiresAt=new Date(Date.now()+1000*60*60*24*30).toISOString();const r=await db.from('encounter_tokens').insert({token,owner_user_id:user.id,kind:'rabbit',expires_at:expiresAt});if(r.error)throw r.error}
-      return json({ok:true,token,expiresAt,deepLink:await telegramStartLink(`encounter_${token}`)})
-    }
     if(action==='encounter'){
       const token=String(body.token||'').trim();const t=await db.from('encounter_tokens').select('*').eq('token',token).maybeSingle();if(t.error)throw t.error;if(!t.data)return err('Этот жетон не существует',404);if(t.data.expires_at&&new Date(t.data.expires_at).getTime()<Date.now())return err('Этот жетон уже истёк',410)
       if(t.data.kind==='event_checkin'){
@@ -1977,9 +1921,6 @@ export async function handleApi(req:Request){
         await refreshLeaderboard(db,[user.id])
         return json({ok:true,kind:'event_checkin',alreadyAttended:false,awards,crumbs})
       }
-      if(t.data.kind==='rabbit'){
-        const other=String(t.data.owner_user_id||'');if(!other||other===user.id)return err('Это жетон вашей собственной Животины',409);const [a,b]=await Promise.all([db.from('cinema_profiles').select('favorite_films,favorite_genres').eq('user_id',user.id).maybeSingle(),db.from('cinema_profiles').select('favorite_films,favorite_genres').eq('user_id',other).maybeSingle()]);const bf=new Set((b.data?.favorite_films||[]).map((x:string)=>x.toLowerCase()));const bg=new Set((b.data?.favorite_genres||[]).map((x:string)=>x.toLowerCase()));const sharedFavorites=(a.data?.favorite_films||[]).filter((x:string)=>bf.has(x.toLowerCase())).length;const sharedGenres=(a.data?.favorite_genres||[]).filter((x:string)=>bg.has(x.toLowerCase())).length;for(const uid of [user.id,other]){await emitStoryTrigger(db,uid,'encounter',{story_code:'first_rabbit_meet',shared_favorites:sharedFavorites,shared_genres:sharedGenres,other_user_id:uid===user.id?other:user.id},t.data.event_id||null);if(sharedFavorites)await emitStoryTrigger(db,uid,'encounter',{story_code:'same_taste',shared_favorites:sharedFavorites,shared_genres:sharedGenres},t.data.event_id||null);if(!sharedFavorites&&!sharedGenres)await emitStoryTrigger(db,uid,'encounter',{story_code:'nothing_common',shared_favorites:0,shared_genres:0},t.data.event_id||null)}return json({ok:true,kind:'rabbit',sharedFavorites,sharedGenres})
-      }
       return err('Неизвестный тип жетона',422)
     }
     if(action==='delete-profile'){
@@ -1990,7 +1931,7 @@ export async function handleApi(req:Request){
     }
 
     const slug=String(body.slug||'2026-10-03');const event=await eventBySlug(db,slug)
-    const testAdminTokenOk=await testRoomTokenMatches(event,req.headers.get('x-admin-token')||'')
+    const testAdminTokenOk=false // an invite token must never grant admin rights
     if(!isAdminAction&&event?.settings?.test_room===true&&!testParticipantAccess)return err('Тестовая комната закрыта',403)
 
     if(action==='claim-event-ticket'){
@@ -2440,12 +2381,6 @@ export async function handleApi(req:Request){
           good:String(f.strongest_part||'').slice(0,1000),
           improve:String(f.improve_text||'').slice(0,1000)
         }))})
-    }
-
-    if(action==='admin-test-invite'){
-      if(event.settings?.test_room!==true||event.slug!=='test-2026-10-03')return err('Приглашение доступно только для тестового вечера',403)
-      const token=await testInviteToken(event)
-      return json({ok:true,url:`https://t.me/nasipateli_v_kinobot?start=t_${token}`})
     }
 
     if(action==='admin-media-sync'){
@@ -3326,7 +3261,10 @@ export async function handleApi(req:Request){
       const screenToken=String(Deno.env.get('SCREEN_ACCESS_TOKEN')||'').trim()
       const webAppUrl=String(Deno.env.get('TELEGRAM_WEBAPP_URL')||'').trim().replace(/\/+$/,'')
       if(!screenToken||!webAppUrl)return err('Экран проектора не настроен',503)
-      return json({ok:true,screenUrl:`${webAppUrl}/#/screen/event/${event.slug}?token=${encodeURIComponent(screenToken)}`})
+      const scopedToken=event.settings?.test_room===true
+        ? await sha256Hex('nasypateli-rehearsal-screen:v1:'+event.id+':'+screenToken)
+        : screenToken
+      return json({ok:true,screenUrl:`${webAppUrl}/#/screen/event/${event.slug}?token=${encodeURIComponent(scopedToken)}`})
     }
 
     if(action==='admin-program-save'){

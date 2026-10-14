@@ -1,4 +1,3 @@
-import { testInviteMatches } from '../_shared/testInvite.ts'
 import { adminDb } from '../_shared/db.ts'
 import { json } from '../_shared/http.ts'
 import { emitStoryTrigger } from '../_shared/stories.ts'
@@ -118,10 +117,10 @@ export async function handleTelegram(req:Request){
       if(payload==='test'&&webAppUrl){
         const u=new URL(webAppUrl)
         u.searchParams.set('tgWebAppStartParam','test')
-        u.hash='/rehearsal/test-2026-10-03'
+        u.hash='/test/2026-10-17'
         launchUrl=u.toString()
-        buttonText='войти в тестовую комнату'
-        intro='это отдельная репетиция «насыпателей в кино». нажмите кнопку ниже: здесь можно проверить механики, не затрагивая событие 17 октября'
+        buttonText='админская репетиция'
+        intro='служебная репетиция «насыпателей в кино». вход разрешён только администраторам клуба'
       }
       // Private real-ticket rehearsal: invitees still complete the normal free
       // ticket flow, not the test room's automatic attendance shortcut.
@@ -141,38 +140,11 @@ export async function handleTelegram(req:Request){
           intro='это приглашение на закрытый прогон больше не действует'
         }
       }
-      const testInvite=/^t_([0-9a-f]{32})$/.exec(payload)
-      if(testInvite&&webAppUrl){
-        const room=await db.from('events').select('id,slug,title,settings').eq('slug','test-2026-10-03').maybeSingle()
-        if(room.error)throw room.error
-        if(room.data&&await testInviteMatches(room.data,testInvite[1])){
-          const u=new URL(webAppUrl)
-          u.searchParams.set('test_invite',payload)
-          u.hash=`/rehearsal/${room.data.slug}?room=${testInvite[1]}`
-          launchUrl=u.toString()
-          buttonText='попасть на событие'
-          intro='вас пригласили на тестовый вечер «насыпатели в кино» 🎬\n\nнажмите кнопку ниже, чтобы открыть событие. у вас будет собственный профиль, а голоса останутся в тестовой комнате. это не билет на 17 октября'
-        }else{
-          launchUrl=''
-          intro='приглашение на тестовый вечер недействительно. попросите организатора отправить новое'
-        }
-      }
-      if(payload.startsWith('rehearsal_')&&webAppUrl){
-        const token=payload.slice('rehearsal_'.length)
-        const hash=await sha256Hex(token)
-        const rooms=await db.from('events').select('slug,title,settings').like('slug','test-%')
-        if(rooms.error)throw rooms.error
-        const room=(rooms.data||[]).find((x:any)=>x.settings?.test_room===true&&String(x.settings?.test_room_token_hash||'')===hash)
-        if(room){
-          const u=new URL(webAppUrl)
-          u.hash=`/rehearsal/${room.slug}?room=${encodeURIComponent(token)}`
-          launchUrl=u.toString()
-          buttonText='открыть тестовую комнату'
-          intro='репетиция завтрашнего вечера. откроется ваш настоящий профиль и животина, а ответы будут записываться только в тестовую комнату'
-        }else{
-          launchUrl=''
-          intro='эта тестовая ссылка больше не действует'
-        }
+      // Guest rehearsal invites and token-based test-room links were retired.
+      // They must not reveal an admin's isolated show to regular users.
+      if(/^t_[0-9a-f]{32}$/.test(payload)||payload.startsWith('rehearsal_')){
+        launchUrl=''
+        intro='старые приглашения на тест больше не действуют. репетиции доступны только администраторам через пульт мероприятия'
       }
       const reply_markup=launchUrl?{inline_keyboard:[[{text:buttonText,web_app:{url:launchUrl}}]]}:undefined
       await tg('sendMessage',{chat_id:msg.chat.id,text:intro,...(reply_markup?{reply_markup}:{})})

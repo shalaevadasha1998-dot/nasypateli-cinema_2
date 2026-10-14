@@ -1,4 +1,4 @@
-import { TEST_EVENT_SLUG, telegramStartPath, testShareUrl } from './lib/testInvite'
+import { telegramStartPath } from './lib/testInvite'
 import { useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import QrScanner from 'qr-scanner'
@@ -10,12 +10,12 @@ import { buyTicket, callAdminApi, callApi, callScreenApi, demoMode } from './lib
 import { initTelegram, telegramStartParam, telegramUser, telegramWebApp } from './lib/telegram'
 import { useVoiceInput } from './hooks/useVoiceInput'
 import { ArchivePage, BirthPage, CreatureProfilePage, DatingPage, NotificationPage, RulesPage } from './ProductPages'
-import EncounterPage from './EncounterPage'
 import './projector-show.css'
 import './manual-director.css'
 import { emptyProfile, stages } from './demo'
 import type { AdminParticipant, CinemaProfile, DemoState, EventStatus, JipitinaMessage, PostFilmReaction, ScreenCreature, TasteVector } from './types'
 import './styles.css'
+import './product-polish.css'
 
 function downloadText(name:string,text:string,type:string){const blob=new Blob([text],{type});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();window.setTimeout(()=>URL.revokeObjectURL(url),0)}
 function csvCell(value:unknown){const raw=Array.isArray(value)?value.join(' | '):value==null?'':typeof value==='object'?JSON.stringify(value):String(value);return `"${raw.replaceAll('\"','\"\"')}"`}
@@ -77,7 +77,7 @@ function usePrivilegedState(kind:'admin'|'screen',slug:string|undefined){
   const roomToken=kind==='admin'?(search.get('room')||''):''
   const queryToken=search.get('token')||roomToken
   const token=queryToken||(typeof sessionStorage!=='undefined'?sessionStorage.getItem(storageKey)||'':'')
-  const tokenlessTestScreen=kind==='screen'&&String(slug||'').startsWith('test-')
+  const tokenlessTestScreen=false // every projector needs an admin-created link
   useEffect(()=>{
     if(!queryToken)return
     sessionStorage.setItem(storageKey,queryToken)
@@ -331,9 +331,9 @@ function ParticipantShow({data,reload}:{data:DemoState;reload:(fresh?:boolean)=>
   </section>
 }
 
-function Home({eventSlug='',privateEvent=false}:{eventSlug?:string;privateEvent?:boolean}={}){
+function Home({eventSlug=''}:{eventSlug?:string}={}){
   const {data,error,reload}=useStateData(true,eventSlug);const nav=useNavigate();const [buyError,setBuyError]=useState('');const [buyNotice,setBuyNotice]=useState('');const [buyBusy,setBuyBusy]=useState(false);const [claimBusy,setClaimBusy]=useState(false);const [claimError,setClaimError]=useState('');const [cancelBusy,setCancelBusy]=useState(false);const [cancelError,setCancelError]=useState('');const [ticketOpen,setTicketOpen]=useState(false);const [encounterMsg,setEncounterMsg]=useState('');const [now,setNow]=useState(()=>Date.now());useEffect(()=>{if(!data?.creature?.born)return;const u=new URL(location.href);const token=u.searchParams.get('encounter');if(!token)return;u.searchParams.delete('encounter');history.replaceState({},'',u.toString());callApi<{kind:string}>('encounter-preview',{token}).then(async preview=>{
-    if(preview.kind==='rabbit'){nav('/meet?incoming='+encodeURIComponent(token),{replace:true});return}
+    if(preview.kind==='rabbit'){setEncounterMsg('qr знакомства животин больше не используется. для входа ведущий сканирует qr билета');return}
     if(preview.kind==='event_checkin'){
       const result=await callApi<any>('encounter',{token})
       setEncounterMsg(result.alreadyAttended?'вы уже отметились на входе':'вы внутри. животина запомнила, что вы пришли')
@@ -350,19 +350,6 @@ function Home({eventSlug='',privateEvent=false}:{eventSlug?:string;privateEvent?
   const cancelTicket=async()=>{if(cancelBusy||data.registration!=='paid'||!freeEntry||!salesOpen)return;if(!window.confirm('отменить билет? место освободится для другого человека'))return;try{setCancelBusy(true);setCancelError('');setClaimError('');setBuyNotice('');await callApi('cancel-event-ticket',{slug:e.slug});setTicketOpen(false);setBuyNotice('билет отменён. место освобождено');await reload(true)}catch(err:any){setCancelError(err.message||'не получилось отменить билет')}finally{setCancelBusy(false)}}
     const rebuyStatus=data.registration==='refunded'?'билет возвращён':data.registration==='cancelled'?'билет отменён':''
   return <div className="page home-page cinematic-page">
-    {privateEvent?<section className="home-test-shortcut"><div><span className="eyebrow">закрытая проверка · реальный билет</span><h2>полноценный прогон вечера</h2><p>это отдельное бесплатное событие с настоящей регистрацией и qr билета. 17 октября остаётся без изменений</p></div><Button kind="secondary" onClick={()=>nav('/admin/'+e.slug)}>пульт ведущего</Button></section>:<section className="home-test-shortcut">
-      <div><span className="eyebrow">репетиция · отдельная комната</span><h2>проверить вечер</h2><p>потренируйся с животиной до 17 октября. билеты и ответы настоящего вечера не меняются</p></div>
-      <Button onClick={()=>nav('/test')}>войти в тестовую комнату</Button>
-    </section>}
-    <section className="home-creature-hero home-creature-static">
-      <div className="home-creature-top"><div><div className="eyebrow">ваша животина</div><span className="home-creature-stage-label">ваша личная животина внутри насыпателей в кино</span></div><button className="micro-link" onClick={()=>nav('/profile')}>открыть профиль ↗</button></div>
-      <button type="button" className="home-creature-static-art" onClick={()=>nav('/profile')} aria-label="открыть профиль животины"><img src={`${import.meta.env.BASE_URL}assets/rabbit-full.webp`} alt={data.creature.name||'животина'} draggable={false}/></button>
-      <div className="home-creature-name">{data.creature.name||'животина'}</div>
-      <p className="home-creature-copy">{data.creature.name||'животина'} знает ваш кинопрофиль и может обсуждать с вами фильмы, вкусы и происходящее в клубе</p>
-      <Button onClick={()=>nav('/zhivotina')}>поговорить с {uiLower(data.creature.name||'животиной')}</Button>
-    </section>
-    <button type="button" className="home-meet-shortcut" onClick={()=>nav('/meet')}><span className="home-meet-mark" aria-hidden="true">⌗</span><span><b>познакомить животин</b><small>показать свой qr или сканировать чужой</small></span><strong aria-hidden="true">↗</strong></button>
-    {encounterMsg&&<div className="success floating-success" role="status">{encounterMsg}</div>}
     <FilmMissionCards data={data} onOpen={id=>nav('/mission/'+id)}/>
     <section className="home-event-hero">
       <div className="home-event-date"><div className="eyebrow">ближайший вечер</div><h1>{eventDate(e.startsAt)}</h1><p>{eventTime(e.startsAt)}. {e.venueName?e.venueName:'место объявим позже'}. москва{e.venueAddress&&<><br/>{e.venueAddress}</>}</p></div>
@@ -392,7 +379,8 @@ function Home({eventSlug='',privateEvent=false}:{eventSlug?:string;privateEvent?
       </div>
       <Button kind="secondary" onClick={()=>nav('/zhivotina')}>поговорить с {uiLower(data.creature.name||'животиной')}</Button>
     </section>
-    {data.isAdmin&&<button type="button" className="admin-entry-link" onClick={()=>nav(`/admin/event/${e.slug}`)}>админка шоу ↗</button>}
+    {data.isAdmin&&<button type="button" className="admin-entry-link" onClick={()=>nav(`/test/${e.slug}`)}>репетиция · только админам ↗</button>}
+    {data.isAdmin&&<button type="button" className="admin-entry-link" onClick={()=>nav(`/admin/event/${e.slug}`)}>пульт мероприятия ↗</button>}
     {demoMode&&<Card className="dev"><b>демо</b><span>админка: <a href={`${import.meta.env.BASE_URL}#/admin/${e.slug}`}>/admin/{e.slug}</a>. экран: <a href={`${import.meta.env.BASE_URL}#/screen/${e.slug}`}>/screen/{e.slug}</a></span></Card>}
   </div>
 }
@@ -460,34 +448,49 @@ function NextAction({data,onOpen,onBuy,onClaim,buyBusy=false,claimBusy=false,res
 function Profile(){const {data,error}=useStateData();const nav=useNavigate();if(!data)return <Loading error={error}/>;return <div className="page"><div className="row spread profile-head"><div><div className="eyebrow">ваш профиль</div><h2>{data.profile.displayName}</h2></div><Button kind="secondary" onClick={()=>nav('/onboarding?edit=1')}>изменить</Button></div><ProfilePreview profile={data.profile}/><div className="stats-grid"><Card><strong>{data.profileStats.eventsAttended}</strong><span>вечеров</span></Card><Card><strong>{data.profileStats.predictionPoints}</strong><span>очков</span></Card><Card><strong>{data.profileStats.ideasSubmitted}</strong><span>идей</span></Card></div><Card><div className="section-title">ваш киноднк</div><TasteSummary taste={data.profile.taste}/><Button kind="secondary" onClick={()=>nav('/zhivotina?mode=taste')}>что {data.creature.name||'животина'} думает о моём вкусе</Button></Card></div>}
 function TasteSummary({taste}:{taste:TasteVector}){const rows:[string,number][]=[['странность',taste.weirdness],['атмосфера',taste.atmosphere],['эксперимент',taste.experimental],['медленность',taste.slowness],['сюрреализм',taste.surrealism]];return <div>{rows.map(([k,v])=><div className="taste-line" key={k}><span>{k}</span><div><i style={{width:`${v}%`}}/></div><b>{v}</b></div>)}</div>}
 
-function PrivateLiveEvent(){const {slug}=useParams();return <Home eventSlug={slug||''} privateEvent/>}
+function PrivateLiveEvent(){const {slug}=useParams();return <Home eventSlug={slug||''}/>}
 
 function TestRoomHub(){
+  const {slug}=useParams()
+  const sourceSlug=slug||'2026-10-17'
   const nav=useNavigate()
-  const inTelegram=!!telegramWebApp()?.initData
-  const inviteUrl='https://t.me/nasipateli_v_kinobot?start=test'
-  const [copied,setCopied]=useState(false)
-  const copyInvite=async()=>{try{await navigator.clipboard.writeText(inviteUrl);setCopied(true);window.setTimeout(()=>setCopied(false),2800)}catch{window.prompt('скопируйте ссылку',inviteUrl)}}
-  return <div className="page test-room-hub">
-    <header className="test-room-heading">
-      <span className="eyebrow">отдельная репетиция</span>
-      <h1>тестовая<br/>комната</h1>
-      <p>можно проверить весь вечер на своём телефоне. это не мероприятие 17 октября — здесь отдельные ответы и животины</p>
+  const admin=usePrivilegedState('admin',sourceSlug)
+  const [busy,setBusy]=useState(false)
+  const [message,setMessage]=useState('')
+  const [screenLink,setScreenLink]=useState('')
+  if(!admin.data)return <div className="page rehearsal-locked"><div className="eyebrow">для команды</div><h1>служебная репетиция</h1><p>{admin.error||'проверяем доступ администратора…'}</p><Button kind="secondary" onClick={()=>nav('/')}>на главную</Button></div>
+  const roomSlug='test-'+sourceSlug
+  const opening=(path:string)=>nav(path)
+  const openProjector=async()=>{
+    // Keep the new tab within the user's original gesture; mobile WebViews
+    // otherwise block window.open after the asynchronous key request.
+    const tab=window.open('about:blank','_blank')
+    setBusy(true);setMessage('')
+    try{
+      const result=await callAdminApi<{screenUrl:string}>('admin-screen-link',{slug:roomSlug},admin.token)
+      if(result.screenUrl){
+        setScreenLink(result.screenUrl)
+        if(tab)tab.location.replace(result.screenUrl)
+        else setMessage('браузер запретил новое окно. нажми ссылку «открыть проектор» ниже')
+      }else{tab?.close();setMessage('не получилось открыть проектор')}
+    }catch(e:any){tab?.close();setMessage(e.message||'не получилось получить ссылку проектора')}
+    finally{setBusy(false)}
+  }
+  return <div className="page admin-rehearsal-hub">
+    <header className="admin-rehearsal-header">
+      <span className="eyebrow">только для администраторов · отдельные данные</span>
+      <h1>проверить<br/><span>весь вечер</span></h1>
+      <p>репетиция автоматически создаётся для каждого мероприятия. здесь можно пройти полную программу, не затрагивая гостей, билеты и голоса настоящего события</p>
+      <div className="admin-rehearsal-event">оригинал: <b>{admin.data.event.title}</b></div>
     </header>
-    <div className="test-room-primary">
-      <div className="test-room-step"><span>01 / участник</span><h2>посмотреть, что видят гости</h2><p>зайти, увидеть сбор, получать задания и отправлять ответы. требуется вход через Telegram</p>
-        <Button onClick={()=>nav('/rehearsal/'+TEST_EVENT_SLUG)}>войти как участник</Button></div>
-      <div className="test-room-step"><span>02 / ведущий</span><h2>управлять тестовым вечером</h2><p>запуск, пауза, перелистывание этапов, показ фильма и сброс теста. доступно только администраторам</p>
-        <Button kind="secondary" onClick={()=>nav('/admin/'+TEST_EVENT_SLUG)}>открыть тестовый пульт</Button></div>
-      <div className="test-room-step"><span>03 / большой экран</span><h2>проверить проектор</h2><p>тестовый экран показывает животных и этапы вечера отдельно от основного мероприятия</p>
-        <Button kind="secondary" onClick={()=>window.open(import.meta.env.BASE_URL+'#/screen/'+TEST_EVENT_SLUG,'_blank','noopener,noreferrer')}>открыть тестовый экран</Button></div>
-    </div>
-    <section className="test-room-invite">
-      <div><div className="eyebrow">ссылка без срока действия</div><h2>пригласить на тест</h2><p>отправьте другу эту ссылку. бот сразу покажет кнопку «войти в тестовую комнату»</p></div>
-      <div className="test-room-invite-actions"><Button kind="secondary" onClick={copyInvite}>{copied?'ссылка скопирована':'скопировать ссылку'}</Button><a className="btn secondary" href={inviteUrl} target="_blank" rel="noreferrer">открыть в Telegram ↗</a></div>
+    <section className="admin-rehearsal-roles" aria-label="режимы репетиции">
+      <button type="button" onClick={()=>opening('/rehearsal/'+roomSlug)}><span className="role-number">01</span><span className="role-symbol" aria-hidden="true">◉</span><strong>участник</strong><small>пройди весь вечер с телефона: животина, задания, раунды и финал</small><em>войти как гость →</em></button>
+      <button type="button" onClick={()=>opening('/admin/'+roomSlug)}><span className="role-number">02</span><span className="role-symbol" aria-hidden="true">⌘</span><strong>ведущий</strong><small>пульт, ручная режиссура каждого шага, таймеры, проверка входа</small><em>управлять вечером →</em></button>
+      <button type="button" disabled={busy} onClick={()=>void openProjector()}><span className="role-number">03</span><span className="role-symbol" aria-hidden="true">▣</span><strong>общий экран</strong><small>анимации, появление животин и сцены на проекторе</small><em>{busy?'открываем…':'показать экран ↗'}</em></button>
     </section>
-    {!inTelegram&&!demoMode&&<Card className="test-room-access"><h3>вход участником — через Telegram</h3><p>на компьютере без авторизации можно открыть проектор, но отправка ответов работает только с вашим Telegram-профилем</p><a className="btn secondary" href={inviteUrl}>перейти сразу в тест через бота ↗</a></Card>}
-    <div className="test-room-foot"><p>«творог» остаётся, после него будет короткая обратная связь. всё можно пройти отдельно от живого вечера</p><Button kind="secondary" onClick={()=>nav('/')}>вернуться на главный</Button></div>
+    {message&&<p className="form-error" role="alert">{message}</p>}
+    {screenLink&&<a className="btn secondary admin-rehearsal-screen-fallback" target="_blank" rel="noreferrer" href={screenLink}>открыть проектор по ссылке ↗</a>}
+    <section className="admin-rehearsal-foot"><div><b>репетиция изолирована</b><p>доступ получает только аккаунт администратора. гостям вкладка «тест» не показывается и вход по прямой ссылке закрыт</p></div><Button kind="secondary" onClick={()=>nav('/admin/'+sourceSlug)}>назад в пульт события</Button></section>
   </div>
 }
 
@@ -495,26 +498,43 @@ function RehearsalPage(){
   const {slug}=useParams()
   const nav=useNavigate()
   const {data,error,reload}=useStateData(true,slug||'')
+  const [claimBusy,setClaimBusy]=useState(false)
+  const [claimError,setClaimError]=useState('')
+  const claimTestTicket=async()=>{
+    if(!data||claimBusy)return
+    setClaimBusy(true);setClaimError('')
+    try{await callApi('claim-event-ticket',{slug:data.event.slug});await reload(true)}
+    catch(e:any){setClaimError(e.message||'не получилось получить тестовый билет')}
+    finally{setClaimBusy(false)}
+  }
   if(!data)return <div className="page rehearsal-access">
-    <Card><div className="eyebrow">отдельная тестовая комната</div>
+    <Card><div className="eyebrow">служебная репетиция · только админам</div>
       <h1>{error?'не получилось подключиться':'подключаем вашу животину…'}</h1>
-      {error?<p>{error.includes('Тестовая комната закрыта')?'откройте ссылку на репетицию через Telegram-бота, а затем нажмите «войти в тестовую комнату»':error}</p>:<p>проверяем вход в репетицию. билеты на 17 октября не затрагиваем</p>}
+      {error?<p>{error}</p>:<p>проверяем права администратора и подключение к репетиции</p>}
       <div className="rehearsal-access-buttons">
-        <Button kind="secondary" onClick={()=>nav('/test')}>назад в тестовую</Button>
+        <Button kind="secondary" onClick={()=>nav('/test/'+String(slug||'').replace(/^test-/,''))}>в выбор ролей</Button>
         <Button onClick={()=>void reload(true)}>повторить подключение</Button>
-        {error&&<a className="btn secondary" href="https://t.me/nasipateli_v_kinobot?start=test">открыть через Telegram ↗</a>}
+
       </div>
     </Card>
   </div>
-  if(slug!==data.event.slug)return <div className="page"><Empty>такой тестовой комнаты нет</Empty><Button kind="secondary" onClick={()=>nav('/test')}>к тестовой комнате</Button></div>
+  if(slug!==data.event.slug)return <div className="page"><Empty>такой репетиции нет</Empty><Button kind="secondary" onClick={()=>nav('/test/'+String(slug||'').replace(/^test-/,''))}>назад</Button></div>
   return <div className="page home-page rehearsal-page">
+    <section className="admin-rehearsal-ticket" aria-label="тестовый билет и QR входа">
+      <span className="eyebrow">01 · проверка входа</span>
+      {data.registration==='none'?<><h2>сначала билет</h2><p>проверь полный путь гостя: получи бесплатный тестовый билет, открой его qr и отметь вход сканером ведущего. до сканирования животина не появится на проекторе</p><Button disabled={claimBusy} onClick={()=>void claimTestTicket()}>{claimBusy?'выдаём билет…':'получить тестовый билет'}</Button></>:
+      data.registration==='paid'?<><h2>билет готов</h2><p>покажи этот qr ведущему или открой сканер на другом устройстве. после сканирования твоя животина появится на проекторе</p><EventPass event={data.event} registrationId={data.registrationId}/><Button kind="secondary" onClick={()=>nav('/admin/checkin/'+data.event.slug)}>открыть сканер ведущего</Button></>:
+      data.registration==='attended'?<><h2>ты в зале</h2><p>билет проверен. теперь можно проходить задания и голосования</p><div className="success">животина отмечена на входе</div></>:
+      <><h2>проверяем билет</h2><p>статус: {data.registration}. обнови данные или обратись к организатору</p><Button kind="secondary" onClick={()=>void reload(true)}>обновить билет</Button></>}
+      {claimError&&<p className="form-error" role="alert">{claimError}</p>}
+    </section>
     <Card><div className="eyebrow">тестовый вечер</div><h2>{data.profile.displayName||'ваш личный профиль'}</h2><p>ваши ответы сохраняются отдельно. тест не меняет билеты и голоса на 17 октября.</p>
-    {data.show?.runtime.runStatus==='idle'&&<div className="rehearsal-waiting"><p>сейчас сбор ещё не запущен. ведущий может нажать «начать тест без звука» в отдельном пульте</p>{data.isAdmin&&<Button kind="secondary" onClick={()=>nav('/admin/'+TEST_EVENT_SLUG)}>запустить тест как ведущий</Button>}</div>}
+    {data.show?.runtime.runStatus==='idle'&&<div className="rehearsal-waiting"><p>ведущий ещё не запустил репетицию. открой пульт, чтобы начать вечер</p>{data.isAdmin&&<Button kind="secondary" onClick={()=>nav('/admin/'+slug)}>открыть пульт ведущего</Button>}</div>}
     </Card>
     {data.show?.runtime.currentBlock?.type==='cinema_rounds'
       ?<FilmLiveParticipant data={data} reload={reload}/>
       :<ParticipantShow data={data} reload={reload}/>}
-    <div className="rehearsal-back"><Button kind="secondary" onClick={()=>location.hash='/test'}>вернуться в тестовую комнату</Button></div>
+    <div className="rehearsal-back"><Button kind="secondary" onClick={()=>nav('/test/'+String(slug||'').replace(/^test-/,''))}>назад в управление репетицией</Button></div>
   </div>
 }
 
@@ -1306,10 +1326,12 @@ function AdminCheckinScanner(){
   const privileged=usePrivilegedState('admin',slug)
   const data=privileged.data,error=privileged.error,reload=privileged.reload
   const videoRef=useRef<HTMLVideoElement>(null)
+  const fileRef=useRef<HTMLInputElement>(null)
   const scannerRef=useRef<QrScanner|null>(null)
   const processing=useRef(false)
   const lastScan=useRef({value:'',at:0})
   const [cameraOn,setCameraOn]=useState(false)
+  const [photoBusy,setPhotoBusy]=useState(false)
   const [busy,setBusy]=useState(false)
   const [message,setMessage]=useState('')
   const [manual,setManual]=useState('')
@@ -1347,6 +1369,20 @@ function AdminCheckinScanner(){
     }
   }
 
+  const scanPhoto=async(image:File|undefined)=>{
+    if(!image)return
+    setPhotoBusy(true);setMessage('')
+    try{
+      if(!image.type.startsWith('image/'))throw new Error('выбери фотографию или скриншот qr')
+      if(image.size>15*1024*1024)throw new Error('размер файла должен быть меньше 15 мб')
+      const result=await QrScanner.scanImage(image,{returnDetailedScanResult:true})
+      await checkin(result.data)
+    }catch(e:any){
+      setLastResult(null)
+      setMessage('qr на изображении не распознан: '+String(e.message||'попробуй другое фото'))
+    }finally{setPhotoBusy(false);if(fileRef.current)fileRef.current.value=''}
+  }
+
   const startCamera=async()=>{
     if(!data||!videoRef.current||scannerRef.current)return
     setMessage('')
@@ -1372,27 +1408,29 @@ function AdminCheckinScanner(){
   return <div className="admin-checkin-page">
     <div className="admin-checkin-head">
       <Button kind="secondary" onClick={()=>nav(`/admin/event/${data.event.slug}`)}>← в админку</Button>
-      <div><div className="eyebrow">координатор · чек-ин</div><h1>сканер билетов</h1><p>{checked} животин уже в зале</p></div>
+      <div><div className="eyebrow">вход · билетный qr</div><h1>впускаем<br/>животин</h1><p>отсканируй билет гостя — его животина появится на проекторе</p><div className="checkin-live-count"><b>{checked}</b><span>уже в зале</span></div></div>
     </div>
     <Card className="admin-checkin-scanner">
-      <div className="admin-checkin-camera"><video ref={videoRef} muted playsInline/></div>
+      <div className={'admin-checkin-camera'+(cameraOn?' camera-active':'')}><video ref={videoRef} muted playsInline/>{!cameraOn&&<div className="admin-scanner-placeholder" aria-hidden="true"><span>⌗</span><b>наведи камеру на билет</b><small>камера выключена</small></div>}</div>
       <div className="admin-checkin-actions">
         {!cameraOn?<Button disabled={busy} onClick={()=>void startCamera()}>включить камеру</Button>:<Button kind="secondary" disabled={busy} onClick={stopCamera}>выключить камеру</Button>}
+        <label className="admin-checkin-upload"><input ref={fileRef} type="file" accept="image/*" aria-label="загрузить qr билета из галереи" disabled={busy||photoBusy} onChange={e=>void scanPhoto(e.target.files?.[0])}/><span>{photoBusy?'читаем qr…':'загрузить qr из галереи'}</span></label>
       </div>
-      <p className="muted">наведи камеру на qr внутри билета. повторный скан безопасен и второй раз человека не добавит.</p>
+      <p className="muted">используй qr из билета участника. сканер работает только у администратора и не создаёт повторный вход</p>
       {message&&<div className={lastResult?'success':'form-error'}>{message}</div>}
       {lastResult&&<div className="admin-checkin-result"><div className="admin-checkin-result-creature"><ProjectorCreatureImage stage={String(lastResult.creatureStage||'stage_0')} visualVariant={Number(lastResult.visualVariant||1)}/></div><div><small>{lastResult.alreadyAttended?'уже в зале':'в зал заходит'}</small><b>{lastResult.creatureName||'животина'}</b><span>№ {Number(lastResult.attendeeCount||0)} · {lastResult.displayName||'гость'}</span></div></div>}
     </Card>
     <Card>
       <div className="section-title">если камера не читает</div>
-      <p className="muted">вставь ticket id из билета или весь текст qr.</p>
-      <div className="admin-checkin-manual"><input value={manual} onChange={e=>setManual(e.target.value)} placeholder="ticket id"/><Button disabled={busy||!manual.trim()} onClick={()=>void checkin(manual)}>отметить вход</Button></div>
+      <p className="muted">можно вставить полный текст билетного qr. код знакомства животин сюда не подходит</p>
+      <div className="admin-checkin-manual"><input value={manual} onChange={e=>setManual(e.target.value)} placeholder="текст билетного qr или id билета" aria-label="код билета вручную"/><Button disabled={busy||!manual.trim()} onClick={()=>void checkin(manual)}>отметить вход</Button></div>
     </Card>
   </div>
 }
 
 function Admin(){
   const {slug}=useParams()
+  const nav=useNavigate()
   const privileged=usePrivilegedState('admin',slug)
   const data=privileged.data,error=privileged.error,reload=privileged.reload
   const [busy,setBusy]=useState(false),[actionError,setActionError]=useState('')
@@ -1412,13 +1450,20 @@ function Admin(){
   }
   const runPreflight=async()=>{const [x]=await Promise.all([run('admin-event-preflight'),probeProjectorArt()]);if(x)setPreflight(x)}
   return <div className="admin-page">
-    <nav className="admin-quick-nav" aria-label="разделы пульта"><button type="button" onClick={()=>document.getElementById('show-control')?.scrollIntoView({behavior:'smooth'})}>эфир</button><button type="button" onClick={()=>document.getElementById('admin-invites')?.scrollIntoView({behavior:'smooth'})}>приглашения</button><button type="button" onClick={()=>document.getElementById('admin-projector')?.scrollIntoView({behavior:'smooth'})}>проектор</button><button type="button" onClick={()=>document.getElementById('admin-preflight')?.scrollIntoView({behavior:'smooth'})}>проверка</button><button type="button" onClick={()=>{const el=document.getElementById('admin-feedback') as HTMLDetailsElement|null;if(el){el.open=true;el.scrollIntoView({behavior:'smooth'})}}}>отзывы</button><button type="button" onClick={()=>{const el=document.getElementById('admin-support') as HTMLDetailsElement|null;if(el){el.open=true;el.scrollIntoView({behavior:'smooth'})}}}>настройки</button></nav>
+    <nav className="admin-quick-nav" aria-label="разделы пульта"><button type="button" onClick={()=>document.getElementById('show-control')?.scrollIntoView({behavior:'smooth'})}>эфир</button><button type="button" onClick={()=>nav('/admin/checkin/'+data.event.slug)}>сканер qr</button><button type="button" onClick={()=>nav('/test/'+data.event.slug.replace(/^test-/,''))}>репетиция</button><button type="button" onClick={()=>document.getElementById('admin-projector')?.scrollIntoView({behavior:'smooth'})}>проектор</button><button type="button" onClick={()=>document.getElementById('admin-preflight')?.scrollIntoView({behavior:'smooth'})}>проверка</button><button type="button" onClick={()=>{const el=document.getElementById('admin-feedback') as HTMLDetailsElement|null;if(el){el.open=true;el.scrollIntoView({behavior:'smooth'})}}}>отзывы</button><button type="button" onClick={()=>{const el=document.getElementById('admin-support') as HTMLDetailsElement|null;if(el){el.open=true;el.scrollIntoView({behavior:'smooth'})}}}>настройки</button></nav>
     <div className="row spread admin-title-row"><div><div className="eyebrow">админка. экран ведущего</div><h2>{data.event.title}</h2></div><Pill>{data.show?showRunStatusLabel(data.show.runtime.runStatus):statusLabel(data.event.status)}</Pill></div>
     {actionError&&<div className="form-error">{actionError}</div>}
+    <section id="admin-quick-actions" className="director-action-dock" aria-label="быстрые действия администратора">
+      <button type="button" className="director-action-primary" onClick={()=>nav('/admin/checkin/'+data.event.slug)}>
+        <span className="director-action-icon" aria-hidden="true">⌗</span><span><strong>сканировать qr билета</strong><small>гость отмечается, животина появляется на экране</small></span><b aria-hidden="true">↗</b>
+      </button>
+      <button type="button" className="director-action-secondary" onClick={()=>nav(data.event.slug.startsWith('test-')?'/test/'+data.event.slug.slice(5):'/test/'+data.event.slug)}>
+        <span aria-hidden="true">◉</span><strong>{data.event.slug.startsWith('test-')?'режимы репетиции':'проверить весь вечер'}</strong><small>только администраторы</small>
+      </button>
+    </section>
     <ShowControl data={data} busy={busy} run={run}/>
-    <TestInviteCard adminToken={privileged.token}/>
     <FeedbackSummaryAdmin busy={busy} run={run}/>
-    <Card id="admin-projector" className="projector-access-card"><div className="section-title">общий экран / проектор</div><p className="muted">откройте эту ссылку на ноутбуке, подключённом к проектору, и разверните браузер на весь экран. экран обновляется сам.</p><div className="inline"><Button kind="secondary" disabled={busy} onClick={async()=>{const x:any=await run('admin-screen-link');if(x?.screenUrl)setProjectorLink(String(x.screenUrl))}}>получить ссылку экрана</Button>{projectorLink&&<><Button onClick={()=>window.open(projectorLink,'_blank','noopener,noreferrer')}>открыть экран ↗</Button><Button kind="secondary" onClick={()=>window.open(projectorLink+'&demo=animals','_blank','noopener,noreferrer')}>репетиция животин ↗</Button><Button kind="secondary" onClick={async()=>{try{await navigator.clipboard.writeText(projectorLink)}catch{window.prompt('скопируйте ссылку',projectorLink)}}}>скопировать</Button></>}</div>{projectorLink&&<input className="share-link" readOnly value={projectorLink}/>}</Card>
+    <Card id="admin-projector" className="projector-access-card"><div className="section-title">общий экран / проектор</div><p className="muted">откройте эту ссылку на ноутбуке, подключённом к проектору, и разверните браузер на весь экран. экран обновляется сам.</p><div className="inline"><Button kind="secondary" disabled={busy} onClick={async()=>{const x:any=await run('admin-screen-link');if(x?.screenUrl)setProjectorLink(String(x.screenUrl))}}>получить ссылку экрана</Button>{projectorLink&&<><Button onClick={()=>window.open(projectorLink,'_blank','noopener,noreferrer')}>открыть экран ↗</Button><Button kind="secondary" onClick={async()=>{try{await navigator.clipboard.writeText(projectorLink)}catch{window.prompt('скопируйте ссылку',projectorLink)}}}>скопировать</Button></>}</div>{projectorLink&&<input className="share-link" readOnly value={projectorLink}/>}</Card>
     <Card id="admin-preflight" className="event-preflight-card">
       <div className="row spread"><div><div className="section-title">проверка перед началом</div><h3>{preflight?preflight.ready?'технически готово':'есть блокеры':'проверка одним нажатием'}</h3></div>{preflight&&<Pill>{preflight.summary?.failed?preflight.summary.failed+' блокер(а)':'готово'}</Pill>}</div>
       <p className="muted">проверяет большой экран, telegram, программу, состояние мероприятия, подготовленные фильмы, вопросы, видео, права на источники, площадку и участников.</p>
@@ -1440,7 +1485,7 @@ function Admin(){
       <Card><div className="section-title">событие</div><Field label="дата и время. москва"><input type="datetime-local" value={startsAt} onChange={e=>setStartsAt(e.target.value)}/></Field><Field label="цена билета. ₽"><input type="number" min="0" max="100000" value={ticketPrice} onChange={e=>setTicketPrice(Number(e.target.value))}/></Field><Field label="максимальный хронометраж"><input type="number" min="45" max="360" value={runtimeCap} onChange={e=>setRuntimeCap(Number(e.target.value))}/></Field><Field label="площадка"><input value={venueName} onChange={e=>setVenueName(e.target.value)}/></Field><Field label="адрес"><input value={venueAddress} onChange={e=>setVenueAddress(e.target.value)}/></Field><Button disabled={busy||!moscowIso(startsAt)} onClick={()=>run('admin-event-config',{startsAt:moscowIso(startsAt),ticketPriceRub:ticketPrice,maxMovieRuntimeMin:runtimeCap,venueName,venueAddress})}>сохранить событие</Button></Card>
       <Card><div className="section-title">вместимость</div><div className="inline"><input type="number" min="1" max="500" value={cap} onChange={e=>setCap(Number(e.target.value))}/><Button disabled={busy} onClick={()=>run('admin-capacity',{capacity:cap})}>применить</Button></div><p className="muted">сейчас {data.event.capacity} мест</p></Card>
       <Card><div className="section-title">сообщение на проектор</div><textarea value={message} onChange={e=>setMessage(e.target.value)} placeholder="например: 10 минут до начала"/><Button disabled={busy} onClick={()=>run('admin-screen-message',{message})}>показать</Button></Card>
-      <Card><div className="section-title">чек-ин</div><p className="muted">координатор сканирует персональный qr в билете. после успешного скана животина автоматически появляется на общем экране.</p><Button onClick={()=>{location.hash=`/admin/checkin/${data.event.slug}`}}>открыть сканер билетов</Button><details className="admin-checkin-backup"><summary>резервный самостоятельный чек-ин</summary><Button kind="secondary" disabled={busy} onClick={async()=>{const x:any=await run('admin-create-checkin-token');if(x)setCheckinLink(String(x.deepLink||x.token||''))}}>получить резервную ссылку</Button>{checkinLink&&<><input className="share-link" readOnly value={checkinLink}/><Button kind="secondary" onClick={async()=>{try{await navigator.clipboard.writeText(checkinLink)}catch{window.prompt('скопируйте ссылку',checkinLink)}}}>скопировать</Button></>}</details></Card>
+      <Card><div className="section-title">резервный вход</div><p className="muted">основной сканер билетов теперь в верхней части пульта. этот раздел нужен только при техническом сбое камеры.</p><details className="admin-checkin-backup"><summary>резервный самостоятельный чек-ин</summary><Button kind="secondary" disabled={busy} onClick={async()=>{const x:any=await run('admin-create-checkin-token');if(x)setCheckinLink(String(x.deepLink||x.token||''))}}>получить резервную ссылку</Button>{checkinLink&&<><input className="share-link" readOnly value={checkinLink}/><Button kind="secondary" onClick={async()=>{try{await navigator.clipboard.writeText(checkinLink)}catch{window.prompt('скопируйте ссылку',checkinLink)}}}>скопировать</Button></>}</details></Card>
       {!demoMode&&<Card><div className="section-title">telegram</div><Button kind="secondary" disabled={busy} onClick={()=>run('admin-configure-telegram')}>обновить webhook + кнопку бота</Button></Card>}
       <Card><div className="section-title">выгрузка</div><div className="inline"><Button kind="secondary" disabled={busy} onClick={async()=>{const x=await run('admin-export-event');if(x)downloadEventExport(x,'csv')}}>csv</Button><Button kind="secondary" disabled={busy} onClick={async()=>{const x=await run('admin-export-event');if(x)downloadEventExport(x,'json')}}>json</Button></div></Card>
     </div></details>
@@ -1926,13 +1971,6 @@ function FeedbackSummaryAdmin({busy,run}:{busy:boolean;run:(action:string,payloa
   </details>
 }
 
-function TestInviteCard({adminToken}:{adminToken:string}){
-  const [url,setUrl]=useState(''),[error,setError]=useState(''),[copied,setCopied]=useState(false)
-  useEffect(()=>{let active=true;void callAdminApi<{url:string}>('admin-test-invite',{slug:TEST_EVENT_SLUG},adminToken).then(x=>{if(active)setUrl(x.url)}).catch(e=>{if(active)setError(e.message)});return()=>{active=false}},[adminToken])
-  const share=()=>{try{const shareUrl=testShareUrl(url);const app=telegramWebApp();if(app?.openTelegramLink)app.openTelegramLink(shareUrl);else window.open(shareUrl,'_blank','noopener,noreferrer')}catch(e:any){setError(e.message)}}
-  const copy=async()=>{if(!url)return;try{await navigator.clipboard.writeText(url);setCopied(true);window.setTimeout(()=>setCopied(false),3000)}catch{window.prompt('скопируй приглашение',url)}}
-  return <Card id="admin-invites"><div className="section-title">репетиция с друзьями</div><p>каждый входит со своим профилем. тестовые голоса отделены от вечера 17 октября.</p><div className="test-invite-actions"><Button disabled={!url} onClick={copy}>{copied?'ссылка скопирована':'скопировать приглашение'}</Button><Button kind="secondary" disabled={!url} onClick={share}>отправить в Telegram</Button></div>{url&&<><p className="muted">друг открывает приглашение в личном чате с ботом, нажимает «старт», затем «попасть на событие». вход со своим Telegram-профилем</p><p><a href={url} target="_blank" rel="noreferrer">проверить приглашение в боте ↗</a></p></>}<p><a href={`#/admin/${TEST_EVENT_SLUG}`}>пульт тестового вечера</a></p>{error&&<div className="form-error">{error}</div>}</Card>
-}
 
 function TelegramStartRouter({children}:{children:ReactNode}){
   const nav=useNavigate()
@@ -1950,4 +1988,4 @@ function TelegramStartRouter({children}:{children:ReactNode}){
 
 function statusLabel(s:EventStatus){const m:Record<EventStatus,string>={DRAFT:'черновик',SALES_OPEN:'регистрация открыта',CHECKIN:'сбор гостей',IDEAS_OPEN:'идеи открыты',IDEAS_LOCKED:'идеи закрыты',TOP3_READY:'три идеи',IDEA_RANDOMIZED:'идея выбрана',MOVIE_SEARCH:'поиск фильма',MOVIE_FINALISTS:'три фильма',MOVIE_SELECTED:'фильм выбран',PREDICTIONS_OPEN:'прогнозы',PREDICTIONS_LOCKED:'прогнозы закрыты',WATCHING:'просмотр',PREDICTIONS_SCORED:'результаты',DISCUSSION:'реакции',FINAL_REVIEW:'финальная фраза',FEEDBACK:'исследование',CLOSED:'закрыто'};return m[s]}
 
-export default function App(){return <HashRouter><TelegramStartRouter><Routes><Route path="/onboarding" element={<Onboarding/>}/><Route path="/birth" element={<BirthPage/>}/><Route path="/rules" element={<RulesPage/>}/><Route element={<Layout/>}><Route path="/" element={<RequireProfile><Home/></RequireProfile>}/><Route path="/profile" element={<RequireProfile><CreatureProfilePage/></RequireProfile>}/><Route path="/mission/:assignmentId" element={<RequireProfile><FilmMissionPage/></RequireProfile>}/><Route path="/dating" element={<RequireProfile><DatingPage/></RequireProfile>}/><Route path="/meet" element={<RequireProfile><EncounterPage/></RequireProfile>}/><Route path="/private/:slug" element={<RequireProfile><PrivateLiveEvent/></RequireProfile>}/><Route path="/notifications" element={<RequireProfile><NotificationPage/></RequireProfile>}/><Route path="/event/:slug" element={<RequireProfile><EventPage/></RequireProfile>}/><Route path="/archive" element={<RequireProfile><ArchivePage/></RequireProfile>}/><Route path="/test" element={<TestRoomHub/>}/><Route path="/club" element={<Navigate to="/archive" replace/>}/><Route path="/zhivotina" element={<RequireProfile><ZhivotinaPage/></RequireProfile>}/><Route path="/jipitina" element={<Navigate to="/zhivotina" replace/>}/></Route><Route path="/admin/:slug" element={<Admin/>}/><Route path="/admin/event/:slug" element={<Admin/>}/><Route path="/admin/checkin/:slug" element={<AdminCheckinScanner/>}/><Route path="/screen/:slug" element={<Screen/>}/><Route path="/screen/event/:slug" element={<Screen/>}/><Route path="/rehearsal/:slug" element={<RehearsalPage/>}/><Route path="*" element={<Navigate to="/" replace/>}/></Routes></TelegramStartRouter></HashRouter>}
+export default function App(){return <HashRouter><TelegramStartRouter><Routes><Route path="/onboarding" element={<Onboarding/>}/><Route path="/birth" element={<BirthPage/>}/><Route path="/rules" element={<RulesPage/>}/><Route element={<Layout/>}><Route path="/" element={<RequireProfile><Home/></RequireProfile>}/><Route path="/profile" element={<RequireProfile><CreatureProfilePage/></RequireProfile>}/><Route path="/mission/:assignmentId" element={<RequireProfile><FilmMissionPage/></RequireProfile>}/><Route path="/dating" element={<RequireProfile><DatingPage/></RequireProfile>}/><Route path="/private/:slug" element={<RequireProfile><PrivateLiveEvent/></RequireProfile>}/><Route path="/notifications" element={<RequireProfile><NotificationPage/></RequireProfile>}/><Route path="/event/:slug" element={<RequireProfile><EventPage/></RequireProfile>}/><Route path="/archive" element={<RequireProfile><ArchivePage/></RequireProfile>}/><Route path="/test" element={<Navigate to="/test/2026-10-17" replace/>}/><Route path="/test/:slug" element={<TestRoomHub/>}/><Route path="/club" element={<Navigate to="/archive" replace/>}/><Route path="/zhivotina" element={<RequireProfile><ZhivotinaPage/></RequireProfile>}/><Route path="/jipitina" element={<Navigate to="/zhivotina" replace/>}/></Route><Route path="/admin/:slug" element={<Admin/>}/><Route path="/admin/event/:slug" element={<Admin/>}/><Route path="/admin/checkin/:slug" element={<AdminCheckinScanner/>}/><Route path="/screen/:slug" element={<Screen/>}/><Route path="/screen/event/:slug" element={<Screen/>}/><Route path="/rehearsal/:slug" element={<RehearsalPage/>}/><Route path="*" element={<Navigate to="/" replace/>}/></Routes></TelegramStartRouter></HashRouter>}

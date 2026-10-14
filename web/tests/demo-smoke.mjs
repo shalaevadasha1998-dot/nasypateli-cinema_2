@@ -51,22 +51,22 @@ try{
   const problems=[]
   page.on('pageerror',e=>problems.push(e.message))
   try{
-    await page.goto(origin+'#/test',{waitUntil:'domcontentloaded'})
-    await page.locator('.test-room-hub').waitFor({state:'visible',timeout:14000})
-    for(const label of ['войти как участник','открыть тестовый пульт','открыть тестовый экран','скопировать ссылку']){
-      if(!await page.getByRole('button',{name:label}).isVisible())throw Error('Missing rehearsal action '+label)
-    }
+    await page.goto(origin+'#/test/2026-10-17',{waitUntil:'domcontentloaded'})
+    await page.locator('.admin-rehearsal-hub').waitFor({state:'visible',timeout:14000})
+    const roles=page.locator('.admin-rehearsal-roles button')
+    if(await roles.count()!==3)throw Error('Admin hub must offer participant, director and projector modes')
     const geometry=await page.evaluate(()=>{
       const e=document.querySelector('.bottom-nav')
       return {screen:innerWidth,scroll:document.documentElement.scrollWidth,navClient:e?.clientWidth,navScroll:e?.scrollWidth}
     })
     if(geometry.scroll>geometry.screen+5)throw Error('Android document overflows '+JSON.stringify(geometry))
-    if(geometry.navScroll>geometry.navClient+3)throw Error('Android six-tab navigation still requires horizontal scrolling '+JSON.stringify(geometry))
+    if(geometry.navScroll>geometry.navClient+3)throw Error('Android navigation still requires horizontal scrolling '+JSON.stringify(geometry))
     const tabs=await page.locator('.bottom-nav a').count()
-    if(tabs!==6)throw Error('Android navigation must show six tabs, found '+tabs)
-    await page.screenshot({path:'test-artifacts/android-pixel-7-rehearsal.png',fullPage:true})
-    await page.getByRole('button',{name:'войти как участник'}).click()
-    await page.waitForURL('**/#/rehearsal/test-2026-10-03')
+    if(tabs!==5)throw Error('Android guest navigation must show five tabs, found '+tabs)
+    if(await page.locator('.bottom-nav a[href$="/test"]').count())throw Error('Admin tools visible in guest tabs')
+    await page.screenshot({path:'test-artifacts/android-pixel-7-admin-roles.png',fullPage:true})
+    await roles.first().click()
+    await page.waitForURL('**/#/rehearsal/test-2026-10-17')
     if(problems.length)throw Error('Android javascript errors: '+problems.join('; '))
     console.log('PASS Android Pixel 7 test hub, navigation and participant route '+JSON.stringify(geometry))
   }finally{await android.close()}
