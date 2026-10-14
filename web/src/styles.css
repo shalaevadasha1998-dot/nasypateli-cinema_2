@@ -3754,3 +3754,25 @@ html.chat-keyboard-open .chat-compose-inline{
   .test-room-heading{margin-top:4px}
   .test-room-heading h1{font-size:clamp(49px,12vw,76px)}
 }
+
+/* Compact, touch-first feedback after the Tvorog QR stage */
+.feedback-quick-card{display:grid;gap:13px;min-width:0}
+.feedback-quick-card > .section-title{font-size:13px;color:#b5c8a0}
+.feedback-quick-card .muted{margin:0}
+.feedback-mood{border:0;margin:0;padding:0;min-width:0}
+.feedback-mood legend{color:#e9e6db;font-size:14px;margin:0 0 10px;font-weight:700}
+.feedback-mood > div{display:flex;gap:7px;flex-wrap:wrap}
+.feedback-mood button{border:1px solid #535b4d;border-radius:100px;padding:11px 13px;min-height:44px;
+  background:#191d17;color:#e6e5dc;font-size:13px;cursor:pointer}
+.feedback-mood button.selected{background:#a4bd8f;color:#10130f;border-color:#a4bd8f;font-weight:700}
+.feedback-quick-card .field{margin:0;min-width:0}
+.feedback-quick-card textarea{display:block;min-height:90px;max-width:100%;resize:vertical;font-size:16px;line-height:1.5}
+.feedback-quick-card .btn{min-height:52px}
+.feedback-optional{padding:12px;border:1px solid #353d30;border-radius:14px;min-width:0}
+.feedback-optional summary{cursor:pointer;min-height:30px;font-size:13px;color:#d2d9ca}
+.feedback-optional[open]{display:grid;gap:12px}
+.feedback-show > h2{font-size:clamp(28px,7vw,48px);line-height:1.05}
+@media(max-width:360px){
+  .feedback-mood button{font-size:12px;min-height:44px;padding:10px}
+  .feedback-quick-card{gap:9px}
+}
