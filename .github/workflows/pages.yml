@@ -58,6 +58,21 @@ jobs:
     needs: build
 
     steps:
+      - name: Require matching backend before publishing the frontend
+        run: |
+          node <<'NODE'
+          const endpoint='https://vwteokawtqnoiyzmsldj.supabase.co/functions/v1/app'
+          for(let i=0;i<60;i++){
+            try{
+              const r=await fetch(endpoint,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'health'}),signal:AbortSignal.timeout(8000)})
+              const health=await r.json()
+              if(r.ok&&health.ok===true&&health.release===process.env.GITHUB_SHA&&['database','telegram','openai','admin','screen','cron','demoOff'].every(key=>health.checks?.[key]===true))process.exit(0)
+            }catch{}
+            await new Promise(resolve=>setTimeout(resolve,5000))
+          }
+          throw Error('Backend release or migration is not ready; existing frontend is preserved')
+          NODE
+
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4

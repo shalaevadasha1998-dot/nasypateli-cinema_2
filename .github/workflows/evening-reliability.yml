@@ -2,78 +2,90 @@ name: Evening reliability
 on:
   push:
     branches: [fix/evening-reliability-20261015]
-    paths: ['scripts/.evening-transfer/**']
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/evening-reliability.yml'
+      - 'supabase/**'
+      - 'web/**'
+      - 'tests/**'
+      - 'scripts/sql/**'
 permissions:
-  contents: write
+  contents: read
+concurrency:
+  group: evening-reliability-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
-  restore-tested-source:
-    if: github.ref == 'refs/heads/fix/evening-reliability-20261015'
+  isolated-verification:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-bookworm
+        env:
+          POSTGRES_PASSWORD: isolated-test-only
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      VITE_DEMO_MODE: 'false'
+      VITE_SUPABASE_URL: 'https://vwteokawtqnoiyzmsldj.supabase.co'
+      VITE_API_FUNCTION: 'app'
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: fix/evening-reliability-20261015
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Verify and restore exact tested source
-        run: |
-          python3 <<'PYCODE'
-          from pathlib import Path, PurePosixPath
-          import gzip, hashlib, io, json, subprocess, tarfile, tempfile
-          root = Path.cwd()
-          parts = root / 'scripts/.evening-transfer'
-          expected = [f'{n:02}' for n in range(20)]
-          assert sorted(p.name for p in parts.iterdir()) == expected, 'unexpected transport files'
-          bundle = b''.join((parts / n).read_bytes() for n in expected)
-          assert len(bundle) == 39005
-          assert hashlib.sha256(bundle).hexdigest() == 'eb2d336076834c16ff1b8bfaafd109126f3d555e83e0fb085c1980715ee0e81f'
-          sha = lambda data: hashlib.sha256(data).hexdigest()
-          allowed = ('docs/', 'scripts/sql/', 'supabase/functions/', 'supabase/migrations/', 'tests/', 'web/src/', 'web/tests/')
-          staged = []
-          with tarfile.open(fileobj=io.BytesIO(gzip.decompress(bundle)), mode='r:') as archive, tempfile.TemporaryDirectory() as scratch:
-              manifest = json.load(archive.extractfile('manifest.json'))
-              assert len(manifest) == 22
-              assert len({item['path'] for item in manifest}) == 22
-              for item in manifest:
-                  name = item['path']
-                  path = PurePosixPath(name)
-                  assert not path.is_absolute() and '..' not in path.parts and name.startswith(allowed)
-                  assert str((root / name).resolve()).startswith(str(root.resolve()) + '/')
-                  assert item['payload'].isdigit()
-                  member = archive.getmember(item['payload'])
-                  assert member.isfile() and member.size < 2000000
-                  payload = archive.extractfile(member).read()
-                  target = root / name
-                  if item['base'] is None:
-                      assert not target.exists(), f'new file already exists: {name}'
-                      assert item['encoding'] == 'raw'
-                      result = payload
-                  else:
-                      assert target.is_file() and not target.is_symlink()
-                      assert sha(target.read_bytes()) == item['base'], f'base mismatch: {name}'
-                      assert item['encoding'] == 'zstd'
-                      delta = Path(scratch) / 'delta.zst'
-                      output = Path(scratch) / 'result'
-                      delta.write_bytes(payload)
-                      subprocess.run(['zstd', '-q', '-f', '-d', '--patch-from=' + str(target), str(delta), '-o', str(output)], check=True)
-                      result = output.read_bytes()
-                  assert sha(result) == item['sha256'], f'result mismatch: {name}'
-                  staged.append((target, result))
-          for target, result in staged:
-              target.parent.mkdir(parents=True, exist_ok=True)
-              target.write_bytes(result)
-          subprocess.run(['git', 'add', '--', *[str(p.relative_to(root)) for p, _ in staged]], check=True)
-          subprocess.run(['git', 'rm', '-r', '--', 'scripts/.evening-transfer'], check=True)
-          subprocess.run(['git', 'diff', '--cached', '--check'], check=True)
-          print('Verified and restored 22 source files; transport removed; no production access')
-          PYCODE
-      - name: Verify restored logic
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Scene, playback, judging and server-director unit tests
         run: node --experimental-strip-types --test tests/evening-reliability.test.mjs
-      - name: Commit only the restored source to the feature branch
+      - name: Existing backend access and source tests
+        run: deno test --allow-env --no-check tests/access-control.test.ts tests/test-invites.test.ts tests/video-validation.test.ts tests/source-library.test.ts tests/movie-source-search.test.ts
+      - name: Backend type check
+        run: deno check supabase/functions/app/handlers/api.ts
+      - name: Test migration and transactions in isolated PostgreSQL 17
+        env:
+          PG_CONTAINER: ${{ job.services.postgres.id }}
         run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'fix: reviewed scenes, server director, playback safeguards and fair judging'
-          git push origin HEAD:refs/heads/fix/evening-reliability-20261015
+          docker exec -i "$PG_CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 < tests/evening-db-fixture.sql
+          docker exec -i "$PG_CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 < supabase/migrations/20261014215940_evening_reliability.sql
+          docker exec -i "$PG_CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 < tests/evening-db-tests.sql
+      - name: Install locked frontend dependencies and browser tests
+        working-directory: web
+        run: |
+          npm ci
+          npm install --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Production frontend build
+        working-directory: web
+        run: npm run build -- --base=/nasypateli-cinema_2/
+      - name: Host decisions and phone-independent controls
+        working-directory: web
+        run: node --experimental-strip-types tests/evening-reliability.mjs
+      - name: Guest journey and error recovery
+        working-directory: web
+        run: node --experimental-strip-types tests/guest-journey.mjs
+      - name: Projector recovery and local backup
+        working-directory: web
+        run: node --experimental-strip-types tests/projector-recovery.mjs
+      - name: Demo frontend build
+        working-directory: web
+        env:
+          VITE_DEMO_MODE: 'true'
+        run: npm run build -- --base=/nasypateli-cinema_2/
+      - name: Manual director regression
+        working-directory: web
+        run: node tests/director-smoke.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: evening-reliability-screenshots
+          path: web/test-artifacts/*.png
+          retention-days: 7
+          if-no-files-found: ignore
