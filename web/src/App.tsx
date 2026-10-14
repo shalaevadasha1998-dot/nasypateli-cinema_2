@@ -450,6 +450,9 @@ function TasteSummary({taste}:{taste:TasteVector}){const rows:[string,number][]=
 function TestRoomHub(){
   const nav=useNavigate()
   const inTelegram=!!telegramWebApp()?.initData
+  const inviteUrl='https://t.me/nasipateli_v_kinobot?start=test'
+  const [copied,setCopied]=useState(false)
+  const copyInvite=async()=>{try{await navigator.clipboard.writeText(inviteUrl);setCopied(true);window.setTimeout(()=>setCopied(false),2800)}catch{window.prompt('скопируйте ссылку',inviteUrl)}}
   return <div className="page test-room-hub">
     <header className="test-room-heading">
       <span className="eyebrow">отдельная репетиция</span>
@@ -464,7 +467,11 @@ function TestRoomHub(){
       <div className="test-room-step"><span>03 / большой экран</span><h2>проверить проектор</h2><p>тестовый экран показывает животных и этапы вечера отдельно от основного мероприятия</p>
         <Button kind="secondary" onClick={()=>window.open(import.meta.env.BASE_URL+'#/screen/'+TEST_EVENT_SLUG,'_blank','noopener,noreferrer')}>открыть тестовый экран</Button></div>
     </div>
-    {!inTelegram&&!demoMode&&<Card className="test-room-access"><h3>вход для участников — через Telegram</h3><p>для регистрации в тестовой комнате открой приложение внутри бота. на компьютере без Telegram-профиля можно посмотреть проектор, но нельзя отвечать за участника</p><a className="btn secondary" href="https://t.me/nasipateli_v_kinobot">открыть бота ↗</a></Card>}
+    <section className="test-room-invite">
+      <div><div className="eyebrow">ссылка без срока действия</div><h2>пригласить на тест</h2><p>отправьте другу эту ссылку. бот сразу покажет кнопку «войти в тестовую комнату»</p></div>
+      <div className="test-room-invite-actions"><Button kind="secondary" onClick={copyInvite}>{copied?'ссылка скопирована':'скопировать ссылку'}</Button><a className="btn secondary" href={inviteUrl} target="_blank" rel="noreferrer">открыть в Telegram ↗</a></div>
+    </section>
+    {!inTelegram&&!demoMode&&<Card className="test-room-access"><h3>вход участником — через Telegram</h3><p>на компьютере без авторизации можно открыть проектор, но отправка ответов работает только с вашим Telegram-профилем</p><a className="btn secondary" href={inviteUrl}>перейти сразу в тест через бота ↗</a></Card>}
     <div className="test-room-foot"><p>«творог» остаётся, после него будет короткая обратная связь. всё можно пройти отдельно от живого вечера</p><Button kind="secondary" onClick={()=>nav('/')}>вернуться на главный</Button></div>
   </div>
 }
