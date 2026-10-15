@@ -212,6 +212,7 @@ export async function buildShowState(db:any,event:any){
       voteState:raw.vote_state||round?.voteState||'closed',
       resultsVisible:raw.results_visible===true||round?.resultsVisible===true,
       videoState:raw.video_state||round?.videoState||{status:'idle'},
+      directorState:raw.director_state||{},
       revision:Number(raw.revision||0),
       startedAt:raw.started_at||undefined,
       blockStartedAt:raw.block_started_at||undefined,

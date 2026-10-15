@@ -1,0 +1,91 @@
+name: Evening reliability
+on:
+  push:
+    branches: [fix/evening-reliability-20261015]
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/evening-reliability.yml'
+      - 'supabase/**'
+      - 'web/**'
+      - 'tests/**'
+      - 'scripts/sql/**'
+permissions:
+  contents: read
+concurrency:
+  group: evening-reliability-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  isolated-verification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-bookworm
+        env:
+          POSTGRES_PASSWORD: isolated-test-only
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      VITE_DEMO_MODE: 'false'
+      VITE_SUPABASE_URL: 'https://vwteokawtqnoiyzmsldj.supabase.co'
+      VITE_API_FUNCTION: 'app'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Scene, playback, judging and server-director unit tests
+        run: node --experimental-strip-types --test tests/evening-reliability.test.mjs
+      - name: Existing backend access and source tests
+        run: deno test --allow-env --no-check tests/access-control.test.ts tests/test-invites.test.ts tests/video-validation.test.ts tests/source-library.test.ts tests/movie-source-search.test.ts
+      - name: Backend type check
+        run: deno check supabase/functions/app/handlers/api.ts
+      - name: Test migration and transactions in isolated PostgreSQL 17
+        env:
+          PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          docker exec -i "$PG_CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 < tests/evening-db-fixture.sql
+          docker exec -i "$PG_CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 < supabase/migrations/20261015050653_evening_reliability.sql
+          docker exec -i "$PG_CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 < tests/evening-db-tests.sql
+      - name: Install locked frontend dependencies and browser tests
+        working-directory: web
+        run: |
+          npm ci
+          npm install --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Production frontend build
+        working-directory: web
+        run: npm run build -- --base=/nasypateli-cinema_2/
+      - name: Host decisions and phone-independent controls
+        working-directory: web
+        run: node --experimental-strip-types tests/evening-reliability.mjs
+      - name: Guest journey and error recovery
+        working-directory: web
+        run: node --experimental-strip-types tests/guest-journey.mjs
+      - name: Projector recovery and local backup
+        working-directory: web
+        run: node --experimental-strip-types tests/projector-recovery.mjs
+      - name: Demo frontend build
+        working-directory: web
+        env:
+          VITE_DEMO_MODE: 'true'
+        run: npm run build -- --base=/nasypateli-cinema_2/
+      - name: Manual director regression
+        working-directory: web
+        run: node tests/director-smoke.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: evening-reliability-screenshots
+          path: web/test-artifacts/*.png
+          retention-days: 7
+          if-no-files-found: ignore

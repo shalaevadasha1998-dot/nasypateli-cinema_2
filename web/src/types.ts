@@ -275,6 +275,7 @@ export type EventRuntime = {
   voteState:'closed'|'open'
   resultsVisible:boolean
   videoState:Record<string,unknown>
+  directorState?:Record<string,any>
   revision:number
   startedAt?:string
   blockStartedAt?:string
@@ -343,6 +344,7 @@ export type FilmLiveState = {
 }
 
 export type FilmPackageAdmin = {
+  sceneReviewed?:boolean
   id:string
   movieCandidateId:string
   title:string
@@ -411,6 +413,7 @@ export type DemoState = {
   show?:ShowState
   filmAssignments?:FilmMission[]
   filmLive?:FilmLiveState
+  judgeReview?:{roundId:string;packageId:string;questionId:string;revision:number;prompt:string;actual:any;reveal:string;judgement:any;answers:any[]}|null
   filmPackages?:FilmPackageAdmin[]
   inventedFilms?:{id:string;userId:string;animalName:string;title:string;description:string;createdAt:string;updatedAt:string}[]
   reviewQueue?:ReviewQueueItem[]
